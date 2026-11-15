@@ -150,7 +150,7 @@ public sealed class ReceiptService
 
     /// <summary>A receipt's heading: the shop's name and its store or order number.</summary>
     public static Uri? ShopUrl(string shop, string? orderNumber) =>
-        shop == ReceiptShops.Amazon && !string.IsNullOrEmpty(orderNumber) ? new OpenBudget.Connectors.Amazon.AmazonOptions().OrderUrl(orderNumber) : null;
+        !string.IsNullOrEmpty(orderNumber) && ReceiptSourceProfiles.Default.For(shop)?.OrderUrl is { } url ? url(orderNumber) : null;
 
     public static string Title(string shop, string? store, string? orderNumber, string? otherOrderNumbers = null) =>
         ReceiptSourceProfiles.Default.For(shop)?.DisplayName(store, orderNumber, otherOrderNumbers) ?? (shop + " " + (store ?? orderNumber)).Trim();
@@ -287,7 +287,7 @@ public sealed class ReceiptService
     /// </summary>
     private static async Task<HashSet<long>> SourceAccountsAsync(BudgetDbContext db, string user, string source, CancellationToken ct)
     {
-        var shops = ReceiptShops.All.Where(s => ReceiptSources.Of(s) == source).ToList();
+        var shops = ReceiptSourceProfiles.Default.ShopsOf(source);
         var bookings = db.ReceiptInvoices.Where(r => r.OwnerUserId == user && shops.Contains(r.Shop) && r.TransactionId != null).Select(r => r.TransactionId);
         var accounts = (await db.Transactions.AsNoTracking().Where(t => bookings.Contains(t.Id) && t.AccountId != null).Select(t => t.AccountId!.Value).Distinct().ToListAsync(ct)).ToHashSet();
         accounts.UnionWith(await db.ReceiptSourceAccounts.AsNoTracking().Where(m => m.OwnerUserId == user && m.Source == source).Select(m => m.AccountId).ToListAsync(ct));
@@ -302,8 +302,8 @@ public sealed class ReceiptService
 
     // ---- the account a source's purchases are paid from ----
 
-    /// <summary>Sources mapped as a whole (Amazon maps each payment method instead).</summary>
-    public static readonly IReadOnlyList<string> MappedSources = [ReceiptSources.Lidl, ReceiptSources.Mail];
+    /// <summary>Sources mapped as a whole (see <see cref="ReceiptSourceProfiles.MappedSources"/>).</summary>
+    public static readonly IReadOnlyList<string> MappedSources = ReceiptSourceProfiles.Default.MappedSources;
 
     /// <summary>The accounts the signed-in user mapped a receipt source to (see <see cref="ReceiptSourceAccount"/>).</summary>
     public async Task<List<long>> GetSourceAccountsAsync(string source, CancellationToken ct = default)

@@ -75,6 +75,7 @@ public static partial class ReweInvoice
         PayeeWords = ["rewe"],
         PreferredPurposeToken = r => r.OrderDate?.ToString("yyMMdd", CultureInfo.InvariantCulture),
         DisplayName = (_, orderNumber, _) => ("REWE " + orderNumber).Trim(),
+        Source = ReceiptSources.Mail,
         MailSubjectPrefix = SubjectPrefix,
         IsMailSubject = IsInvoiceSubject,
     };

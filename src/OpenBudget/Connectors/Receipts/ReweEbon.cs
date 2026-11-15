@@ -65,6 +65,7 @@ public static partial class ReweEbon
         DaysAfter = 10,
         PayeeWords = ["rewe", "payback"],
         DisplayName = (store, orderNumber, _) => (ReceiptShops.ReweEbon + " " + (store ?? orderNumber)).Trim(),
+        Source = ReceiptSources.Mail,
         MailSubjectPrefix = SubjectPrefix,
         IsMailSubject = IsEbonSubject,
     };

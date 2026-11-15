@@ -231,12 +231,12 @@ public class CashflowProjectionService
                 }
             }
         }
-        // Expected instalments of running Amazon plans: single payments in the category their instalments were booked to.
+        // Expected instalments of running plans: single payments in the category their instalments were booked to.
         foreach (var e in instalments)
         {
             if (scopeByAccount[e.AccountId] == AccountScope.Shared && (e.CategoryId == null || projectLeaves?.Contains(e.CategoryId.Value) != true))
                 continue;
-            result.Occurrences.Add(new ScheduledOccurrence(e.Date, e.Cents / 100m, $"Amazon {e.OrderNumber} ({e.Number}/{e.Count})", ScheduledPaymentKind.Instalment));
+            result.Occurrences.Add(new ScheduledOccurrence(e.Date, e.Cents / 100m, $"{e.Title} ({e.Number}/{e.Count})", ScheduledPaymentKind.Instalment));
         }
         // Active recurring series (subscriptions): like standing orders, in the category of their latest booking, and taken
         // out of that category's projection so they are not counted twice.

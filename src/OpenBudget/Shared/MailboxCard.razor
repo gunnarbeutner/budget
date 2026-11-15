@@ -151,7 +151,7 @@
         userId = (await Access.GetAsync()).UserId;
         if (userId == null) return;
         settings = await Service.GetSettingsAsync();
-        summary = await Service.GetShopsSummaryAsync([ReceiptShops.Rewe, ReceiptShops.ReweEbon]);
+        summary = await Service.GetShopsSummaryAsync(OpenBudget.Connectors.Receipts.ReceiptSourceProfiles.Default.MailShops);
     }
 
     private async Task CheckAsync()

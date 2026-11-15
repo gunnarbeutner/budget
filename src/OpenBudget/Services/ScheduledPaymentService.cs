@@ -37,7 +37,7 @@ public sealed record ScheduledOverview(IReadOnlyList<ScheduledItem> Items, IRead
 
 /// <summary>
 /// The Scheduled view: the standing orders and future-dated transfers the banks reported for the project's accounts,
-/// plus the expected instalments of running Amazon plans whose payment method is mapped to one of them (see
+/// plus the expected instalments of running instalment plans whose payment method is mapped to one of them (see
 /// <see cref="ExpectedInstalments"/>) and the next expected charge of each active recurring series the user has not
 /// dismissed (see <see cref="RecurringPaymentService"/>), soonest first. Reads through the user-scoped context, so the access rules of
 /// <see cref="ScheduledPayment"/> (those of the account's transactions) apply; the instalments are read on a system
@@ -93,7 +93,7 @@ public class ScheduledPaymentService
                 // Negative ids keep the expected instalments apart from the stored orders.
                 items.Add(new ScheduledItem(
                     -(e.ReceiptId * ExpectedInstalments.MaxCount + e.Number), ScheduledPaymentKind.Instalment, e.Date, null, null, null, null,
-                    e.Cents / 100m, "EUR", "Amazon " + e.OrderNumber, null, null, e.FirstItem,
+                    e.Cents / 100m, "EUR", e.Title, null, null, e.FirstItem,
                     e.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a), a.Color,
                     e.ReceiptId, e.Number, e.Count));
             }

@@ -48,6 +48,7 @@ public static class AmazonReceiptStore
         RequirePayeeMatch = false,
         RequiresAccount = true,
         SignedAmounts = true,
+        OrderUrl = new AmazonOptions().OrderUrl,
         DisplayName = (_, orderNumber, others) => ("Amazon " + string.Join(", ", ReceiptInvoice.OrderNumbersOf(orderNumber, others))).Trim(),
     };
 

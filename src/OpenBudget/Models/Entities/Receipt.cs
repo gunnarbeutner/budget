@@ -311,12 +311,7 @@ public static class ReceiptSources
     public static readonly IReadOnlyList<string> All = [Mail, Lidl, Amazon];
 
     /// <summary>The source a shop's receipts come from.</summary>
-    public static string Of(string shop) => shop switch
-    {
-        ReceiptShops.Lidl => Lidl,
-        ReceiptShops.Rewe or ReceiptShops.ReweEbon => Mail,
-        _ => shop,
-    };
+    public static string Of(string shop) => Connectors.Receipts.ReceiptSourceProfiles.Default.SourceOf(shop);
 }
 
 /// <summary>

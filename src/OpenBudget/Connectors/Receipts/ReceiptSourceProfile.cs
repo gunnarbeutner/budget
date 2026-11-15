@@ -15,6 +15,12 @@ public sealed record ReceiptSourceProfile
     /// <summary>The shop (<see cref="Models.ReceiptShops"/>) whose receipts this describes.</summary>
     public required string Shop { get; init; }
 
+    /// <summary>The source (<see cref="Models.ReceiptSources"/>) the shop's receipts come from; null: the shop's own key.</summary>
+    public string? Source { get; init; }
+
+    /// <summary>The order's page at the shop, for shops that have one.</summary>
+    public Func<string, Uri>? OrderUrl { get; init; }
+
     public int DaysBefore { get; init; }
 
     public required int DaysAfter { get; init; }
@@ -49,6 +55,9 @@ public sealed record ReceiptSourceProfile
     /// <summary>For receipts read from mail: whether a subject is one of the shop's receipt mails.</summary>
     public Func<string?, bool>? IsMailSubject { get; init; }
 
+    /// <summary>The source the shop's receipts come from.</summary>
+    public string SourceKey => Source ?? Shop;
+
     public int MaxPendingDaysAfter => Math.Max(DaysAfter, PendingDaysAfter ?? DaysAfter);
 
     /// <summary>Whether a payee or purpose names the shop.</summary>
@@ -73,6 +82,8 @@ public sealed class ReceiptSourceProfiles
         _byShop = profiles.ToDictionary(p => p.Shop, StringComparer.Ordinal);
         MaxDaysBefore = _byShop.Values.Select(p => p.DaysBefore).DefaultIfEmpty(0).Max();
         MaxDaysAfter = _byShop.Values.Select(p => p.MaxPendingDaysAfter).DefaultIfEmpty(0).Max();
+        MailShops = _byShop.Values.Where(p => p.MailSubjectPrefix != null).Select(p => p.Shop).ToList();
+        MappedSources = _byShop.Values.Where(p => !p.RequiresAccount).Select(p => p.SourceKey).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
     }
 
     public IEnumerable<ReceiptSourceProfile> All => _byShop.Values;
@@ -82,6 +93,21 @@ public sealed class ReceiptSourceProfiles
 
     /// <summary>The longest any shop's booking (pending ones included) may come after its receipt.</summary>
     public int MaxDaysAfter { get; }
+
+    /// <summary>The source a shop's receipts come from (a shop without a profile is its own source).</summary>
+    public string SourceOf(string shop) => For(shop)?.SourceKey ?? shop;
+
+    /// <summary>The shops whose receipts come from <paramref name="source"/>.</summary>
+    public IReadOnlyList<string> ShopsOf(string source) => _byShop.Values.Where(p => p.SourceKey == source).Select(p => p.Shop).ToList();
+
+    /// <summary>The shops read from the owner's mailbox (those with receipt mails).</summary>
+    public IReadOnlyList<string> MailShops { get; }
+
+    /// <summary>
+    /// The sources mapped to accounts as a whole; a shop whose receipts need the account of their payment method
+    /// (<see cref="ReceiptSourceProfile.RequiresAccount"/>) maps each payment method instead.
+    /// </summary>
+    public IReadOnlyList<string> MappedSources { get; }
 
     /// <summary>The shop's profile, null for a shop without one.</summary>
     public ReceiptSourceProfile? For(string shop) => _byShop.GetValueOrDefault(shop);

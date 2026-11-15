@@ -5,12 +5,16 @@ using OpenBudget.Services;
 namespace OpenBudget.Connectors.Receipts;
 
 /// <summary>
-/// An instalment of a running Amazon plan still to come: the full-price receipt, the account the plan's payment method is
-/// mapped to, the expected day, the amount (negative cents), its number in the plan, the first item's title and the
-/// category its instalments were booked to (null: uncategorised).
+/// An instalment of a running plan still to come: the full-price receipt, the account the plan's payment method is
+/// mapped to, the expected day, the amount (negative cents), its number in the plan, the first item's title, the
+/// category its instalments were booked to (null: uncategorised) and the shop (<see cref="ReceiptShops"/>).
 /// </summary>
 public sealed record ExpectedInstalment(long ReceiptId, long AccountId, DateOnly Date, long Cents, string OrderNumber, int Number, int Count,
-    string? FirstItem, long? CategoryId);
+    string? FirstItem, long? CategoryId, string Shop)
+{
+    /// <summary>The order as its shop's receipts are headed (the shop's name and the order number).</summary>
+    public string Title => ReceiptSourceProfiles.Default.For(Shop)?.DisplayName(null, OrderNumber, null) ?? OrderNumber;
+}
 
 /// <summary>
 /// The instalments still to come of orders paid in instalments, worked out from the receipts on every read (see
@@ -41,7 +45,7 @@ public static class ExpectedInstalments
         var logins = mapping.Keys.Select(k => (int?)k.BankLoginId).Distinct().ToList();
         var fulls = (await db.ReceiptInvoices.AsNoTracking()
                 .Where(r => r.Shop == ReceiptShops.Amazon && r.State == ReceiptMatchState.Instalments && r.PaymentCents > 0 && r.OrderNumber != null && logins.Contains(r.BankLoginId))
-                .Select(r => new { r.Id, r.OrderNumber, r.BankLoginId, r.PaymentCents, r.State, r.TransactionId, r.PaymentMethodId })
+                .Select(r => new { r.Id, r.Shop, r.OrderNumber, r.BankLoginId, r.PaymentCents, r.State, r.TransactionId, r.PaymentMethodId })
                 .ToListAsync(ct))
             .Where(r => mapping.ContainsKey((r.BankLoginId!.Value, r.PaymentMethodId ?? ""))).ToList();
         if (fulls.Count == 0) return result;
@@ -69,7 +73,7 @@ public static class ExpectedInstalments
             foreach (var due in plan.Due)
             {
                 var date = DateOnly.FromDateTime(due.Date);
-                result.Add(new ExpectedInstalment(full.Id, account, date < today ? today : date, -due.Cents, full.OrderNumber!, due.Number, plan.Count, item, category));
+                result.Add(new ExpectedInstalment(full.Id, account, date < today ? today : date, -due.Cents, full.OrderNumber!, due.Number, plan.Count, item, category, full.Shop));
             }
         }
         return result.OrderBy(r => r.Date).ThenBy(r => r.ReceiptId).ToList();
