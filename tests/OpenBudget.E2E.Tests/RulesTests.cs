@@ -179,9 +179,18 @@ public sealed class RulesTests : EndToEndTestBase
         await Expect(bar.GetByTestId("rule-payee")).ToHaveValueAsync("Example Grocer");
         await bar.GetByTestId("rule-save").ClickAsync();
 
+        // Saving happens on the server after the click: wait for the stored rule.
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
-        await using var db = await factory.CreateDbContextAsync();
-        Assert.That((await db.CategoryRules.SingleAsync()).Expression, Is.EqualTo("name:\"Example Grocer\" AND amount<0"));
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        string? stored;
+        do
+        {
+            await Task.Delay(100);
+            await using var db = await factory.CreateDbContextAsync();
+            stored = await db.CategoryRules.Select(r => r.Expression).FirstOrDefaultAsync();
+        }
+        while (stored == null && DateTime.UtcNow < deadline);
+        Assert.That(stored, Is.EqualTo("name:\"Example Grocer\" AND amount<0"));
     }
 
     [Test]
