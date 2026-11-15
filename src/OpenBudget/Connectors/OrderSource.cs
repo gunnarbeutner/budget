@@ -19,8 +19,11 @@ public sealed record RemoteCharge(string OrderId, DateOnly Date, decimal Amount,
 /// <summary>An order with its items, read from the shop's order details.</summary>
 public sealed record RemoteOrder(string OrderId, DateOnly? Date, decimal? Total, string Currency, IReadOnlyList<RemoteOrderItem> Items);
 
-/// <summary>One item of an order; <see cref="Price"/> is the unit price, <see cref="Shipment"/> the shipment it went out with (0-based).</summary>
-public sealed record RemoteOrderItem(string Title, int Quantity, decimal? Price, string? Asin, int Shipment = 0);
+/// <summary>
+/// One item of an order; <see cref="Price"/> is the unit price, <see cref="Shipment"/> the shipment it went out with
+/// (0-based), <see cref="Returned"/> whether the order page lists it as returned or refunded.
+/// </summary>
+public sealed record RemoteOrderItem(string Title, int Quantity, decimal? Price, string? Asin, int Shipment = 0, bool Returned = false);
 
 /// <summary>
 /// What an order source read: the charges from <see cref="CoveredFrom"/> on, the details of the orders it was asked

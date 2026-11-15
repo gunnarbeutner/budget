@@ -128,7 +128,7 @@ public sealed class AmazonReceiptStoreTests
     }
 
     [Fact]
-    public async Task A_later_refund_takes_the_known_items_and_matches_money_coming_back()
+    public async Task A_later_refund_takes_the_items_it_pays_back_and_matches_money_coming_back()
     {
         var (t, login) = await WorldAsync();
         await using var _ = t;
@@ -139,7 +139,7 @@ public sealed class AmazonReceiptStoreTests
         await using var db = await t.System.CreateDbContextAsync();
         var refund = await db.ReceiptInvoices.Include(r => r.Items).SingleAsync(r => r.PaymentCents == -1247);
         Assert.Equal(Refund, refund.TransactionId);
-        Assert.Equal(3, refund.Items.Count);
+        Assert.Equal(["Salted snack mix"], refund.Items.Select(i => i.Name));
         Assert.Equal(4, await db.ReceiptInvoices.CountAsync(r => r.Shop == ReceiptShops.Amazon));
     }
 

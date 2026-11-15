@@ -9,7 +9,7 @@ using OpenBudget.Services;
 namespace OpenBudget.Connectors.Amazon;
 
 /// <summary>An order item as stored on its order's receipts: its place in the order and what the details page showed.</summary>
-public sealed record AmazonItem(int Position, string Title, int Quantity, long? PriceCents, int Shipment);
+public sealed record AmazonItem(int Position, string Title, int Quantity, long? PriceCents, int Shipment, bool Returned = false);
 
 /// <summary>
 /// An order paid in monthly instalments on one payment method: the receipt of its full price, which the wallet lists
@@ -142,7 +142,7 @@ public static class AmazonReceiptStore
             if (ofOrder.Count == 0) continue;
             if (details.TryGetValue(orderId, out var d))
             {
-                var items = d.Items.Select((i, n) => new AmazonItem(n, i.Title, i.Quantity, i.Price is { } p ? Cents(p) : null, i.Shipment)).ToList();
+                var items = d.Items.Select((i, n) => new AmazonItem(n, i.Title, i.Quantity, i.Price is { } p ? Cents(p) : null, i.Shipment, i.Returned)).ToList();
                 Assign(ofOrder, items, d.Date, d.Total is { } t ? Cents(t) : null, nowUtc, orderId);
             }
             else
@@ -353,7 +353,7 @@ public static class AmazonReceiptStore
     public static void Assign(IReadOnlyList<ReceiptInvoice> ofOrder, IReadOnlyList<AmazonItem> items, DateOnly? orderDate, long? orderTotalCents, DateTime detailsReadAt,
         string? orderId = null)
     {
-        var split = items.Select(i => new SplitItem(i.Position, i.Title, i.Quantity, i.PriceCents * i.Quantity, i.Shipment)).ToList();
+        var split = items.Select(i => new SplitItem(i.Position, i.Title, i.Quantity, i.PriceCents * i.Quantity, i.Shipment, i.Returned)).ToList();
         var points = ofOrder.Where(r => OrderIndex(r, orderId) == 0).SelectMany(r => r.Items).Where(i => i.Kind == ReceiptItemKind.Credit && i.SourceKey != null)
             .Select(i => ChargeOf(i.SourceKey!).Cents).Where(c => c < 0).Sum(c => -c);
         var plans = InstalmentPlans(ofOrder);

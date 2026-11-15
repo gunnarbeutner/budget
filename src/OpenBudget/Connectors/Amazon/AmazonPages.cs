@@ -285,7 +285,10 @@ internal static partial class AmazonPages
             var quantity = Quantity(html, images, starts, i, block);
             decimal? price = TextAfter(block, "unitPrice", 300) is { } p && Money().Match(p) is { Success: true } pm ? ParseAmount(pm.Value) : null;
             var shipment = Math.Max(0, shipments.Count(at => at < starts[i]) - 1);
-            items.Add(new RemoteOrderItem(Truncate(title, 500), quantity, price is { } pr ? Math.Abs(pr) : null, asin, shipment));
+            var head = shipments.LastOrDefault(at => at < starts[i], -1);
+            var returned = head >= 0 && StatusHeading().Match(html[head..starts[i]]) is { Success: true } status
+                && ReturnWords().IsMatch(Text(status.Groups["text"].Value));
+            items.Add(new RemoteOrderItem(Truncate(title, 500), quantity, price is { } pr ? Math.Abs(pr) : null, asin, shipment, returned));
         }
         return new RemoteOrder(orderId, date, total, currency, items);
     }
@@ -314,6 +317,14 @@ internal static partial class AmazonPages
 
     [GeneratedRegex(@"class=""[^""]*\bod-item-view-qty\b[^""]*""[^>]*>\s*(?:<span\b[^>]*>\s*)?(?<n>\d+)\s*<", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
     private static partial Regex QuantityBadge();
+
+    /// <summary>A shipment's status heading ("Return complete", "Delivered").</summary>
+    [GeneratedRegex(@"<h4\b[^>]*\bod-status-message\b[^>]*>(?<text>.*?)</h4>", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture | RegexOptions.Singleline, 1000)]
+    private static partial Regex StatusHeading();
+
+    /// <summary>A status of returned or refunded items, in English or German.</summary>
+    [GeneratedRegex(@"\b(return|refund)|r(ü|ue)cksendung|erstatt", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture, 1000)]
+    private static partial Regex ReturnWords();
 
     [GeneratedRegex(@"data-component=""quantity""[^>]*>(?<inner>.*?)</div>", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture | RegexOptions.Singleline, 1000)]
     private static partial Regex QuantityElement();

@@ -140,6 +140,33 @@ public sealed class AmazonTests
         Assert.Equal(new DateOnly(y, m, d), AmazonPages.ParseDate(text));
 
     [Fact]
+    public void Items_under_a_return_status_are_returned()
+    {
+        var html = OrderHtml("1 Mar 2026", "€30.00", (0, Item("B000000001", "Desk lamp", 1, "€20.00")), (1, Item("B000000002", "Cable", 1, "€10.00")))
+            .Replace("""<div data-component="shipmentStatus">Delivered</div>""", "", StringComparison.Ordinal);
+        var marker = """<div data-component="itemImage"><a href="/-/en/dp/B000000002">""";
+        html = html.Replace("""<div data-component="purchasedItems">""" + marker,
+            """<div data-component="shipmentStatus"><h4 class="a-color-base od-status-message"><span>Return complete</span></h4></div><div data-component="purchasedItems">""" + marker, StringComparison.Ordinal);
+        html = html.Replace("""<div data-component="shipments">""", """<div data-component="shipments"><div data-component="shipmentStatus"><h4 class="od-status-message"><span>Delivered</span></h4></div>""", StringComparison.Ordinal);
+
+        var order = AmazonPages.ParseOrderDetails(OrderA, html);
+
+        Assert.Equal([("Desk lamp", false), ("Cable", true)], order.Items.Select(i => (i.Title, i.Returned)));
+    }
+
+    [Fact]
+    public void A_refund_takes_the_returned_items_else_the_items_adding_up_to_it()
+    {
+        SplitItem Line(long id, long cents, bool returned = false) => new(id, "Item " + id, 1, cents, 0, returned);
+        long[] charges = [-6000];
+
+        Assert.Equal([2L], AmazonShipments.ItemsForCharge([Line(1, 1000), Line(2, 2000), Line(3, 3000)], 2000, charges, 0, 6000).Items.Select(i => i.Id));
+        // 30.00 is item 3 or items 1 and 2: the return status decides.
+        Assert.Equal([1L, 2L], AmazonShipments.ItemsForCharge([Line(1, 1000, true), Line(2, 2000, true), Line(3, 3000)], 3000, charges, 0, 6000).Items.Select(i => i.Id));
+        Assert.Equal(3, AmazonShipments.ItemsForCharge([Line(1, 1000), Line(2, 2000), Line(3, 3000)], 3000, charges, 0, 6000).Items.Count);
+    }
+
+    [Fact]
     public void Order_details_give_items_with_quantity_price_and_shipment()
     {
         var html = OrderHtml("3 November 2026", "€38.47",
