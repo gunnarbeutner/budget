@@ -232,18 +232,20 @@ public class TransactionQueryService
         {
             // Text matches name, comment, note, purpose or order items; a text that reads as an amount (AmountSearch) also matches
             // bookings of exactly that amount, in either direction unless the text carries a sign.
+            // Text compares folded (SearchText.Fold, ob_fold in SQL), so umlauts match their ae/oe/ue/ss spellings.
             var needle = query.SearchText.Trim();
+            var folded = SearchText.Fold(needle);
             var amount = AmountSearch.TryParse(needle);
             var hasAmount = amount != null;
             var cents = amount?.Cents ?? 0;
             var negCents = -cents;
             var sign = amount?.Sign ?? 0;
             baseQuery = baseQuery.Where(t =>
-                (t.Name != null && EF.Functions.Like(t.Name, $"%{needle}%"))
-                || (t.Comment != null && EF.Functions.Like(t.Comment, $"%{needle}%"))
-                || (t.Note != null && EF.Functions.Like(t.Note, $"%{needle}%"))
-                || (t.Purpose != null && EF.Functions.Like(t.Purpose, $"%{needle}%"))
-                || (t.OrderItems != null && EF.Functions.Like(t.OrderItems, $"%{needle}%"))
+                (t.Name != null && BudgetDbContext.SearchFold(t.Name).Contains(folded))
+                || (t.Comment != null && BudgetDbContext.SearchFold(t.Comment).Contains(folded))
+                || (t.Note != null && BudgetDbContext.SearchFold(t.Note).Contains(folded))
+                || (t.Purpose != null && BudgetDbContext.SearchFold(t.Purpose).Contains(folded))
+                || (t.OrderItems != null && BudgetDbContext.SearchFold(t.OrderItems).Contains(folded))
                 || (hasAmount && ((sign >= 0 && t.Amount == cents) || (sign <= 0 && t.Amount == negCents))));
         }
 

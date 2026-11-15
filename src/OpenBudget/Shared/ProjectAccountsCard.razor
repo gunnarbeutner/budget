@@ -330,7 +330,7 @@
     private List<PickerRow> BuildPickerRows(List<AccountGroup> groups, List<Account> accounts, string filter)
     {
         filter = filter.Trim();
-        bool Matches(string? text) => filter.Length == 0 || (text?.Contains(filter, StringComparison.CurrentCultureIgnoreCase) ?? false);
+        bool Matches(string? text) => SearchText.Matches(text, filter);
 
         var groupById = groups.ToDictionary(g => g.Id);
         bool IsRoot(AccountGroup g) =>

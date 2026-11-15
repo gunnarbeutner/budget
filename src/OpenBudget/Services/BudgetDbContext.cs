@@ -22,6 +22,12 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     {
     }
 
+    /// <summary>Search fold (<see cref="SearchText.Fold"/>) for LINQ; translates to the SQLite function <c>ob_fold</c>.</summary>
+    public static string SearchFold(string? text) => SearchText.Fold(text);
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.AddInterceptors(SearchFoldConnectionInterceptor.Instance);
+
     /// <summary>The user this context acts for; null = unrestricted system context.</summary>
     public AccessScope? Scope { get; set; }
 
@@ -87,6 +93,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     {
         var modelBuilder = builder;
         base.OnModelCreating(modelBuilder);
+        modelBuilder.HasDbFunction(typeof(BudgetDbContext).GetMethod(nameof(SearchFold))!).HasName(SearchText.SqlFunction);
 
         modelBuilder.Entity<ProjectCategoryAssignment>()
             .HasOne(pca => pca.Project)

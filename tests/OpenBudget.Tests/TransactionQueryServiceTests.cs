@@ -243,6 +243,31 @@ public class TransactionQueryServiceTests
         Assert.Equal(page0.TotalSum, page1.TotalSum);
     }
 
+    [Theory]
+    [InlineData("nürnberg", new[] { 1L, 2L })]
+    [InlineData("NUERNBERG", new[] { 1L, 2L })]
+    [InlineData("Nuernberg", new[] { 1L, 2L })]
+    [InlineData("strasse", new[] { 3L })]
+    [InlineData("STRAßE", new[] { 3L })]
+    [InlineData("müller", new[] { 4L })]
+    [InlineData("Mueller", new[] { 4L })]
+    [InlineData("cafe", new[] { 5L })]
+    public async Task Search_text_matches_umlauts_and_their_spelled_out_forms(string text, long[] expected)
+    {
+        await using var t = new TestDb();
+        t.AddGroup(100);
+        t.AddLeaf(101, parent: 100);
+        t.AddTransaction(id: 1, categoryId: 101, amountCents: -100, date: new DateTime(2026, 5, 1), name: "VAG Nuernberg Logpay");
+        t.AddTransaction(id: 2, categoryId: 101, amountCents: -200, date: new DateTime(2026, 5, 2), name: "Bäckerei", comment: "Filiale Nürnberg");
+        t.AddTransaction(id: 3, categoryId: 101, amountCents: -300, date: new DateTime(2026, 5, 3), name: "Hauptstraße 5");
+        t.AddTransaction(id: 4, categoryId: 101, amountCents: -400, date: new DateTime(2026, 5, 4), name: "Müller Drogerie");
+        t.AddTransaction(id: 5, categoryId: 101, amountCents: -500, date: new DateTime(2026, 5, 5), name: "Café Beispiel");
+        await t.Db.SaveChangesAsync();
+
+        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = TestDb.DefaultOwner, SearchText = text });
+        Assert.Equal(expected, page.Rows.Select(r => r.Id).OrderBy(x => x).ToArray());
+    }
+
     [Fact]
     public async Task Search_text_matches_name_or_comment_case_insensitively()
     {

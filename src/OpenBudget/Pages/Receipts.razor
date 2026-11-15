@@ -63,7 +63,7 @@ else
         {
             <input type="search" class="form-control form-control-sm mb-2" style="max-width: 20rem;" placeholder="@L["Memory_Search"]" aria-label="@L["Memory_Search"]" @bind="memorySearch" @bind:event="oninput" />
             <ul class="list-unstyled small">
-                @foreach (var m in memory.Where(m => string.IsNullOrWhiteSpace(memorySearch) || m.Name.Contains(memorySearch.Trim(), StringComparison.CurrentCultureIgnoreCase)).Take(200))
+                @foreach (var m in memory.Where(m => SearchText.Matches(m.Name, memorySearch)).Take(200))
                 {
                     <li class="d-flex flex-wrap align-items-center gap-2 mb-1" data-testid="receipts-memory-entry">
                         <span class="text-break">@m.Name</span>

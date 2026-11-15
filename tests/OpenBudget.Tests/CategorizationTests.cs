@@ -99,7 +99,7 @@ public sealed class CategorizationTests
     [InlineData("LEBENSMITTEL", "Haushalt › Lebensmittel")]
     [InlineData("haushalt leb", "Haushalt › Lebensmittel")]    // tokens match across path and name
     [InlineData("cafe", "Freizeit › Café & Bäckerei")]         // diacritics are ignored
-    [InlineData("backerei", "Freizeit › Café & Bäckerei")]
+    [InlineData("baeckerei", "Freizeit › Café & Bäckerei")]
     [InlineData("freizeit", "Freizeit › Café & Bäckerei")]     // a group name finds its categories
     public void Search_matches_name_and_path_ignoring_case_and_diacritics(string query, string expectedFirst)
     {

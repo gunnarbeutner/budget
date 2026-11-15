@@ -39,6 +39,7 @@ internal sealed class TestDb : IAsyncDisposable
     {
         Connection = new SqliteConnection("DataSource=:memory:");
         Connection.Open();
+        SearchFoldConnectionInterceptor.Register(Connection);
         var options = new DbContextOptionsBuilder<BudgetDbContext>()
             .UseSqlite(Connection)
             .Options;

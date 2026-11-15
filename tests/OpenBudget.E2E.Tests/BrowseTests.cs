@@ -75,6 +75,31 @@ public sealed class BrowseTests : EndToEndTestBase
         await Expect(Page.GetByText(new Regex("2 transactions"))).ToBeVisibleAsync();
     }
 
+    /// <summary>Search treats umlauts and their ae/oe/ue/ss spellings as equal, in both directions.</summary>
+    [Test]
+    public async Task Search_matches_umlauts_and_their_spelled_out_forms()
+    {
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            var tx = db.Transactions.Single(t => t.Name == "txn-2");
+            tx.Purpose = "VAG Nuernberg Logpay, Hauptstraße";
+            await db.SaveChangesAsync();
+        }
+
+        await GoToAsync(BrowseUrl);
+        var search = Page.GetByTestId("topbar-search").GetByTestId("tx-search");
+        await Expect(Page.GetByText(new Regex("2 transactions"))).ToBeVisibleAsync();
+
+        await search.FillAsync("NÜRNBERG");
+        await Expect(Page.GetByText(new Regex("1 transactions"))).ToBeVisibleAsync();
+        await Expect(Page.GetByText("txn-2")).ToBeVisibleAsync();
+
+        await search.FillAsync("hauptstrasse");
+        await Expect(Page.GetByText(new Regex("1 transactions"))).ToBeVisibleAsync();
+        await Expect(Page.GetByText("txn-2")).ToBeVisibleAsync();
+    }
+
     /// <summary>
     /// The search field sits in the top bar; an amount finds bookings of that amount, Escape clears it. Views without a
     /// transaction list show no search field.

@@ -207,7 +207,7 @@
     }
 
     private bool Matches(ReceiptLineView line) =>
-        string.IsNullOrWhiteSpace(search) || line.Name.Contains(search.Trim(), StringComparison.CurrentCultureIgnoreCase);
+        SearchText.Matches(line.Name, search);
 
     private string CategoryName(long? id) =>
         id is { } c && PickerData != null ? PickerData.PathOf(c, BookingCategoryName ?? L["NoCategory"]) : BookingCategoryName ?? L["NoCategory"];

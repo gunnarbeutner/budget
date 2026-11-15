@@ -187,16 +187,6 @@ public static class CategoryPickerLogic
         return scored.OrderBy(s => s.Score).ThenBy(s => s.Order).Select(s => s.Option).ToList();
     }
 
-    /// <summary>Lower-cases, strips diacritics and folds ß, so "Lebensmittel", "lebensmittel" and "Lébensmittel" compare equal.</summary>
-    public static string Normalize(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return "";
-        var decomposed = text.Trim().Replace("ß", "ss", StringComparison.Ordinal).Normalize(NormalizationForm.FormD);
-        var sb = new StringBuilder(decomposed.Length);
-        foreach (var ch in decomposed)
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark) sb.Append(char.ToUpperInvariant(ch));
-        }
-        return sb.ToString().ToUpperInvariant();
-    }
+    /// <summary>Search fold (<see cref="SearchText.Fold"/>) of the trimmed text: "Lebensmittel", "LEBENSMITTEL" and "Lébensmittel" compare equal, as do "Getränke" and "Getraenke".</summary>
+    public static string Normalize(string? text) => SearchText.Fold(text?.Trim());
 }

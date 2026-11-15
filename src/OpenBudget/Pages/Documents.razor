@@ -249,7 +249,7 @@
                    data-testid="settings-search" value="@settingsSearch" @oninput="e => settingsSearch = e.Value?.ToString() ?? string.Empty" />
         }
         <ul class="list-unstyled mb-0 docs-settings" data-testid="settings-list">
-            @foreach (var s in settings.Where(s => settingsSearch.Length == 0 || s.Name.Contains(settingsSearch, StringComparison.CurrentCultureIgnoreCase)))
+            @foreach (var s in settings.Where(s => SearchText.Matches(s.Name, settingsSearch)))
             {
                 var switchId = $"stmt-{s.AccountId}";
                 var readOnly = s.Block != null || !s.CanChange || busy;
@@ -370,7 +370,7 @@
         else if (long.TryParse(account, NumberStyles.None, CultureInfo.InvariantCulture, out var a)) q = q.Where(d => d.AccountId == a);
         var s = search.Trim();
         if (s.Length > 0)
-            q = q.Where(d => d.Name.Contains(s, StringComparison.CurrentCultureIgnoreCase) || d.AccountName.Contains(s, StringComparison.CurrentCultureIgnoreCase));
+            q = q.Where(d => SearchText.Matches(d.Name, s) || SearchText.Matches(d.AccountName, s));
         return q.ToList();
     }
 

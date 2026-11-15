@@ -223,8 +223,8 @@
         if (rows == null) return [];
         var q = search?.Trim();
         return rows.Where(r => In(group, r) && (string.IsNullOrEmpty(q)
-            || r.Title.Contains(q, StringComparison.CurrentCultureIgnoreCase)
-            || L["Source_" + r.Source].Value.Contains(q, StringComparison.CurrentCultureIgnoreCase)
+            || SearchText.Matches(r.Title, q)
+            || SearchText.Matches(L["Source_" + r.Source].Value, q)
             || (r.Date?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture).Contains(q, StringComparison.Ordinal) ?? false)
             || Formatting.FormatMoneyDe(-r.PaymentCents / 100m).Contains(q, StringComparison.Ordinal))).ToList();
     }

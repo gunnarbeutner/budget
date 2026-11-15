@@ -99,7 +99,7 @@
         void Leaf(Option o, int level) => nodes.Add(new TreePickerNode<long>(o.Id, level, true, o.Name, o.Icon ?? "bi-bank"));
 
         var q = query.Trim();
-        var hits = q.Length == 0 ? Options : Options.Where(o => o.Name.Contains(q, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        var hits = q.Length == 0 ? Options : Options.Where(o => SearchText.Matches(o.Name, q)).ToList();
 
         if (q.Length == 0)
         {
