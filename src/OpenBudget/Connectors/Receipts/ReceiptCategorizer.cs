@@ -47,53 +47,13 @@ public sealed record ReceiptSourceRules(IReadOnlyList<AllowedCategory> Allowed)
 public static partial class ReceiptCategorizer
 {
     /// <summary>
-    /// The built-in kinds: the words in a category's path or description that make it the place for the kind, and the
-    /// fragments of product names of that kind (lower case, matched anywhere in the name; a fragment starting with "^"
-    /// only at the start of a word, one ending in "$" only at the end of a word). Till receipts abbreviate ("ZAHNP.",
-    /// "SPUELM.", "TOIL.PAP", "KUECHENR", "WASCHM", "DUSCHG", "TRCK.-SH"), so the abbreviations are listed too. Product
-    /// names are checked against the kinds in this order.
+    /// The built-in kinds, read from the embedded resource <c>Resources/ReceiptKeywords.de.json</c>: per kind, the words
+    /// in a category's path or description that make it the place for the kind, and the fragments of product names of
+    /// that kind (lower case, matched anywhere in the name; a fragment starting with "^" only at the start of a word, one
+    /// ending in "$" only at the end of a word). Till receipts abbreviate, so the resource lists abbreviations too.
+    /// Product names are checked against the kinds in file order.
     /// </summary>
-    public static readonly IReadOnlyList<(string Kind, IReadOnlyList<string> CategoryWords, IReadOnlyList<string> Keywords)> Kinds =
-    [
-        ("drugstore", ["drogerie", "körperpflege", "pflege", "hygiene", "kosmetik"],
-        [
-            "deo", "seife", "zahnpasta", "zahncreme", "zahnbürste", "zahnseide", "shampoo", "duschgel", "duschbad", "^spülung",
-            "taschentücher", "kosmetiktücher", "feuchttücher", "windel", "wattepads", "wattestäbchen", "rasier", "^binden",
-            "tampon", "slipeinlage", "handcreme", "bodylotion", "sonnencreme", "lippenpflege", "pflaster", "toilettenpapier",
-            "klopapier", "mundspül", "haarspray", "haargel", "make-up", "nagellack", "abschmink",
-            "zahnp", "toil.pap", "toilettenp", "duschg", "shamp", "trck.-sh", "taschent", "rasierkl", "zahnb",
-        ]),
-        ("household", ["haushalt", "reinigung", "putz", "verbrauch"],
-        [
-            "spülmittel", "spülm", "spuelm", "waschmittel", "weichspüler", "weichsp", "küchenrolle", "küchentücher", "küchenr",
-            "kuechenr", "müllbeutel", "müllb", "muellb", "abfallbeutel", "reiniger", "putzmittel", "schwamm", "spüllappen",
-            "entkalker", "geschirrsp", "spülmasch", "maschinentabs", "spültabs", "^tabs", "glanzspüler", "allzweckr", "wc-rein",
-            "waschm", "spuel", "fleckenentf", "desinfektion", "scheuermilch", "regeneriersalz", "wc-stein",
-        ]),
-        ("pets", ["tier", "katze", "hund"],
-        [
-            "katzenstreu", "katzenfutter", "hundefutter", "tierfutter", "vogelfutter", "kauknochen", "hundesnack",
-            "katzensnack", "nassfutter", "trockenfutter", "kleintierstreu",
-        ]),
-        ("nonfood", ["non-food", "nonfood", "haushaltswaren", "sonstiges"],
-        [
-            "batterie", "kerze", "teelicht", "alufolie", "frischhaltefolie", "^folie", "gefrierbeutel", "backpapier", "glühbirne",
-            "leuchtmittel", "grillanzünder", "streichhölzer", "feuerzeug", "blumenerde", "^socken", "^tragetasche",
-            "^zeitschrift", "^zeitung", "geschenkpapier", "^grillkohle",
-        ]),
-        ("alcohol", ["alkohol", "spirituosen", "wein", "bier"],
-        [
-            "^bier", "pils$", "pilsener", "pilsner", "weizenbier", "^radler", "^wein$", "rotwein", "weißwein", "weisswein",
-            "roséwein", "rosewein", "^sekt", "prosecco", "champagner", "^vodka", "^wodka", "whisky", "whiskey",
-            "^rum$", "^gin$", "likör", "^korn$", "^aperol", "^cider", "^lambrusco", "riesling", "merlot", "chardonnay",
-            "spätburgunder", "grauburgunder", "^glühwein", "^weinbrand",
-        ]),
-        ("drinks", ["getränk"],
-        [
-            "mineralwasser", "mineralw", "tafelwasser", "^wasser", "^sprudel", "schorle", "^cola", "limonade", "^limo",
-            "eistee", "energy drink", "^saft", "fruchtsaft", "orangensaft", "apfelsaft", "^nektar", "^smoothie",
-        ]),
-    ];
+    public static readonly IReadOnlyList<ReceiptKind> Kinds = ReceiptKind.Load("de");
 
     private static readonly IReadOnlyList<(string Kind, Regex Pattern)> KindPatterns = Kinds
         .Select(k => (k.Kind, new Regex(string.Join('|', k.Keywords.Select(KeywordPattern)), RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1))))

@@ -28,6 +28,12 @@
     </PackageReference>
   </ItemGroup>
 
+  <!-- Locale data; LogicalName keeps the ".de" suffix from turning it into a satellite resource. -->
+  <ItemGroup>
+    <Content Remove="Resources/ReceiptKeywords.*.json" />
+    <EmbeddedResource Include="Resources/ReceiptKeywords.*.json" LogicalName="OpenBudget.Resources.%(Filename)%(Extension)" WithCulture="false" />
+  </ItemGroup>
+
   <!-- Generates message classes (no gRPC services) from the trimmed PortfolioPerformance schema. -->
   <ItemGroup>
     <Protobuf Include="PortfolioPerformance/pp_client.proto" GrpcServices="None" />

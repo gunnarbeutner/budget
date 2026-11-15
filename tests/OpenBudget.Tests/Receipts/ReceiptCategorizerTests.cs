@@ -47,6 +47,21 @@ public sealed class ReceiptCategorizerTests
     public void Recognises_built_in_kinds(string name, string? kind) => Assert.Equal(kind, ReceiptCategorizer.Kind(name));
 
     [Fact]
+    public void Loads_the_keyword_resource_in_file_order()
+    {
+        var kinds = ReceiptKind.Load("de");
+        Assert.Equal(["drugstore", "household", "pets", "nonfood", "alcohol", "drinks"], kinds.Select(k => k.Kind));
+        Assert.All(kinds, k => Assert.NotEmpty(k.CategoryWords));
+        Assert.All(kinds, k => Assert.NotEmpty(k.Keywords));
+        Assert.Contains("zahnpasta", kinds[0].Keywords);
+        Assert.Same(ReceiptCategorizer.Kinds, ReceiptCategorizer.Kinds);
+    }
+
+    [Fact]
+    public void Missing_keyword_locale_fails_loudly() =>
+        Assert.Throws<InvalidOperationException>(() => ReceiptKind.Load("xx"));
+
+    [Fact]
     public void Memory_beats_keywords_beats_ai_beats_the_default_and_only_allowed_categories_count()
     {
         const long Elsewhere = 99;
