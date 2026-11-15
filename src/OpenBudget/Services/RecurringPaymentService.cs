@@ -164,7 +164,9 @@ public class RecurringPaymentService
             // Money moved between the household's accounts is no subscription.
             var ownIbans = (await db.Accounts.AsNoTracking().Where(a => a.Iban != null).Select(a => a.Iban!).ToListAsync(ct))
                 .Select(RecurringPaymentDetector.NormalizeIban).ToHashSet(StringComparer.Ordinal);
-            result = RecurringPaymentDetector.Detect(bookings, standing, ownIbans, today);
+            // So are payments to the household's people, which often carry no IBAN.
+            var ownNames = await db.Users.AsNoTracking().Where(u => u.DisplayName != null).Select(u => u.DisplayName!).ToListAsync(ct);
+            result = RecurringPaymentDetector.Detect(bookings, standing, ownIbans, today, ownNames);
         }
         _cache?.Set(key, result);
         return result;

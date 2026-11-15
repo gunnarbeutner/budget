@@ -31,6 +31,30 @@ public sealed class RecurringPaymentTests
     private static List<RecurringSeries> Detect(IEnumerable<RecurringBooking> bookings, IReadOnlyCollection<StandingOrderKey>? standing = null) =>
         RecurringPaymentDetector.Detect(bookings, standing ?? [], NoIbans, Today);
 
+    [Fact]
+    public void Monthly_transfers_to_a_person_of_the_household_are_no_subscription()
+    {
+        var last = new DateOnly(Today.Year, Today.Month, 1).AddMonths(-1);
+        var bookings = Monthly("Erika Maria Mustermann", -3569, 6, last).Concat(Monthly("Streamio Media", -1299, 6, last)).ToList();
+
+        var series = RecurringPaymentDetector.Detect(bookings, [], NoIbans, Today, ["Erika Mustermann"]);
+
+        Assert.Equal(["Streamio Media"], series.Select(s => s.Payee));
+    }
+
+    [Fact]
+    public void A_shop_visited_irregularly_is_no_subscription_even_with_a_regular_run()
+    {
+        var start = Today.AddMonths(-13);
+        var bookings = new List<RecurringBooking>
+        {
+            B(start, -1067, "Corner Market"), B(start.AddMonths(6), -1106, "Corner Market"), B(start.AddMonths(12), -1387, "Corner Market"),
+        };
+        foreach (var d in new[] { 9, 40, 75, 130, 200, 250, 290, 330 }) bookings.Add(B(start.AddDays(d), -2345 - d, "Corner Market"));
+
+        Assert.Empty(Detect(bookings));
+    }
+
     [Theory]
     [InlineData("APPLE.COM/BILL", "apple com bill")]
     [InlineData("Apple.com/bill", "apple com bill")]
