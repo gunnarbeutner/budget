@@ -129,7 +129,8 @@ public sealed class TransferCategoryTests
         await migrator.MigrateAsync("20261115082937_RecurringDismissals");
 
         const long Space2 = 2L << 40;
-        await db.Database.ExecuteSqlRawAsync("INSERT INTO user_data_states (UserId, IdSpace) VALUES ('u-a', 1), ('u-b', 2)");
+        const long Space3 = 3L << 40;
+        await db.Database.ExecuteSqlRawAsync("INSERT INTO user_data_states (UserId, IdSpace) VALUES ('u-a', 1), ('u-b', 2), ('u-c', 3)");
         await db.Database.ExecuteSqlRawAsync($"""
             INSERT INTO category_groups (Id, OwnerUserId, name, group_key) VALUES
             (1, 'u-a', NULL, NULL),
@@ -139,7 +140,8 @@ public sealed class TransferCategoryTests
             (8, 'u-a', 'Moves', 5),
             ({Space2 | 1}, 'u-b', NULL, NULL),
             ({Space2 | 5}, 'u-b', 'Umbuchungen', {Space2 | 1}),
-            ({Space2 | 6}, 'u-b', 'Umbuchungen', 1)
+            ({Space2 | 6}, 'u-b', 'Umbuchungen', 1),
+            ({Space3 | 4}, 'u-c', 'Umbuchungen', NULL)
             """);
         await db.Database.ExecuteSqlRawAsync($"""
             INSERT INTO categories (Id, OwnerUserId, name, group_key) VALUES
@@ -148,15 +150,17 @@ public sealed class TransferCategoryTests
             (52, 'u-a', 'Nested', 7),
             (53, 'u-a', 'Deeper', 8),
             ({Space2 | 50}, 'u-b', 'Own transfer', {Space2 | 5}),
-            ({Space2 | 51}, 'u-b', 'Not under the root', {Space2 | 6})
+            ({Space2 | 51}, 'u-b', 'Not under the root', {Space2 | 6}),
+            ({Space3 | 50}, 'u-c', 'Top-level transfer', {Space3 | 4})
             """);
 
         await migrator.MigrateAsync();
 
-        Assert.Equal([5, Space2 | 5], await db.Database.SqlQueryRaw<long>(
+        // A top-level "Umbuchungen" group (no parent) is the imported transfer group too.
+        Assert.Equal([5, Space2 | 5, Space3 | 4], await db.Database.SqlQueryRaw<long>(
             "SELECT Id AS Value FROM category_groups WHERE is_transfer = 1 ORDER BY Id").ToListAsync());
         // A deeper category inherits the flag at runtime; only the group's own categories are flagged.
-        Assert.Equal([50, Space2 | 50], await db.Database.SqlQueryRaw<long>(
+        Assert.Equal([50, Space2 | 50, Space3 | 50], await db.Database.SqlQueryRaw<long>(
             "SELECT Id AS Value FROM categories WHERE is_transfer = 1 ORDER BY Id").ToListAsync());
     }
 }

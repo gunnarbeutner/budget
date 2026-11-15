@@ -24,14 +24,15 @@ public partial class _20261115093808_CategoryTransferFlag : Migration
             nullable: false,
             defaultValue: false);
 
-        // The imported transfer group: "Umbuchungen" right under the user's hidden root group (rowid 1 of the id space),
+        // The imported transfer group: a top-level "Umbuchungen" group (no parent, or the user's hidden root group, rowid 1 of the id space),
         // and its categories.
         migrationBuilder.Sql("""
             UPDATE category_groups SET is_transfer = 1
             WHERE name = 'Umbuchungen' AND EXISTS (
                 SELECT 1 FROM user_data_states s
                 WHERE s.UserId = category_groups.OwnerUserId
-                  AND category_groups.group_key = CASE WHEN s.IdSpace = 1 THEN 1 ELSE (s.IdSpace << 40) | 1 END);
+                  AND (category_groups.group_key IS NULL OR category_groups.group_key = 0
+                       OR category_groups.group_key = CASE WHEN s.IdSpace = 1 THEN 1 ELSE (s.IdSpace << 40) | 1 END));
             """);
         migrationBuilder.Sql("""
             UPDATE categories SET is_transfer = 1

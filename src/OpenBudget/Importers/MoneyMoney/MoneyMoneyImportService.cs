@@ -548,13 +548,13 @@ public class MoneyMoneyImportService
     }
 
     /// <summary>
-    /// MoneyMoney keeps transfers between accounts in the "Umbuchungen" group under its hidden root group: flags that
-    /// group and its categories as transfers.
+    /// MoneyMoney keeps transfers between accounts in a top-level "Umbuchungen" group (no parent, or its hidden root
+    /// group as parent): flags that group and its categories as transfers.
     /// </summary>
     internal static async Task MarkTransferGroupAsync(BudgetDbContext db, string ownerId, int idSpace, CancellationToken ct)
     {
         var root = RowIds.SentinelRoot(idSpace);
-        var groups = await db.CategoryGroups.Where(g => g.OwnerUserId == ownerId && g.ParentGroupId == root && g.Name == "Umbuchungen")
+        var groups = await db.CategoryGroups.Where(g => g.OwnerUserId == ownerId && g.Name == "Umbuchungen" && (g.ParentGroupId == null || g.ParentGroupId == 0 || g.ParentGroupId == root))
             .Select(g => g.Id).ToListAsync(ct);
         if (groups.Count == 0) return;
         await db.CategoryGroups.Where(g => groups.Contains(g.Id)).ExecuteUpdateAsync(u => u.SetProperty(g => g.IsTransfer, true), ct);
