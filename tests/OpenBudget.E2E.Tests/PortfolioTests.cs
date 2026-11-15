@@ -223,4 +223,39 @@ public sealed class PortfolioTests : EndToEndTestBase
         var zero = await Page.EvaluateAsync<string[]>(labelsFor, new[] { 0.0, 0.0 });
         Assert.That(zero, Has.None.StartsWith("\u2212"), string.Join(" | ", zero));
     }
+
+    [Test]
+    public async Task Portfolio_is_listed_only_while_the_project_has_an_open_depot()
+    {
+        await AddDepotAsync();
+        await using (var db = await Db.CreateDbContextAsync())
+        {
+            var depot = await db.Accounts.SingleAsync(a => a.Id == DepotId);
+            depot.Closed = true;
+            await db.SaveChangesAsync();
+        }
+
+        await GoToAsync($"/projects/{Pid}/browse");
+        var views = Page.GetByTestId("project-views");
+        await Expect(views.GetByTestId("view-transactions")).ToBeVisibleAsync();
+        await Expect(views.GetByTestId("view-portfolio")).ToHaveCountAsync(0);
+
+        // Still reachable by URL, and then listed as the current view.
+        await GoToAsync($"/projects/{Pid}/portfolio");
+        await Expect(Page.GetByTestId("portfolio-tab-positions")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("view-portfolio")).ToHaveAttributeAsync("aria-current", "page");
+
+        // Reopening the depot lists Portfolio again.
+        await GoToAsync($"/projects/{Pid}/browse");
+        await Expect(views.GetByTestId("view-transactions")).ToBeVisibleAsync();
+        await using (var db = await Db.CreateDbContextAsync())
+        {
+            var depot = await db.Accounts.SingleAsync(a => a.Id == DepotId);
+            depot.Closed = false;
+            await db.SaveChangesAsync();
+        }
+        Factory.BrowserHostServices.GetRequiredService<ChangeNotificationService>()
+            .Publish(new DataChange(DataArea.ImportedData, OwnerUserId: E2ESeed.OwnerUserId));
+        await Expect(views.GetByTestId("view-portfolio")).ToBeVisibleAsync();
+    }
 }

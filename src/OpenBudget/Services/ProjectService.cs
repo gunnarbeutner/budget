@@ -374,6 +374,22 @@ public class ProjectService
             .FirstOrDefaultAsync();
     }
 
+    /// <summary>The accounts assigned to a project, counted by kind (depot or not) and closed state.</summary>
+    public async Task<OpenBudget.Shared.ProjectAccountSummary> GetAccountSummaryAsync(int projectId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var assigned = db.ProjectAccountAssignments.Where(pa => pa.ProjectId == projectId).Select(pa => pa.AccountId);
+        var depots = await db.Accounts.WhereDepot().Where(a => assigned.Contains(a.Id))
+            .GroupBy(a => a.Closed).Select(g => new { Closed = g.Key, Count = g.Count() }).ToListAsync();
+        var others = await db.Accounts.WhereNotDepot().Where(a => assigned.Contains(a.Id))
+            .GroupBy(a => a.Closed).Select(g => new { Closed = g.Key, Count = g.Count() }).ToListAsync();
+        return new(
+            OpenDepots: depots.Where(g => !g.Closed).Sum(g => g.Count),
+            ClosedDepots: depots.Where(g => g.Closed).Sum(g => g.Count),
+            OpenAccounts: others.Where(g => !g.Closed).Sum(g => g.Count),
+            ClosedAccounts: others.Where(g => g.Closed).Sum(g => g.Count));
+    }
+
     public async Task<List<ProjectTrackingItem>> GetProjectTrackingItemsAsync(int projectId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();

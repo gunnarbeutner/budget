@@ -6,6 +6,7 @@
 @inject ClockService Clock
 @inject NavigationManager Navigation
 @inject DocumentService DocumentService
+@inject ProjectService ProjectService
 @inject OpenBudget.Connectors.Receipts.ReceiptService ReceiptService
 @inject ChangeNotificationService ChangeNotifier
 @inject AccessScopeProvider AccessProvider
@@ -24,7 +25,11 @@
    account or category there opens Transactions filtered to it.
 
    Documents shows the user's unread statements of the project, Receipts the project's receipts that need review
-   (ReceiptService.CountProjectReviewAsync), refreshed on receipt and booking changes (ImportedData, CloudFiles). *@
+   (ReceiptService.CountProjectReviewAsync), refreshed on receipt and booking changes (ImportedData, CloudFiles).
+
+   A view the project's accounts cannot fill (ProjectViewRequirements, e.g. Portfolio without an open depot) is left
+   out of both lists unless it is the active one; the account summary behind that is refreshed on account and
+   assignment changes (ImportedData, Projects). *@
 
 <div class="browse-shell project-shell">
     @if (open)
@@ -42,11 +47,7 @@
             @ViewLink(ProjectTab.Budgets, BudgetUrl, "bi-calendar3", L["View_Budget"], BudgetBadge, "view-budget")
             @ViewLink(ProjectTab.Cashflow, $"/projects/{ProjectId}/cashflow?{PeriodQuery}", "bi-graph-up", L["View_Cashflow"], null, "view-cashflow")
             @ViewLink(ProjectTab.Scheduled, $"/projects/{ProjectId}/scheduled", "bi-calendar-check", L["View_Scheduled"], null, "view-scheduled")
-
-            @if (HasPortfolio)
-            {
-                @ViewLink(ProjectTab.Portfolio, $"/projects/{ProjectId}/portfolio", "bi-pie-chart", L["View_Portfolio"], null, "view-portfolio")
-            }
+            @ViewLink(ProjectTab.Portfolio, $"/projects/{ProjectId}/portfolio", "bi-pie-chart", L["View_Portfolio"], null, "view-portfolio")
             @ViewLink(ProjectTab.Documents, DocumentsUrl, "bi-file-earmark-text", L["View_Documents"], unreadDocs > 0 ? L["Documents_New", unreadDocs].Value : null, "view-documents")
             @ViewLink(ProjectTab.Receipts, ReceiptsUrl, "bi-receipt", L["View_Receipts"], reviewReceipts > 0 ? L["Receipts_Review", reviewReceipts].Value : null, "view-receipts")
             @ViewLink(ProjectTab.Prices, PricesUrl, "bi-tags", L["View_Prices"], null, "view-prices")
@@ -115,7 +116,7 @@
     [Parameter] public ProjectTab? Active { get; set; }
     /// <summary>Transactions' own tree rail; other views leave it null and get the tree loaded here.</summary>
     [Parameter] public RenderFragment? Rail { get; set; }
-    /// <summary>The tree behind <see cref="Rail"/>, when the page already loaded it (decides whether Portfolio shows).</summary>
+    /// <summary>The tree behind <see cref="Rail"/>, when the page already loaded it.</summary>
     [Parameter] public BrowseTree? Tree { get; set; }
     /// <summary>Clicking "Transactions" while on Transactions: the page resets to all transactions instead of navigating.</summary>
     [Parameter] public EventCallback OnTransactions { get; set; }
@@ -136,8 +137,8 @@
     private string? budgetBadge;
     private int _loadedProjectId;
 
-    private BrowseTree? EffectiveTree => Tree ?? ownTree;
-    private bool HasPortfolio => EffectiveTree?.Accounts.Any(a => a.IsPortfolio && a.IsAssigned) == true || Active == ProjectTab.Portfolio;
+    private ProjectAccountSummary? accountSummary;
+    private bool Shows(ProjectTab tab) => ProjectViewRequirements.Shows(tab, accountSummary, Active);
     private string? BudgetBadge => budgetBadge;
     // The period views' links carry the shared period, so the next view's URL names it.
     private string PeriodQuery => TimeState.Current(Clock.NowLocal).ToQueryString();
@@ -157,17 +158,25 @@
 
     // Receipt changes (matching, assigning, new receipts) are published as ImportedData and CloudFiles; this circuit's own
     // changes count too, so the badge follows an assignment made on the Receipts view.
+    // Account changes (new, closed, reopened: ImportedData) and assignments (Projects) refresh the account summary.
     private void OnDataChanged(DataChange change, Guid? origin)
     {
-        if (change.Area is not (DataArea.ImportedData or DataArea.CloudFiles)) return;
+        if (change.Area is not (DataArea.ImportedData or DataArea.CloudFiles or DataArea.Projects)) return;
         _ = InvokeAsync(async () =>
         {
             if (disposed) return;
             var scope = await AccessProvider.GetAsync();
             if (!scope.IsChangeVisible(change)) return;
-            await LoadReviewReceiptsAsync();
+            if (change.Area is DataArea.ImportedData or DataArea.CloudFiles) await LoadReviewReceiptsAsync();
+            if (change.Area is DataArea.ImportedData or DataArea.Projects) await LoadAccountSummaryAsync();
             StateHasChanged();
         });
+    }
+
+    private async Task LoadAccountSummaryAsync()
+    {
+        try { accountSummary = await ProjectService.GetAccountSummaryAsync(ProjectId); }
+        catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException) { accountSummary = ProjectAccountSummary.Empty; }
     }
 
     private async Task LoadReviewReceiptsAsync()
@@ -211,6 +220,8 @@
             budgetBadge = null;
             await LoadUnreadAsync();
             await LoadReviewReceiptsAsync();
+            accountSummary = null;
+            await LoadAccountSummaryAsync();
             canEditRules = (await AccessProvider.GetAsync()).CanEdit(ProjectId);
             if (Rail == null) ownTree = await BrowseService.GetTreeAsync(ProjectId, year, month, month);
         }
@@ -278,6 +289,7 @@
 
     private RenderFragment ViewLink(ProjectTab tab, string href, string icon, string label, string? badge, string testId) => __builder =>
     {
+        if (!Shows(tab)) return;
         var active = Active == tab;
         var intercept = tab == ProjectTab.Browse && active && OnTransactions.HasDelegate;
         var current = active && (tab != ProjectTab.Browse || TransactionsCurrent);
@@ -294,6 +306,7 @@
 
     private RenderFragment BottomLink(ProjectTab tab, string href, string icon, string label, int badge = 0) => __builder =>
     {
+        if (!Shows(tab)) return;
         var active = Active == tab;
         <a class="app-bottom-item @(active ? "active" : "")" href="@href" aria-current="@(active ? "page" : null)" data-testid="@($"bottom-{tab.ToString().ToLowerInvariant()}")">
             <span class="app-bottom-icon">
