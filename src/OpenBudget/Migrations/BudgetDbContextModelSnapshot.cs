@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261115100500_AccountRole";
+    public override string LastMigrationId => "20261115104230_ReceiptProductIdentities";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -1908,6 +1908,66 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.HasIndex("ReceiptInvoiceId");
 
                 b.ToTable("receipt_items");
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.ReceiptProductIdentity", b =>
+            {
+                b.Property<long>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("Brand")
+                    .HasMaxLength(100)
+                    .HasColumnType("TEXT");
+
+                b.Property<int>("Kind")
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("Model")
+                    .HasMaxLength(100)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("NameKey")
+                    .IsRequired()
+                    .HasMaxLength(300)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("OwnerUserId")
+                    .IsRequired()
+                    .HasMaxLength(450)
+                    .HasColumnType("TEXT");
+
+                b.Property<int?>("PackCount")
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("ProductName")
+                    .IsRequired()
+                    .HasMaxLength(200)
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime>("ResolvedAt")
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Shop")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("TEXT");
+
+                b.Property<int>("Source")
+                    .HasColumnType("INTEGER");
+
+                b.Property<int?>("Unit")
+                    .HasColumnType("INTEGER");
+
+                b.Property<decimal?>("UnitSize")
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Id");
+
+                b.HasIndex("OwnerUserId", "Shop", "NameKey")
+                    .IsUnique();
+
+                b.ToTable("receipt_product_identities");
             });
 
         modelBuilder.Entity("OpenBudget.Models.ReceiptProductMerge", b =>
