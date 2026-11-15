@@ -24,8 +24,16 @@ public readonly record struct RecurringRhythm(bool Weekly, int Count)
     /// <summary>The <paramref name="n"/>-th occurrence after <paramref name="from"/>; months count from that day (the 31st becomes the month's last day).</summary>
     public DateOnly After(DateOnly from, int n = 1) => Weekly ? from.AddDays(7 * Count * n) : from.AddMonths(Count * n);
 
-    /// <summary>How far an occurrence may be off its expected day: weekends and months of different lengths.</summary>
-    public int ToleranceDays => Weekly ? 2 : Count >= 12 ? 7 : 5;
+    /// <summary>
+    /// How far an occurrence may be off its expected day: weekends and months of different lengths, and for longer
+    /// rhythms a share of the interval (<see cref="ToleranceShare"/>), since a yearly invoice drifts more than a monthly debit.
+    /// </summary>
+    public int ToleranceDays => Weekly ? 2 : Math.Max(5, (int)Math.Round(Count * DaysPerMonth * ToleranceShare));
+
+    /// <summary>The share of a monthly-or-longer interval an occurrence may drift.</summary>
+    public const double ToleranceShare = 0.05;
+
+    private const double DaysPerMonth = 30.44;
 
     /// <summary>Occurrences per year.</summary>
     public decimal PerYear => Weekly ? 52m / Count : 12m / Count;

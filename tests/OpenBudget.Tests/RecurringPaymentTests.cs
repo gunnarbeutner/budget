@@ -44,6 +44,30 @@ public sealed class RecurringPaymentTests
         Assert.Empty(Detect(bookings));
     }
 
+    [Fact]
+    public void A_yearly_invoice_arriving_two_weeks_late_at_a_new_price_continues_its_series()
+    {
+        var y = Today.Year;
+        var bookings = new[]
+        {
+            B(new DateOnly(y - 3, 1, 12), -6990, "Example Bank"), B(new DateOnly(y - 2, 1, 12), -6990, "Example Bank"),
+            B(new DateOnly(y - 1, 1, 14), -6990, "Example Bank"), B(new DateOnly(y, 1, 28), -11000, "Example Bank"),
+        };
+
+        var series = Assert.Single(Detect(bookings));
+
+        Assert.Equal((-11000L, -6990L, new DateOnly(y, 1, 28)), (series.Cents, series.PreviousCents!.Value, series.PriceChangedOn!.Value));
+        Assert.Equal(4, series.Bookings.Count);
+    }
+
+    [Theory]
+    [InlineData(1, 5)]
+    [InlineData(3, 5)]
+    [InlineData(6, 9)]
+    [InlineData(12, 18)]
+    public void The_tolerance_grows_with_the_rhythm(int months, int days) =>
+        Assert.Equal(days, RecurringRhythm.All.Single(r => !r.Weekly && r.Count == months).ToleranceDays);
+
     [Theory]
     [InlineData("APPLE.COM/BILL", "apple com bill")]
     [InlineData("Apple.com/bill", "apple com bill")]
