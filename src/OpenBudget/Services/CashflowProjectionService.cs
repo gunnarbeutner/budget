@@ -305,6 +305,8 @@ public class CashflowProjectionService
             IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
             string ownerId)
     {
+        // Fewer bookings than this give a day pattern that is mostly chance (one or two dates), so the next rung of
+        // the fallback ladder is used instead.
         const int MinSampleSize = 3;
 
         var result = new Dictionary<(long, CategoryItemType), DayOfMonthDistribution>();
