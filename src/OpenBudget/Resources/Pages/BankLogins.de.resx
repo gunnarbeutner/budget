@@ -364,4 +364,13 @@
   <data name="Evidence_LastTan" xml:space="preserve">
     <value>Zuletzt wollte sie eine am {0}.</value>
   </data>
+  <data name="Pill_HistoryIncomplete" xml:space="preserve">
+    <value>Verlauf unvollständig</value>
+  </data>
+  <data name="Warning_HistoryIncompleteTo" xml:space="preserve">
+    <value>Zahlungsverlauf unvollständig (gelesen bis {0}); die nächste Synchronisierung macht weiter.</value>
+  </data>
+  <data name="Warning_HistoryIncomplete" xml:space="preserve">
+    <value>Zahlungsverlauf unvollständig; die nächste Synchronisierung macht weiter.</value>
+  </data>
 </root>

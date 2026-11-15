@@ -37,6 +37,12 @@ public sealed record BankLoginView(
     /// <summary>An order source (Amazon): its accounts are payment methods mapped to existing accounts.</summary>
     public bool OrderSource { get; init; }
 
+    /// <summary>An order source synced at least once whose full history has not been read yet.</summary>
+    public bool OrderHistoryIncomplete { get; init; }
+
+    /// <summary>While <see cref="OrderHistoryIncomplete"/>: the oldest day the last sync read back to, if known.</summary>
+    public DateOnly? OrderHistoryReadBackTo { get; init; }
+
     /// <summary>The shop of a receipt source (Lidl Plus; see <see cref="ReceiptShops"/>): no accounts; its receipts are matched to the owner's bookings.</summary>
     public string? ReceiptShop { get; init; }
 }
@@ -179,6 +185,8 @@ public class BankLoginService
             FinTsBlz = registration?.FinTsBlz,
             FinTsBankAllowed = registration?.FinTsBlz is { } blz && !revokedBanks.Contains(blz),
             OrderSource = registration?.OrderSource == true,
+            OrderHistoryIncomplete = registration?.OrderSource == true && l.LastSyncAt != null && l.OrderHistoryCompleteAt == null,
+            OrderHistoryReadBackTo = l.OrderHistoryCompleteAt == null ? l.OrderHistoryReadBackTo : null,
             ReceiptShop = registration?.ReceiptShop,
         };
     }

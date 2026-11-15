@@ -87,6 +87,36 @@ public sealed class AmazonOrderTests : EndToEndTestBase
         await Expect(row.GetByTestId("account-picker-toggle")).ToHaveTextAsync("Not mapped");
     }
 
+    [Test]
+    public async Task An_incomplete_payment_history_shows_a_warning_instead_of_ok()
+    {
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            var login = db.BankLogins.Single(l => l.DisplayName == "My Amazon");
+            login.LastSyncAt = DateTime.UtcNow;
+            login.OrderHistoryReadBackTo = new DateOnly(2026, 8, 24);
+            await db.SaveChangesAsync();
+        }
+
+        await GoToAsync("/connections");
+        var card = Page.Locator("[data-bank-login='My Amazon']");
+        await Expect(card.GetByTestId("login-pill")).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("bank-pill-warn"));
+        await Expect(card.GetByTestId("login-history-incomplete")).ToContainTextAsync("24 Aug 2026");
+
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            var login = db.BankLogins.Single(l => l.DisplayName == "My Amazon");
+            login.OrderHistoryCompleteAt = DateTime.UtcNow;
+            login.OrderHistoryReadBackTo = null;
+            await db.SaveChangesAsync();
+        }
+        await Page.ReloadAsync();
+        await WaitForInteractiveAsync();
+        await Expect(card.GetByTestId("login-pill")).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("bank-pill-ok"));
+        await Expect(card.GetByTestId("login-history-incomplete")).ToHaveCountAsync(0);
+    }
+
     private static async Task PickAsync(ILocator card, string account)
     {
         var map = card.Locator("[data-instrument='Amazon Visa •••• 1111']").GetByTestId("instrument-map");

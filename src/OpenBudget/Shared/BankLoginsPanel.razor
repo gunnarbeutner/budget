@@ -96,6 +96,10 @@ else
                         {
                             <span class="badge rounded-pill bank-pill-warn" data-testid="login-pill">@L["Pill_Attention"]</span>
                         }
+                        else if (login.OrderHistoryIncomplete)
+                        {
+                            <span class="badge rounded-pill bank-pill-warn" data-testid="login-pill">@L["Pill_HistoryIncomplete"]</span>
+                        }
                         else if (login.LastSyncAt != null)
                         {
                             <span class="badge rounded-pill bank-pill-ok" data-testid="login-pill">@L["Pill_Ok"]</span>
@@ -214,6 +218,14 @@ else
                 {
                     <div class="alert alert-danger py-2" role="alert" data-testid="login-error">
                         @(login.CredentialsInvalid ? L["Error_Credentials"].Value + " " : "")@login.LastError
+                    </div>
+                }
+                else if (!running && login.OrderHistoryIncomplete)
+                {
+                    <div class="alert alert-warning py-2" data-testid="login-history-incomplete">
+                        @(login.OrderHistoryReadBackTo is { } readTo
+                            ? L["Warning_HistoryIncompleteTo", readTo.ToString("d MMM yyyy", System.Globalization.CultureInfo.CurrentUICulture)]
+                            : L["Warning_HistoryIncomplete"])
                     </div>
                 }
                 @if (!login.ConnectorAvailable)

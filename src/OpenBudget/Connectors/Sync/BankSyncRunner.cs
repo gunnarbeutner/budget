@@ -691,8 +691,10 @@ public sealed class BankSyncRunner
         if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);
         if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Reading the orders failed.");
         var result = step.Value!;
-        // The read reached the requested day (or the start of the shop's list): the history is complete.
+        // The read reached the requested day (or the start of the shop's list): the history is complete. Until then the
+        // card shows how far back the last read got.
         if (result.CoveredFrom <= since) login.OrderHistoryCompleteAt ??= _clock.GetUtcNow().UtcDateTime;
+        login.OrderHistoryReadBackTo = login.OrderHistoryCompleteAt == null ? result.CoveredFrom : null;
         UpsertAccounts(login, result.Instruments);
         await db.SaveChangesAsync(ct);
         sink.Report("Matching orders");

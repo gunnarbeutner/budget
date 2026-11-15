@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261114200632_AmazonSharedCharges";
+    public override string LastMigrationId => "20261115052623_AddBankLoginOrderHistoryReadBackTo";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -447,6 +447,9 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("TEXT");
 
                 b.Property<DateTime?>("OrderHistoryCompleteAt")
+                    .HasColumnType("TEXT");
+
+                b.Property<DateOnly?>("OrderHistoryReadBackTo")
                     .HasColumnType("TEXT");
 
                 b.Property<string>("OwnerUserId")

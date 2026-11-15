@@ -364,4 +364,13 @@
   <data name="Evidence_LastTan" xml:space="preserve">
     <value>It last asked on {0}.</value>
   </data>
+  <data name="Pill_HistoryIncomplete" xml:space="preserve">
+    <value>History incomplete</value>
+  </data>
+  <data name="Warning_HistoryIncompleteTo" xml:space="preserve">
+    <value>Payment history incomplete (read back to {0}); the next sync continues.</value>
+  </data>
+  <data name="Warning_HistoryIncomplete" xml:space="preserve">
+    <value>Payment history incomplete; the next sync continues.</value>
+  </data>
 </root>

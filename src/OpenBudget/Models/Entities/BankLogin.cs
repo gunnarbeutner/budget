@@ -100,6 +100,12 @@ public class BankLogin
     /// </summary>
     public DateTime? OrderHistoryCompleteAt { get; set; }
 
+    /// <summary>
+    /// While an order source's history is incomplete: the oldest day its last sync read back to (null once complete,
+    /// or before the first sync).
+    /// </summary>
+    public DateOnly? OrderHistoryReadBackTo { get; set; }
+
     public ICollection<BankLoginAccount> Accounts { get; set; } = new List<BankLoginAccount>();
 }
 
