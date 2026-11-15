@@ -110,7 +110,7 @@
     <value>Bezahlt</value>
   </data>
   <data name="MoveHelp" xml:space="preserve">
-    <value>Klicke auf die Kategorie eines Artikels, um ihn zu verschieben: Der Bon merkt sich das für dieses Produkt und teilt die Buchung neu auf.</value>
+    <value>Tippe auf eine Kategorie, um den Artikel zu verschieben.</value>
   </data>
   <data name="NoCategory" xml:space="preserve">
     <value>Keine Kategorie</value>

@@ -8,7 +8,9 @@
 @* A receipt in a dialog: its lines as a till receipt (item, quantity, price, category), grouped by the parts the
    receipt splits its booking into, with a filter per part and a search for long receipts. Deposit lines and fees fold
    into one row that opens on click; the bonus and the payment close the receipt. The owner moves an item by its
-   category chip: the receipt remembers it for the product, splits the booking again, and the dialog shows the result. *@
+   category chip: the receipt remembers it for the product, splits the booking again, and the dialog shows the result.
+   On phones each item stacks: name and price, then quantity (when not 1) and category; long names clamp to two
+   lines and open on tap. The part filter shows only when there is more than one part. *@
 
 <Modal Show="ReceiptId != null" Title="@(view?.Title ?? L["Title"])" SizeClass="modal-lg ob-fullscreen-phone" OnClose="CloseAsync">
     @if (view == null)
@@ -43,7 +45,7 @@
             </div>
             @* Without a booking nothing is split, so the receipt shows no categories. *@
             @{ var categorized = view.TransactionId != null; var cols = categorized ? 4 : 3; }
-            @if (categorized)
+            @if (categorized && view.Groups.Count > 1)
             {
             <div class="d-flex flex-wrap gap-1 mb-2" role="group" aria-label="@L["Parts"]">
                 <button type="button" class="btn btn-sm @(part == null ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => part = null">@L["AllParts"]</button>
@@ -81,17 +83,18 @@
                             var extras = g.Lines.Where(l => l.Kind != ReceiptItemKind.Product).ToList();
                             @if (view.Groups.Count > 1 && part == null)
                             {
-                                <tr class="table-light"><th colspan="@cols" class="small">@CategoryName(g.CategoryId) · @Formatting.FormatMoneyDe(g.AmountCents / 100m)</th></tr>
+                                <tr class="table-light rp-group"><th colspan="@cols" class="small">@CategoryName(g.CategoryId) · @Formatting.FormatMoneyDe(g.AmountCents / 100m)</th></tr>
                             }
                             @foreach (var line in products)
                             {
                                 <tr data-testid="receipt-panel-line">
-                                    <td class="text-break">@line.Name</td>
-                                    <td class="text-end text-nowrap">@line.Quantity</td>
-                                    <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(line.TotalCents / 100m)</td>
+                                    <td class="text-break rp-name @(expanded.Contains(line.Id) ? "rp-open" : "")" title="@line.Name"
+                                        @onclick="() => { if (!expanded.Remove(line.Id)) expanded.Add(line.Id); }">@line.Name</td>
+                                    <td class="text-end text-nowrap rp-qty @(line.Quantity.Trim() == "1" ? "rp-qty-one" : "")">@line.Quantity</td>
+                                    <td class="text-end text-nowrap rp-price">@Formatting.FormatMoneyDe(line.TotalCents / 100m)</td>
                                     @if (categorized)
                                     {
-                                    <td class="text-nowrap">
+                                    <td class="text-nowrap rp-cat">
                                         @if (CanEdit && PickerData != null)
                                         {
                                             <CategoryPill CategoryId="line.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" TestId="receipt-panel-category"
@@ -109,16 +112,16 @@
                             {
                                 var open = openExtras.Contains(index);
                                 <tr class="text-body-secondary" data-testid="receipt-panel-extras">
-                                    <td colspan="2">
+                                    <td colspan="2" class="rp-name">
                                         <button type="button" class="btn btn-link btn-sm p-0 text-reset" aria-expanded="@(open ? "true" : "false")"
                                                 @onclick="() => { if (!openExtras.Remove(index)) openExtras.Add(index); }">
                                             <i class="bi @(open ? "bi-chevron-down" : "bi-chevron-right")" aria-hidden="true"></i> @L["Extras", extras.Count]
                                         </button>
                                     </td>
-                                    <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(extras.Sum(l => l.TotalCents) / 100m)</td>
+                                    <td class="text-end text-nowrap rp-price">@Formatting.FormatMoneyDe(extras.Sum(l => l.TotalCents) / 100m)</td>
                                     @if (categorized)
                                     {
-                                        <td><CategoryPill CategoryId="g.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" /></td>
+                                        <td class="rp-cat"><CategoryPill CategoryId="g.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" /></td>
                                     }
                                 </tr>
                                 @if (open)
@@ -126,12 +129,12 @@
                                     @foreach (var line in extras)
                                     {
                                         <tr class="small text-body-secondary">
-                                            <td class="ps-4 text-break">@line.Name</td>
-                                            <td class="text-end">@line.Quantity</td>
-                                            <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(line.TotalCents / 100m)</td>
+                                            <td class="ps-4 text-break rp-name">@line.Name</td>
+                                            <td class="text-end rp-qty @(line.Quantity.Trim() == "1" ? "rp-qty-one" : "")">@line.Quantity</td>
+                                            <td class="text-end text-nowrap rp-price">@Formatting.FormatMoneyDe(line.TotalCents / 100m)</td>
                                             @if (categorized)
                                             {
-                                                <td></td>
+                                                <td class="rp-empty"></td>
                                             }
                                         </tr>
                                     }
@@ -139,13 +142,13 @@
                             }
                         }
                     </tbody>
-                    <tfoot class="small">
-                        <tr><td colspan="2">@L["Total"]</td><td class="text-end text-nowrap">@Formatting.FormatMoneyDe(view.TotalCents / 100m)</td>@if (categorized) { <td></td> }</tr>
+                    <tfoot class="small rp-foot">
+                        <tr><td colspan="2">@L["Total"]</td><td class="text-end text-nowrap rp-price">@Formatting.FormatMoneyDe(view.TotalCents / 100m)</td>@if (categorized) { <td class="rp-empty"></td> }</tr>
                         @if (view.BonusCents != 0)
                         {
-                            <tr><td colspan="2">@(view.Instalment ? L["OtherInstalments"] : view.BonusCents < 0 ? L["Bonus"] : L["Unitemised"])</td><td class="text-end text-nowrap">@Formatting.FormatMoneyDe(view.BonusCents / 100m)</td>@if (categorized) { <td></td> }</tr>
+                            <tr><td colspan="2">@(view.Instalment ? L["OtherInstalments"] : view.BonusCents < 0 ? L["Bonus"] : L["Unitemised"])</td><td class="text-end text-nowrap rp-price">@Formatting.FormatMoneyDe(view.BonusCents / 100m)</td>@if (categorized) { <td class="rp-empty"></td> }</tr>
                         }
-                        <tr class="fw-semibold"><td colspan="2">@L["Paid"]</td><td class="text-end text-nowrap" data-testid="receipt-panel-paid">@Formatting.FormatMoneyDe(view.PaymentCents / 100m)</td>@if (categorized) { <td></td> }</tr>
+                        <tr class="fw-semibold"><td colspan="2">@L["Paid"]</td><td class="text-end text-nowrap rp-price" data-testid="receipt-panel-paid">@Formatting.FormatMoneyDe(view.PaymentCents / 100m)</td>@if (categorized) { <td class="rp-empty"></td> }</tr>
                     </tfoot>
                 </table>
             </div>
@@ -220,6 +223,7 @@
     private int? part;
     private string? search;
     private readonly HashSet<int> openExtras = [];
+    private readonly HashSet<long> expanded = [];
     private ReceiptLineView? moving;
     private double pickerX, pickerY;
     private bool changed;
@@ -234,6 +238,7 @@
         search = null;
         error = null;
         openExtras.Clear();
+        expanded.Clear();
         part = InitialPart;
         if (ReceiptId is { } id) view = await Service.GetReceiptAsync(id);
         if (view != null && part is { } p && p >= view.Groups.Count) part = null;

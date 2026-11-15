@@ -110,7 +110,7 @@
     <value>Paid</value>
   </data>
   <data name="MoveHelp" xml:space="preserve">
-    <value>Click an item's category to move it: the receipt remembers it for that product and splits the booking again.</value>
+    <value>Tap a category to move the item.</value>
   </data>
   <data name="NoCategory" xml:space="preserve">
     <value>No category</value>

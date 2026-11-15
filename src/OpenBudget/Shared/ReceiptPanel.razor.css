@@ -1,0 +1,30 @@
+/* Phones: each item stacks into two lines — name and price, then quantity and category — so the name gets the
+   full width instead of sharing it with the category pill. Totals keep their price under the items' prices. */
+@media (max-width: 575.98px) {
+    .receipt-panel-table thead { display: none; }
+    .receipt-panel-table tr {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        grid-template-areas: "name name price" "qty cat cat";
+        column-gap: .5rem;
+        border-bottom: 1px solid var(--bs-border-color);
+    }
+    .receipt-panel-table td, .receipt-panel-table th { border-bottom: 0; }
+    .receipt-panel-table .rp-name { grid-area: name; }
+    .receipt-panel-table .rp-price { grid-area: price; }
+    .receipt-panel-table .rp-qty { grid-area: qty; padding-top: 0; color: var(--bs-secondary-color); }
+    .receipt-panel-table .rp-qty::after { content: " ×"; }
+    .receipt-panel-table .rp-qty-one, .receipt-panel-table .rp-empty { display: none; }
+    .receipt-panel-table .rp-cat { grid-area: cat; padding-top: 0; min-width: 0; }
+    .receipt-panel-table .rp-cat:empty { display: none; }
+    .receipt-panel-table .rp-group th { grid-column: 1 / -1; }
+    .receipt-panel-table .rp-foot tr { grid-template-areas: "name name price"; }
+    .receipt-panel-table .rp-foot td:first-child { grid-area: name; }
+    .receipt-panel-table td.rp-name:not(.rp-open)[title] {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        cursor: pointer;
+    }
+}
