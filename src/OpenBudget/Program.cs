@@ -180,13 +180,6 @@ await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContex
     // Amazon receipts of single points or gift card charges become credit lines of their orders (idempotent).
     await using (var pointsDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
         await OpenBudget.Connectors.Amazon.AmazonReceiptStore.FoldPointsReceiptsAsync(pointsDb, DateTime.UtcNow);
-    // Amazon refund receipts carry the items they pay back; changed owners' receipts are matched again (idempotent).
-    await using (var refundDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
-    {
-        var receiptStore = new OpenBudget.Connectors.Receipts.ReceiptStore();
-        foreach (var owner in await OpenBudget.Connectors.Amazon.AmazonReceiptStore.AssignRefundItemsAsync(refundDb))
-            await receiptStore.MatchAsync(refundDb, owner, CancellationToken.None);
-    }
     // PortfolioPerformance files still stored under a former per-data-set number move to their owner (idempotent).
     await portfolioFiles.RelocateLegacyFilesAsync(budgetDb);
     // Category rules of data imported before rules were imported (idempotent).

@@ -200,33 +200,6 @@ public static class AmazonReceiptStore
         return points.Count;
     }
 
-    /// <summary>
-    /// Gives stored refund receipts the items they pay back, from the order's items as stored (see
-    /// <see cref="Assign"/>), at startup; idempotent. Returns the owners whose receipts changed, for matching again.
-    /// </summary>
-    public static async Task<IReadOnlySet<string>> AssignRefundItemsAsync(BudgetDbContext db, CancellationToken ct = default)
-    {
-        var orders = await db.ReceiptInvoices.IgnoreQueryFilters().AsNoTracking()
-            .Where(r => r.Shop == ReceiptShops.Amazon && r.BankLoginId != null && r.OrderNumber != null && r.OtherOrderNumbers == null
-                && r.PaymentCents < 0 && r.DetailsReadAt != null)
-            .Select(r => new { Login = r.BankLoginId!.Value, Order = r.OrderNumber! }).Distinct().ToListAsync(ct);
-        var changed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var o in orders)
-        {
-            var ofOrder = await db.ReceiptInvoices.IgnoreQueryFilters().Include(r => r.Items)
-                .Where(r => r.BankLoginId == o.Login && r.Shop == ReceiptShops.Amazon && r.OrderNumber == o.Order && r.OtherOrderNumbers == null).ToListAsync(ct);
-            var before = ofOrder.ToDictionary(r => r, Positions);
-            Reassign(ofOrder);
-            foreach (var r in ofOrder.Where(r => !before[r].SequenceEqual(Positions(r))))
-                changed.Add(r.OwnerUserId);
-        }
-        await db.SaveChangesAsync(ct);
-        return changed;
-
-        static List<int> Positions(ReceiptInvoice r) =>
-            r.Items.Where(i => i.Kind == ReceiptItemKind.Product).Select(i => i.Position).Order().ToList();
-    }
-
     /// <summary>A charge's further orders as <see cref="ReceiptInvoice.OtherOrderNumbers"/> stores them (null: one order).</summary>
     private static string? Others(RemoteCharge c)
     {
