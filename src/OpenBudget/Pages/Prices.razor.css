@@ -71,6 +71,7 @@
     display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pr-dot);
 }
 .prices-key-dot.offer { background: var(--ob-surface); border: 2px solid var(--pr-up); width: 10px; height: 10px; }
+.prices-key-dot.unusual { background: var(--ob-surface); border: 2px dashed var(--ob-muted); width: 10px; height: 10px; }
 .prices-key-rise { display: inline-block; width: 12px; height: 10px; background: var(--pr-up-bg); border: 1px solid var(--pr-up); }
 
 /* ---- product list ---- */
@@ -131,6 +132,7 @@
 .prices-facts dd.prices-fact-sub { font-size: 12px; font-weight: 400; color: var(--ob-muted); }
 
 .prices-offer-badge { background: var(--pr-up-bg); color: var(--pr-up); font-weight: 500; }
+.prices-unusual-badge { background: var(--ob-surface); color: var(--ob-muted); border: 1px dashed var(--ob-muted); font-weight: 500; }
 
 /* ---- charts: an SVG stretched to the plot, with labels and dots as HTML on top ---- */
 .pchart { margin: 0 0 8px; padding: 6px 0 22px 40px; }
@@ -170,6 +172,7 @@
     transform: translate(-50%, -50%);
 }
 .pchart-dot.offer { width: 10px; height: 10px; background: var(--ob-surface); border: 2px solid var(--pr-up); }
+.pchart-dot.unusual { width: 10px; height: 10px; background: var(--ob-surface); border: 2px dashed var(--ob-muted); }
 .pchart-dot-all { width: 10px; height: 10px; }
 
 .pchart-tag { font-size: 12px; font-weight: 600; transform: translate(8px, -130%); }

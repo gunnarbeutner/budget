@@ -182,11 +182,13 @@ public sealed class PriceHistoryTests
     }
 
     [Fact]
-    public void The_detail_can_price_per_kg()
+    public void A_sized_product_prices_per_kg_and_can_price_per_piece()
     {
         var p = Assert.Single(PriceAnalysis.Products(Repeated("Testkekse 500g", Today.AddDays(-90), 4, 30, 199)));
-        Assert.True(p.HasBase);
-        Assert.Equal(398, PriceAnalysis.Detail(p, Today.AddMonths(-6), Today, perBase: true)!.Now);
+        Assert.True(p.HasPackPrice);
+        Assert.Equal(PriceUnit.Kg, p.Unit);
+        Assert.Equal(398, PriceAnalysis.Detail(p, Today.AddMonths(-6), Today)!.Now);
+        Assert.Equal(199, PriceAnalysis.Detail(p, Today.AddMonths(-6), Today, perPiece: true)!.Now);
     }
 
     [Fact]

@@ -13,9 +13,10 @@
 @* The Prices view of a project (PriceHistoryService, PriceAnalysis): what the products on the project's receipts cost
    over time. ?period=6m|12m (default)|3y|all drives the whole page: four figures (the basket index's change, the
    grocery spend per month, the regulars, the biggest price rise), the basket index chart, the products list (search,
-   sort) beside the selected product's detail (?product=<shop|key>, else the list's first) with its price chart and
-   purchases, and the regulars below. Charts are SVG lines with HTML labels and dots on top, so text and dots keep
-   their size at any width. Price rises are orange, falls blue, always with a sign. *@
+   sort; products bought at least twice, all with ?once=1) beside the selected product's detail (?product=<shop|key>,
+   else the list's first) with its price chart, all its purchases (those in the period marked) and the product's edit
+   form, and the regulars below. Charts are SVG lines with HTML labels and dots on top, so text and dots keep their size
+   at any width. Price rises are orange, falls blue, always with a sign; unusual purchases are hollow dots. *@
 
 <PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
 
@@ -142,12 +143,19 @@
                     <input id="prices-search" type="search" class="form-control form-control-sm prices-search" placeholder="@L["Search"]"
                            data-testid="prices-search" @bind="search" @bind:event="oninput" />
                 </div>
-                <div class="segmented segmented-sm mb-2" role="group" aria-label="@L["Sort"]" data-testid="prices-sort">
-                    @foreach (var o in Enum.GetValues<SortOrder>())
-                    {
-                        <button type="button" class="btn @(sort == o ? "active" : "")" aria-pressed="@((sort == o).ToString().ToLowerInvariant())"
-                                data-testid="@($"prices-sort-{o.ToString().ToLowerInvariant()}")" @onclick="() => sort = o">@L["Sort_" + o]</button>
-                    }
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <div class="segmented segmented-sm" role="group" aria-label="@L["Sort"]" data-testid="prices-sort">
+                        @foreach (var o in Enum.GetValues<SortOrder>())
+                        {
+                            <button type="button" class="btn @(sort == o ? "active" : "")" aria-pressed="@((sort == o).ToString().ToLowerInvariant())"
+                                    data-testid="@($"prices-sort-{o.ToString().ToLowerInvariant()}")" @onclick="() => sort = o">@L["Sort_" + o]</button>
+                        }
+                    </div>
+                    <div class="form-check form-switch mb-0 small">
+                        <input class="form-check-input" type="checkbox" role="switch" id="prices-once" checked="@showOnce" data-testid="prices-once"
+                               @onchange="e => SetOnce(e.Value is true)" />
+                        <label class="form-check-label" for="prices-once">@L["ShowOnce"]</label>
+                    </div>
                 </div>
                 @{ var list = ListRows(s); }
                 @if (s.Rows.Count == 0)
@@ -167,11 +175,11 @@
                                 <a class="prices-row @(current ? "active" : "")" href="@ProductHref(r.Product.Id)" aria-current="@(current ? "true" : null)"
                                    data-testid="price-row" data-product="@r.Product.Id">
                                     <span class="prices-row-main">
-                                        <span class="prices-row-name">@r.Product.Name</span>
+                                        <span class="prices-row-name">@ProductName(r.Product)</span>
                                         <span class="prices-row-meta">@RowMeta(r)</span>
                                     </span>
                                     @Spark(r, s)
-                                    <span class="prices-row-price">@Price(r.Detail.Now, r.Product.Weighed ? PriceUnit.Kg : PriceUnit.Piece)</span>
+                                    <span class="prices-row-price">@Price(r.Detail.Now, r.Product.Unit)</span>
                                     <span class="prices-row-change @ChangeClass(r.Detail.Change ?? 0)" data-testid="price-row-change">@(r.Detail.Change is { } c ? Percent(c) : "–")</span>
                                 </a>
                             </li>
@@ -184,25 +192,64 @@
                 @if (selected is { } row && Detail(row, s) is { } d)
                 {
                     var p = row.Product;
-                    var unit = perBase && p.HasBase ? p.BaseUnit : p.Weighed ? PriceUnit.Kg : PriceUnit.Piece;
+                    var unit = perPiece && p.HasPackPrice ? PriceUnit.Piece : p.Unit;
                     <div data-testid="price-detail" data-product="@p.Id">
                         <div class="d-flex flex-wrap align-items-start gap-2 mb-2">
                             <div class="min-w-0 flex-grow-1">
-                                <h2 class="h6 mb-0 text-break" id="prices-detail-heading" data-testid="price-detail-name">@p.Name</h2>
-                                <div class="small text-body-secondary">@L["Detail_Sub", ShopName(p.Shop), p.TimesBought, p.First.Date.Year]</div>
+                                <h2 class="h6 mb-0 text-break" id="prices-detail-heading" data-testid="price-detail-name">@ProductName(p)</h2>
+                                <div class="small text-body-secondary">@L["Detail_Sub", ShopName(p.Shop), d.All.Count, Date(d.All[0].Date)]</div>
                             </div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" aria-expanded="@editOpen.ToString().ToLowerInvariant()"
+                                    data-testid="price-edit-open" @onclick="() => OpenEdit(p)">@L["Edit_Open"]</button>
                             <button type="button" class="btn btn-sm btn-outline-secondary" aria-expanded="@mergeOpen.ToString().ToLowerInvariant()"
                                     data-testid="price-merge-open" @onclick="() => mergeOpen = !mergeOpen">@L["Merge_Open"]</button>
-                            @if (p.HasBase)
+                            @if (p.HasPackPrice)
                             {
                                 <div class="segmented segmented-sm" role="group" aria-label="@L["Unit"]">
-                                    <button type="button" class="btn @(!perBase ? "active" : "")" aria-pressed="@((!perBase).ToString().ToLowerInvariant())"
-                                            data-testid="price-unit-piece" @onclick="() => perBase = false">@L["Unit_Piece"]</button>
-                                    <button type="button" class="btn @(perBase ? "active" : "")" aria-pressed="@perBase.ToString().ToLowerInvariant()"
-                                            data-testid="price-unit-base" @onclick="() => perBase = true">@(p.BaseUnit == PriceUnit.Litre ? L["Unit_Litre"] : L["Unit_Kg"])</button>
+                                    <button type="button" class="btn @(perPiece ? "active" : "")" aria-pressed="@perPiece.ToString().ToLowerInvariant()"
+                                            data-testid="price-unit-piece" @onclick="() => perPiece = true">@L["Unit_Piece"]</button>
+                                    <button type="button" class="btn @(!perPiece ? "active" : "")" aria-pressed="@((!perPiece).ToString().ToLowerInvariant())"
+                                            data-testid="price-unit-base" @onclick="() => perPiece = false">@L["Unit_" + p.BaseUnit]</button>
                                 </div>
                             }
                         </div>
+
+                        @if (editOpen)
+                        {
+                            <form class="prices-merge mb-3" data-testid="price-edit" @onsubmit="() => SaveEditAsync(p)">
+                                <p class="small text-body-secondary mb-2">@L["Edit_Help"]</p>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-12">
+                                        <label class="form-label small mb-0" for="price-edit-name">@L["Edit_Name"]</label>
+                                        <input id="price-edit-name" class="form-control form-control-sm" maxlength="200" data-testid="price-edit-name" @bind="editName" />
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small mb-0" for="price-edit-count">@L["Edit_Count"]</label>
+                                        <input id="price-edit-count" type="number" min="1" max="1000" class="form-control form-control-sm" data-testid="price-edit-count" @bind="editCount" />
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small mb-0" for="price-edit-size">@L["Edit_Size"]</label>
+                                        <input id="price-edit-size" type="number" min="0" step="any" class="form-control form-control-sm" data-testid="price-edit-size" @bind="editSize" />
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small mb-0" for="price-edit-unit">@L["Edit_Unit"]</label>
+                                        <select id="price-edit-unit" class="form-select form-select-sm" data-testid="price-edit-unit" @bind="editUnit">
+                                            <option value="">–</option>
+                                            @foreach (var u in Enum.GetValues<ProductSizeUnit>())
+                                            {
+                                                <option value="@u">@L["SizeUnit_" + u]</option>
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-check small mb-2">
+                                    <input class="form-check-input" type="checkbox" id="price-edit-none" data-testid="price-edit-none" @bind="editNotAProduct" />
+                                    <label class="form-check-label" for="price-edit-none">@L["Edit_NotAProduct"]</label>
+                                </div>
+                                <button type="submit" class="btn btn-sm btn-primary" data-testid="price-edit-save">@L["Edit_Save"]</button>
+                                <button type="button" class="btn btn-sm btn-link" @onclick="() => editOpen = false">@L["Edit_Cancel"]</button>
+                            </form>
+                        }
 
                         @if (mergeOpen)
                         {
@@ -229,7 +276,7 @@
                                         @foreach (var o in view.Products.Where(o => o.Shop == p.Shop && o.Id != p.Id && SearchText.Matches(PriceAnalysis.SearchKey(o), mergeSearch)).Take(8))
                                         {
                                             <li class="d-flex align-items-center gap-2 mb-1" data-testid="price-merge-candidate">
-                                                <span class="text-break">@o.Name</span>
+                                                <span class="text-break">@ProductName(o)</span>
                                                 <span class="text-body-secondary">(@o.TimesBought×)</span>
                                                 <button type="button" class="btn btn-sm btn-outline-secondary py-0" data-testid="price-merge-into" @onclick="() => MergeAsync(p, o)">@L["Merge_Into"]</button>
                                             </li>
@@ -241,9 +288,9 @@
 
                         <dl class="prices-facts" data-testid="price-facts">
                             <div><dt>@L["Fact_Now"]</dt><dd data-testid="price-now">@Price(d.Now, unit)</dd></div>
-                            <div><dt>@L["Fact_Then_" + PeriodValue(period)]</dt><dd>@Price(d.Base, unit)</dd></div>
+                            <div><dt>@L["Fact_Then_" + PeriodValue(period)]</dt><dd data-testid="price-then">@(d.Before is { } before ? Price(before, unit) : "–")</dd></div>
                             <div><dt>@L["Fact_Cheapest"]</dt><dd>@Price(d.Cheapest.Price, unit)</dd>
-                                <dd class="prices-fact-sub">@(d.Cheapest.Offer ? L["Fact_Offer", Month(d.Cheapest.Date)].Value : Month(d.Cheapest.Date))</dd></div>
+                                <dd class="prices-fact-sub">@(d.Cheapest.Offer ? L["Fact_Offer", Date(d.Cheapest.Date)].Value : Date(d.Cheapest.Date))</dd></div>
                             <div><dt>@L["Fact_Spend"]</dt><dd>@Money(d.MonthlyCents)</dd><dd class="prices-fact-sub">@L["Fact_PerMonth"]</dd></div>
                         </dl>
 
@@ -251,11 +298,16 @@
                         <div class="prices-legend mb-3" aria-hidden="true">
                             <span><span class="prices-key-dot"></span>@L["Legend_Purchase"]</span>
                             <span><span class="prices-key-dot offer"></span>@L["Legend_Offer"]</span>
+                            @if (d.All.Any(x => x.Unusual))
+                            {
+                                <span><span class="prices-key-dot unusual"></span>@L["Legend_Unusual", PriceAnalysis.UnusualFactor.ToString("0", CultureInfo.CurrentCulture)]</span>
+                            }
                             <span><span class="prices-key-rise"></span>@L["Legend_Rise"]</span>
                             <span><svg viewBox="0 0 24 8" class="prices-legend-line"><line x1="0" y1="4" x2="24" y2="4" class="pchart-avg" /></svg>@L["Legend_Average"]</span>
                         </div>
 
-                        <h3 class="h6">@L["Purchases_Heading"]</h3>
+                        <h3 class="h6">@L["Purchases_Heading", d.All.Count]</h3>
+                        <p class="small text-body-secondary mb-1">@L["Purchases_Help"]</p>
                         <div class="table-responsive">
                             <table class="table table-sm align-middle mb-0" data-testid="price-purchases">
                                 <thead>
@@ -268,15 +320,19 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var x in d.Points.Reverse())
+                                    @foreach (var x in Enumerable.Reverse(d.All))
                                     {
-                                        <tr data-testid="price-purchase">
-                                            <td class="text-nowrap">@Date(x.Date)</td>
+                                        var inPeriod = x.Date >= s.Start;
+                                        <tr data-testid="price-purchase" data-in-period="@inPeriod.ToString().ToLowerInvariant()" class="@(inPeriod ? "prices-in-period" : "text-body-secondary")">
+                                            <td class="text-nowrap" data-testid="price-purchase-date">@Date(x.Date)</td>
                                             <td>@ShopName(p.Shop)</td>
                                             <td class="text-end text-nowrap">@Quantity(x.Purchase)</td>
                                             <td class="text-end text-nowrap">@Price(x.Price, unit)@if (x.Offer)
                                                 {
                                                     <span class="badge prices-offer-badge ms-1">@L["Offer"]</span>
+                                                }@if (x.Unusual)
+                                                {
+                                                    <span class="badge prices-unusual-badge ms-1" data-testid="price-unusual" title="@L["Unusual_Help", PriceAnalysis.UnusualFactor.ToString("0", CultureInfo.CurrentCulture)]">@L["Unusual"]</span>
                                                 }</td>
                                             <td class="text-end"><button type="button" class="btn btn-link btn-sm p-0" data-testid="price-purchase-receipt"
                                                                          aria-label="@L["OpenReceipt_Aria", Date(x.Date)]" @onclick="() => openReceipt = x.Purchase.ReceiptId">@L["OpenReceipt"]</button></td>
@@ -362,8 +418,15 @@
     private ProductRow? selected;
     private SortOrder sort;
     private string? search;
-    private bool perBase;
+    private bool perPiece;
+    private bool showOnce;
     private bool mergeOpen;
+    private bool editOpen;
+    private string? editName;
+    private int? editCount;
+    private decimal? editSize;
+    private ProductSizeUnit? editUnit;
+    private bool editNotAProduct;
     private string? mergeSearch;
     private long? openReceipt;
     private string? userId;
@@ -389,11 +452,13 @@
         var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
         period = query.TryGetValue("period", out var pv) && Periods.FirstOrDefault(x => x.Value == pv.ToString()) is { Value: not null } match
             ? match.Period : PricePeriod.TwelveMonths;
+        showOnce = query.TryGetValue("once", out var once) && once.ToString() == "1";
         var product = query.TryGetValue("product", out var pr) ? pr.ToString() : null;
         if (product != productParam)
         {
             productParam = product;
             mergeOpen = false;
+            editOpen = false;
             mergeSearch = null;
         }
         if (_loadedProjectId != ProjectId)
@@ -427,14 +492,15 @@
         if (view == null) return;
         if (!summaries.TryGetValue(period, out var s)) summaries[period] = s = view.Summarise(period);
         summary = s;
-        selected = productParam == null ? null : s.Rows.FirstOrDefault(r => r.Product.Id == productParam || r.Product.MergedKeys.Contains(productParam));
+        selected = productParam == null ? null
+            : s.Rows.FirstOrDefault(r => r.Product.Id == productParam) ?? s.Rows.FirstOrDefault(r => r.Product.MergedKeys.Contains(productParam));
         selected ??= ListRows(s).FirstOrDefault();
-        if (selected is { Product.HasBase: false }) perBase = false;
+        if (selected is { Product.HasPackPrice: false }) perPiece = false;
     }
 
     private List<ProductRow> ListRows(PriceSummary s)
     {
-        var rows = s.Rows.Where(r => SearchText.Matches(PriceAnalysis.SearchKey(r.Product), search));
+        var rows = PriceAnalysis.Listed(s.Rows, showOnce).Where(r => SearchText.Matches(PriceAnalysis.SearchKey(r.Product), search));
         return (sort switch
         {
             SortOrder.Bought => rows.OrderByDescending(r => r.Times).ThenByDescending(r => r.Spend),
@@ -444,7 +510,31 @@
     }
 
     private ProductDetail? Detail(ProductRow row, PriceSummary s) =>
-        perBase && row.Product.HasBase ? PriceAnalysis.Detail(row.Product, s.Start, s.Today, perBase: true) ?? row.Detail : row.Detail;
+        perPiece && row.Product.HasPackPrice ? PriceAnalysis.Detail(row.Product, s.Start, s.Today, perPiece: true) ?? row.Detail : row.Detail;
+
+    private void SetOnce(bool on) => Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("once", on ? "1" : null), replace: true);
+
+    private void OpenEdit(ProductHistory p)
+    {
+        editOpen = !editOpen;
+        if (!editOpen) return;
+        var size = p.Purchases[^1].Size;
+        editName = p.Name;
+        editNotAProduct = false;
+        (editCount, editSize, editUnit) = size switch
+        {
+            null => ((int?)null, (decimal?)null, (ProductSizeUnit?)null),
+            { Unit: ProductSizeUnit.Piece, Count: 1 } => ((int?)(int)size.Each, null, ProductSizeUnit.Piece),
+            _ => (size.Count > 1 ? size.Count : null, size.Each, size.Unit),
+        };
+    }
+
+    private async Task SaveEditAsync(ProductHistory p)
+    {
+        var edit = new ProductEdit(editName ?? "", editCount, editSize, editUnit, editNotAProduct);
+        await RunAsync(() => Service.EditAsync(p.Shop, p.Purchases.Select(x => x.Name).Distinct(StringComparer.Ordinal), edit));
+        if (error == null) editOpen = false;
+    }
 
     private void SetPeriod(PricePeriod p) =>
         Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("period", p == PricePeriod.TwelveMonths ? null : PeriodValue(p)), replace: true);
@@ -487,14 +577,25 @@
     {
         PriceUnit.Kg => L["Per_Kg"].Value,
         PriceUnit.Litre => L["Per_Litre"].Value,
+        PriceUnit.Each => L["Per_Each"].Value,
         _ => "",
     };
+
+    /// <summary>The product's name, with its pack size when the name alone stands for several products.</summary>
+    private string ProductName(ProductHistory p) => p.Size is { } size ? p.Name + " · " + Size(size) : p.Name;
+
+    /// <summary>"12 × 0,5 l", "500 g", "10 pcs".</summary>
+    private string Size(ItemSize s)
+    {
+        var one = s.Each.ToString("0.###", CultureInfo.CurrentCulture) + " " + L["SizeUnit_" + s.Unit].Value;
+        return s.Count > 1 ? s.Count.ToString(CultureInfo.CurrentCulture) + " × " + one : one;
+    }
 
     private static string Quantity(Purchase x) => x.Weighed
         ? (x.Quantity * 1000m).ToString("0", CultureInfo.CurrentCulture) + " g"
         : x.Quantity.ToString("0.###", CultureInfo.CurrentCulture);
 
-    private static string Date(DateOnly d) => d.ToString("d", CultureInfo.CurrentCulture);
+    private static string Date(DateOnly d) => d.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
 
     private static string Month(DateOnly d) => d.ToString("MMM yyyy", CultureInfo.CurrentCulture);
 
@@ -508,7 +609,7 @@
     private string RowMeta(ProductRow r)
     {
         var parts = new List<string> { ShopName(r.Product.Shop) };
-        if (r.Product.Weighed) parts.Add(L["Meta_PerKg"].Value);
+        if (r.Product.PerBase) parts.Add(L["Meta_Per" + r.Product.BaseUnit].Value);
         if (r.IntervalDays is { } d) parts.Add(Every(d));
         else parts.Add(L["Meta_Times", r.Times].Value);
         return string.Join(" · ", parts);
@@ -606,7 +707,7 @@
 
     private RenderFragment Spark(ProductRow r, PriceSummary s) => __builder =>
     {
-        var usual = r.Detail.Points.Where(x => !x.Offer).ToList();
+        var usual = r.Detail.Points.Where(x => !x.Offer && !x.Unusual).ToList();
         var values = usual.Select(x => (double)x.Price).Append(r.Detail.Base).ToList();
         var lo = values.Min();
         var hi = values.Max();
@@ -635,21 +736,23 @@
 
     private RenderFragment DetailChart(ProductDetail d, PriceSummary s, PriceUnit unit) => __builder =>
     {
-        var values = d.Points.Select(x => (double)x.Price).Append(d.Base).ToList();
+        var values = d.Points.Where(x => !x.Unusual).Select(x => (double)x.Price).Append(d.Base).ToList();
         var ticks = Nice(values.Min() * 0.95, values.Max() * 1.03);
         var sc = new Scale(s.Start, s.Today, ticks.Min, ticks.Max);
-        var usual = d.Points.Where(x => !x.Offer).ToList();
+        var usual = d.Points.Where(x => !x.Offer && !x.Unusual).ToList();
         var offers = d.Points.Where(x => x.Offer).ToList();
+        var unusual = d.Points.Where(x => x.Unusual).ToList();
         var cheapestOffer = offers.OrderBy(x => x.Price).ThenByDescending(x => x.Date).FirstOrDefault();
         var aria = L["Detail_Aria", Price(d.Base, unit), Price(d.Now, unit), Month(s.Start), d.Points.Count, offers.Count, d.Rises.Count].Value;
         <figure class="pchart pchart-detail" role="img" aria-label="@aria" data-testid="price-chart">
             <div class="pchart-plot">
                 <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                    @* A rise is marked at its step: a narrow band around the purchase that brought the new price. *@
                     @foreach (var rise in d.Rises)
                     {
-                        var x1 = sc.X(rise.From);
-                        var w = Math.Max(1.2, sc.X(rise.To) - x1);
-                        <rect x="@N(Math.Min(x1, 100 - w))" y="0" width="@N(w)" height="100" class="pchart-rise" />
+                        const double w = 2.4;
+                        var x1 = Math.Clamp(sc.X(rise.To) - w / 2, 0, 100 - w);
+                        <rect x="@N(x1)" y="0" width="@N(w)" height="100" class="pchart-rise" data-testid="price-rise" />
                     }
                     @Grid(sc, ticks)
                     <line x1="0" x2="100" y1="@N(sc.Y(d.Average))" y2="@N(sc.Y(d.Average))" class="pchart-avg" />
@@ -663,6 +766,10 @@
                 @foreach (var x in offers)
                 {
                     <span class="pchart-dot offer" style="left: @N(sc.X(x.Date))%; top: @N(sc.Y(x.Price))%;"></span>
+                }
+                @foreach (var x in unusual)
+                {
+                    <span class="pchart-dot unusual" style="left: @N(sc.X(x.Date))%; top: @N(Math.Clamp(sc.Y(x.Price), 0, 100))%;"></span>
                 }
                 @if (cheapestOffer != null)
                 {

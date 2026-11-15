@@ -233,7 +233,7 @@
     <value>At first</value>
   </data>
   <data name="Fact_Cheapest" xml:space="preserve">
-    <value>Cheapest</value>
+    <value>Cheapest in the period</value>
   </data>
   <data name="Fact_Offer" xml:space="preserve">
     <value>offer, {0}</value>
@@ -263,7 +263,7 @@
     <value>Average</value>
   </data>
   <data name="Purchases_Heading" xml:space="preserve">
-    <value>Purchases</value>
+    <value>All purchases ({0})</value>
   </data>
   <data name="Col_Date" xml:space="preserve">
     <value>Date</value>
@@ -327,5 +327,74 @@
   </data>
   <data name="Shop_amazon" xml:space="preserve">
     <value>Amazon</value>
+  </data>
+  <data name="ShowOnce" xml:space="preserve">
+    <value>Show one-time purchases</value>
+  </data>
+  <data name="Edit_Open" xml:space="preserve">
+    <value>Edit product</value>
+  </data>
+  <data name="Edit_Help" xml:space="preserve">
+    <value>Name the product and its pack size so different packs compare by price per kg, litre or piece. Your edit applies to every name of this product and only you see it; automatic recognition never changes it.</value>
+  </data>
+  <data name="Edit_Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Edit_Count" xml:space="preserve">
+    <value>Pack count</value>
+  </data>
+  <data name="Edit_Size" xml:space="preserve">
+    <value>Size of one</value>
+  </data>
+  <data name="Edit_Unit" xml:space="preserve">
+    <value>Unit</value>
+  </data>
+  <data name="Edit_NotAProduct" xml:space="preserve">
+    <value>Not a product (fee, deposit, shipping, voucher, membership): leave it out of prices</value>
+  </data>
+  <data name="Edit_Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Edit_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="SizeUnit_Gram" xml:space="preserve">
+    <value>g</value>
+  </data>
+  <data name="SizeUnit_Kilogram" xml:space="preserve">
+    <value>kg</value>
+  </data>
+  <data name="SizeUnit_Millilitre" xml:space="preserve">
+    <value>ml</value>
+  </data>
+  <data name="SizeUnit_Litre" xml:space="preserve">
+    <value>l</value>
+  </data>
+  <data name="SizeUnit_Piece" xml:space="preserve">
+    <value>pcs</value>
+  </data>
+  <data name="Unit_Each" xml:space="preserve">
+    <value>Per item</value>
+  </data>
+  <data name="Meta_PerLitre" xml:space="preserve">
+    <value>per litre</value>
+  </data>
+  <data name="Meta_PerEach" xml:space="preserve">
+    <value>per item</value>
+  </data>
+  <data name="Per_Each" xml:space="preserve">
+    <value>/item</value>
+  </data>
+  <data name="Legend_Unusual" xml:space="preserve">
+    <value>Unusual (over {0}× or under 1/{0} of the median)</value>
+  </data>
+  <data name="Unusual" xml:space="preserve">
+    <value>unusual</value>
+  </data>
+  <data name="Unusual_Help" xml:space="preserve">
+    <value>Over {0}× or under 1/{0} of this product's median price: shown, but not counted in changes, the index or offers.</value>
+  </data>
+  <data name="Purchases_Help" xml:space="preserve">
+    <value>Purchases before the period are greyed out.</value>
   </data>
 </root>

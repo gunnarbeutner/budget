@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 using OpenBudget.Connectors.Receipts;
@@ -9,8 +10,9 @@ namespace OpenBudget.E2E.Tests;
 
 /// <summary>
 /// A project's Prices view with made-up Lidl receipts: the sidebar link opens it, the period switch changes the URL
-/// and the figures, a product opens its detail with chart and purchases (each opens the receipt panel), the receipts
-/// settings page has no Prices tab, and a phone shows the page without horizontal scrolling.
+/// and the figures, a product opens its detail with chart and all purchases (each opens the receipt panel), one-time
+/// purchases hide until asked for, pack sizes with stored identities compare per litre with an odd purchase marked,
+/// the receipts settings page has no Prices tab, and a phone shows the page without horizontal scrolling.
 /// </summary>
 [TestFixture]
 public sealed class PriceHistoryTests : EndToEndTestBase
@@ -91,11 +93,84 @@ public sealed class PriceHistoryTests : EndToEndTestBase
         await Expect(Page.GetByTestId("price-row").Filter(new() { HasText = "Testbananen" })).ToHaveAttributeAsync("aria-current", "true");
         await Expect(Page.GetByTestId("price-chart")).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("price-now")).ToContainTextAsync("1,49");
-        var purchases = await Page.GetByTestId("price-purchase").CountAsync();
-        Assert.That(purchases, Is.InRange(26, 28));
+        // All purchases are listed, those of the period marked.
+        await Expect(Page.GetByTestId("price-purchase")).ToHaveCountAsync(52);
+        var inPeriod = await Page.Locator("[data-testid=price-purchase][data-in-period=true]").CountAsync();
+        Assert.That(inPeriod, Is.InRange(26, 28));
+        await Expect(Page.GetByTestId("price-purchase-date").First).ToHaveTextAsync(new Regex(@"^\d{2}\.\d{2}\.\d{4}$"));
 
         await Page.GetByTestId("price-purchase-receipt").First.ClickAsync();
         await Expect(Page.GetByText("Lidl Teststadt").First).ToBeVisibleAsync();
+    }
+
+    /// <summary>
+    /// A weekly cola in two pack sizes with stored identities (12 × 0.5 l crates and 1 l bottles), once a bottle at an
+    /// odd price, and a shirt bought once.
+    /// </summary>
+    private async Task SeedIdentitiesAsync()
+    {
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using var db = await factory.CreateDbContextAsync();
+        var today = DateTime.UtcNow.Date;
+        for (var i = 0; i < 10; i++)
+        {
+            var crate = i >= 8;
+            var cents = crate ? 1548 : i == 3 ? 599 : 159;
+            var receipt = new ReceiptInvoice
+            {
+                OwnerUserId = E2ESeed.OwnerUserId,
+                Shop = ReceiptShops.Lidl,
+                InvoiceNumber = $"E2E-COLA-{i:000}",
+                OrderDate = today.AddDays(-7 * i - 3),
+                TotalCents = 1000,
+                PaymentCents = 1000,
+                ReadAt = DateTime.UtcNow,
+                Items =
+                {
+                    new ReceiptItem { OwnerUserId = E2ESeed.OwnerUserId, Position = 0, Name = crate ? "TESTCOLA 12X0,5L" : "Testcola 1l", Quantity = "1", UnitCents = cents, TotalCents = cents },
+                },
+            };
+            if (i == 0) receipt.Items.Add(new ReceiptItem { OwnerUserId = E2ESeed.OwnerUserId, Position = 1, Name = "Testhemd Blau", Quantity = "1", UnitCents = 1999, TotalCents = 1999 });
+            db.ReceiptInvoices.Add(receipt);
+        }
+        foreach (var (name, count, size) in new[] { ("TESTCOLA 12X0,5L", (int?)12, 0.5m), ("Testcola 1l", null, 1m) })
+            if (!await db.ReceiptProductIdentities.AnyAsync(x => x.OwnerUserId == E2ESeed.OwnerUserId && x.NameKey == PriceAnalysis.NameKey(name)))
+                db.ReceiptProductIdentities.Add(new ReceiptProductIdentity
+                {
+                    OwnerUserId = E2ESeed.OwnerUserId,
+                    Shop = ReceiptShops.Lidl,
+                    NameKey = PriceAnalysis.NameKey(name),
+                    ProductName = "Testcola",
+                    PackCount = count,
+                    UnitSize = size,
+                    Unit = ProductSizeUnit.Litre,
+                    Source = ProductIdentitySource.Ai,
+                    ResolvedAt = DateTime.UtcNow,
+                });
+        await db.SaveChangesAsync();
+        Factory.BrowserHostServices.GetRequiredService<PriceHistoryCache>().Clear();
+    }
+
+    [Test]
+    public async Task One_time_purchases_hide_by_default_and_pack_sizes_compare_per_litre()
+    {
+        await SeedIdentitiesAsync();
+        await GoToAsync($"/projects/{Pid}/prices");
+        var cola = Page.GetByTestId("price-row").Filter(new() { HasText = "Testcola" });
+        await Expect(cola).ToHaveCountAsync(1);
+        await Expect(Page.GetByTestId("price-row").Filter(new() { HasText = "Testhemd" })).ToHaveCountAsync(0);
+
+        await Page.GetByTestId("prices-once").CheckAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex("once=1"));
+        await Expect(Page.GetByTestId("price-row").Filter(new() { HasText = "Testhemd" })).ToHaveCountAsync(1);
+
+        await cola.ClickAsync();
+        await Expect(Page.GetByTestId("price-detail-name")).ToHaveTextAsync("Testcola");
+        // 1.59 € for a litre bottle; the crate is 15.48 € for 6 l (2.58 €/l); the 5.99 € bottle is unusual.
+        await Expect(Page.GetByTestId("price-now")).ToHaveTextAsync(new Regex(@"1,59.*/l"));
+        await Expect(Page.GetByTestId("price-unusual")).ToHaveCountAsync(1);
+        await Expect(Page.GetByTestId("price-purchases")).ToContainTextAsync("2,58");
+        await Expect(Page.GetByTestId("price-purchase-date").First).ToHaveTextAsync(new Regex(@"^\d{2}\.\d{2}\.\d{4}$"));
     }
 
     [Test]

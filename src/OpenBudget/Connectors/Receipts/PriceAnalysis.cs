@@ -6,11 +6,15 @@ using OpenBudget.Services;
 
 namespace OpenBudget.Connectors.Receipts;
 
-/// <summary>One product line of a receipt the user sees, as the price analysis reads it.</summary>
-public sealed record PriceLine(long ReceiptId, string Shop, DateOnly Date, string Name, string Quantity, long? UnitCents, long TotalCents, bool IsOwn);
+/// <summary>
+/// One product line of a receipt the user sees, as the price analysis reads it, with what its name stands for
+/// (<see cref="Identity"/>; null: the name rules decide).
+/// </summary>
+public sealed record PriceLine(long ReceiptId, string Shop, DateOnly Date, string Name, string Quantity, long? UnitCents, long TotalCents, bool IsOwn,
+    ProductIdentity? Identity = null);
 
-/// <summary>What a product's comparable price is given per.</summary>
-public enum PriceUnit { Piece, Kg, Litre }
+/// <summary>What a price is given per: a piece as sold (a pack), a kg, a litre, or one item of a pack of several.</summary>
+public enum PriceUnit { Piece, Kg, Litre, Each }
 
 /// <summary>A size printed in a product name: the pack's content in grams or millilitres.</summary>
 public sealed record PackSize(decimal Amount, PriceUnit Unit)
@@ -20,30 +24,73 @@ public sealed record PackSize(decimal Amount, PriceUnit Unit)
 }
 
 /// <summary>
-/// One purchase of a product: the paid price per piece, per kg or litre (weighed items, or pack items whose name carries
-/// a reliable size), and the comparable <see cref="Price"/> the product's history uses.
+/// What a receipt line's name stands for (see <see cref="ReceiptProductIdentity"/>): the canonical product name, the
+/// pack's count and size, and whether it is a product.
 /// </summary>
-public sealed record Purchase(long ReceiptId, DateOnly Date, string Name, decimal Quantity, long TotalCents, long? PieceCents, long? BaseCents, PriceUnit BaseUnit, bool Weighed, bool IsOwn)
+public sealed record ProductIdentity(string Name, string? Brand, int? PackCount, decimal? UnitSize, ProductSizeUnit? Unit, ProductIdentityKind Kind,
+    ProductIdentitySource Source)
 {
-    /// <summary>Per kg for weighed items, else per piece.</summary>
-    public long Price => Weighed ? BaseCents ?? 0 : PieceCents ?? 0;
+    /// <summary>The pack's size; null without a size and unit (a count alone counts as pieces), or when implausible.</summary>
+    public ItemSize? Size
+    {
+        get
+        {
+            var count = PackCount is > 0 and var c ? c : 1;
+            var size = (UnitSize, Unit) switch
+            {
+                ( > 0m and var v, { } u) => new ItemSize(count, v, u),
+                (null, ProductSizeUnit.Piece or null) when PackCount is > 1 => new ItemSize(1, count, ProductSizeUnit.Piece),
+                _ => null,
+            };
+            return size is { Plausible: true } ? size : null;
+        }
+    }
+
+    /// <summary>From a stored identity.</summary>
+    public static ProductIdentity From(ReceiptProductIdentity i) => new(i.ProductName, i.Brand, i.PackCount, i.UnitSize, i.Unit, i.Kind, i.Source);
 }
 
-/// <summary>A product (per shop) and its purchases, oldest first.</summary>
+/// <summary>A pack's size: <see cref="Count"/> units of <see cref="Each"/> <see cref="Unit"/> (12 × 0.5 l).</summary>
+public sealed record ItemSize(int Count, decimal Each, ProductSizeUnit Unit)
+{
+    /// <summary>What the pack's content is measured in: kg, litres, or single items.</summary>
+    public PriceUnit BaseUnit => Unit switch
+    {
+        ProductSizeUnit.Gram or ProductSizeUnit.Kilogram => PriceUnit.Kg,
+        ProductSizeUnit.Millilitre or ProductSizeUnit.Litre => PriceUnit.Litre,
+        _ => PriceUnit.Each,
+    };
+
+    /// <summary>The pack's content in <see cref="BaseUnit"/>.</summary>
+    public decimal Base => Count * (Unit is ProductSizeUnit.Gram or ProductSizeUnit.Millilitre ? Each / 1000m : Each);
+
+    /// <summary>From 5 g/ml to 25 kg/l, or 1 to 1000 items.</summary>
+    public bool Plausible => Count > 0 && (BaseUnit == PriceUnit.Each ? Base is >= 1m and <= 1000m : Base is >= 0.005m and <= 25m);
+}
+
+/// <summary>
+/// One purchase of a product: the paid price per piece, per kg, litre or item (weighed items, or pack items of a known
+/// size), and the comparable <see cref="Price"/> the product's history uses.
+/// </summary>
+public sealed record Purchase(long ReceiptId, DateOnly Date, string Name, decimal Quantity, long TotalCents, long? PieceCents, long? BaseCents, PriceUnit BaseUnit, bool Weighed, bool IsOwn,
+    ItemSize? Size = null, bool PerBase = false)
+{
+    /// <summary>Per kg for weighed items, per kg, litre or item when the product compares by size, else per piece.</summary>
+    public long Price => Weighed || PerBase ? BaseCents ?? 0 : PieceCents ?? 0;
+}
+
+/// <summary>
+/// A product (per shop) and its purchases, oldest first. <see cref="Size"/> is the pack size shown with the name when
+/// the product is one of several of the same name that cannot be compared by size.
+/// </summary>
 public sealed record ProductHistory(string Key, string Shop, string Name, IReadOnlyList<Purchase> Purchases, IReadOnlyList<string> MergedKeys)
 {
-    public bool Weighed => Purchases[^1].Weighed;
+    public ItemSize? Size { get; init; }
+
+    public bool Weighed => Purchases.All(p => p.Weighed);
     public Purchase First => Purchases[0];
     public Purchase Last => Purchases[^1];
     public int TimesBought => Purchases.Select(p => (p.ReceiptId, p.Date)).Distinct().Count();
-
-    /// <summary>The last price against the last purchase at least twelve months before <paramref name="today"/>; null without one.</summary>
-    public decimal? Change12M(DateOnly today)
-    {
-        var then = today.AddMonths(-12);
-        var reference = Purchases.LastOrDefault(p => p.Date <= then);
-        return reference is { Price: > 0 } r && Last.Price > 0 && Last.Date > then ? (decimal)Last.Price / r.Price - 1m : null;
-    }
 
     /// <summary>The median number of days between distinct purchase days; null with fewer than three.</summary>
     public double? TypicalIntervalDays(DateOnly? since = null)
@@ -57,11 +104,17 @@ public sealed record ProductHistory(string Key, string Shop, string Name, IReadO
     /// <summary>The product's identity as shown and as merges refer to it.</summary>
     public string Id => Shop + "|" + Key;
 
-    /// <summary>Whether the product's pack purchases also carry a price per kg or litre (a size in the name).</summary>
-    public bool HasBase => !Weighed && Purchases.Any(p => p.BaseCents != null);
+    /// <summary>Whether the product compares by size (per kg, litre or item) rather than per piece.</summary>
+    public bool PerBase => Purchases[^1].Weighed || Purchases[^1].PerBase;
 
     /// <summary>What <see cref="Purchase.BaseCents"/> is given per.</summary>
-    public PriceUnit BaseUnit => Weighed ? PriceUnit.Kg : Purchases.LastOrDefault(p => p.BaseCents != null)?.BaseUnit ?? PriceUnit.Kg;
+    public PriceUnit BaseUnit => PerBase ? Purchases[^1].BaseUnit : PriceUnit.Kg;
+
+    /// <summary>What <see cref="Purchase.Price"/> is given per.</summary>
+    public PriceUnit Unit => PerBase ? BaseUnit : PriceUnit.Piece;
+
+    /// <summary>Whether a price per piece can be shown as well: every purchase is the same pack, none weighed.</summary>
+    public bool HasPackPrice => PerBase && Purchases.All(p => p is { Weighed: false, PieceCents: not null }) && Purchases.Select(p => p.Size).Distinct().Count() == 1;
 }
 
 /// <summary>A product bought at least monthly, with what it costs per month.</summary>
@@ -73,8 +126,11 @@ public sealed record ReceiptSpend(string Shop, DateOnly Date, long Cents);
 /// <summary>The span the prices page looks at, up to today.</summary>
 public enum PricePeriod { SixMonths, TwelveMonths, ThreeYears, All }
 
-/// <summary>One purchase in a product's price chart: its price (per piece or per kg/l) and whether it was an offer.</summary>
-public sealed record PricePoint(Purchase Purchase, long Price, bool Offer)
+/// <summary>
+/// One purchase in a product's price chart: its price (per piece or per kg, litre or item), whether it was an offer, and
+/// whether it is unusual (see <see cref="PriceAnalysis.UnusualFactor"/>).
+/// </summary>
+public sealed record PricePoint(Purchase Purchase, long Price, bool Offer, bool Unusual = false)
 {
     public DateOnly Date => Purchase.Date;
 }
@@ -83,12 +139,14 @@ public sealed record PricePoint(Purchase Purchase, long Price, bool Offer)
 public sealed record PriceRise(DateOnly From, DateOnly To, long Before, long After);
 
 /// <summary>
-/// A product within a period: its purchases there (<see cref="Points"/>), the usual price at the period's start
-/// (<see cref="Base"/>: the last usual price before it, or the first in it) and now, the change between them, the price
-/// rises, the cheapest purchase, the average price and the spend per month.
+/// A product within a period: all its purchases (<see cref="All"/>) and those in the period (<see cref="Points"/>), the
+/// usual price at the period's start (<see cref="Base"/>: the last usual price before it, or the first in it; the chart
+/// starts there), the last usual price before the period (<see cref="Before"/>, null without one) and now, the change
+/// between the last usual prices before and in the period (null without both), the price rises, the cheapest usual
+/// purchase in the period, the average usual price and the spend per month.
 /// </summary>
-public sealed record ProductDetail(IReadOnlyList<PricePoint> Points, IReadOnlyList<PriceRise> Rises, long Base, long Now, decimal? Change,
-    PricePoint Cheapest, long Average, long MonthlyCents);
+public sealed record ProductDetail(IReadOnlyList<PricePoint> All, IReadOnlyList<PricePoint> Points, IReadOnlyList<PriceRise> Rises, long Base, long? Before,
+    long Now, decimal? Change, PricePoint Cheapest, long Average, long MonthlyCents);
 
 /// <summary>A product's row on the prices page for a period.</summary>
 public sealed record ProductRow(ProductHistory Product, ProductDetail Detail, double? IntervalDays, int Times, long Spend);
@@ -111,10 +169,10 @@ public sealed record PriceSummary(DateOnly Start, DateOnly Today, IReadOnlyList<
 }
 
 /// <summary>
-/// Price history from itemised receipts: product identity (<see cref="ProductKey"/>), sizes printed in names
-/// (<see cref="ParseSize"/>), unit prices, offers, the basket index, regular purchases and the grocery spend of a
-/// period. Pure functions over <see cref="PriceLine"/>s; <see cref="PriceHistoryService"/> loads and caches them per
-/// project.
+/// Price history from itemised receipts: product identity (a line's <see cref="ProductIdentity"/>, else the name rules
+/// <see cref="ProductKey"/> and <see cref="ParseSize"/>), unit prices, unusual purchases, offers, the basket index,
+/// regular purchases and the grocery spend of a period. Pure functions over <see cref="PriceLine"/>s;
+/// <see cref="PriceHistoryService"/> loads and caches them per project.
 /// </summary>
 public static partial class PriceAnalysis
 {
@@ -130,9 +188,16 @@ public static partial class PriceAnalysis
     [GeneratedRegex(@"[^a-z0-9]+", RegexOptions.CultureInvariant, 1000)]
     private static partial Regex NonAlnum();
 
+    /// <summary>The products of a shop a user's identities, merges and edits refer to: the line's name folded, whitespace collapsed, at most 300 characters.</summary>
+    public static string NameKey(string name)
+    {
+        var key = TextFold.Fold(name, collapseWhitespace: true).Trim();
+        return key.Length > 300 ? key[..300] : key;
+    }
+
     /// <summary>
-    /// A product's key within its shop: the name folded (case, umlauts, diacritics), trailing pack sizes and counts
-    /// dropped, punctuation turned into single spaces; for shops with long titles cut to their first
+    /// A product's key within its shop by the name rules: the name folded (case, umlauts, diacritics), trailing pack
+    /// sizes and counts dropped, punctuation turned into single spaces; for shops with long titles cut to their first
     /// <see cref="ReceiptSourceProfile.ProductKeyLength"/> characters at a word boundary.
     /// </summary>
     public static string ProductKey(string shop, string name)
@@ -148,6 +213,12 @@ public static partial class PriceAnalysis
         }
         return key;
     }
+
+    /// <summary>The key of a product with an identity: its canonical name folded, punctuation turned into single spaces.</summary>
+    public static string IdentityKey(ProductIdentity identity) => NonAlnum().Replace(SearchText.Fold(identity.Name), " ").Trim();
+
+    /// <summary>The product key of a line: by its identity when it has one, else by the name rules.</summary>
+    public static string KeyOf(PriceLine line) => line.Identity is { } id && IdentityKey(id) is { Length: > 0 } k ? k : ProductKey(line.Shop, line.Name);
 
     /// <summary>
     /// The pack size a name carries ("500g", "1,5 l", "6x0,33l" = 1980 ml), or null when it carries none, several
@@ -177,9 +248,20 @@ public static partial class PriceAnalysis
     }
 
     /// <summary>
+    /// The size of a line's pack: its identity's; without one (or for an identity from the AI or the rules that has
+    /// none) the size in its name. The user's identity decides alone.
+    /// </summary>
+    public static ItemSize? SizeOf(PriceLine line)
+    {
+        if (line.Identity is { } id && (id.Size != null || id.Source == ProductIdentitySource.User)) return id.Size;
+        return ParseSize(line.Name) is { } s ? new ItemSize(1, s.Amount, s.Unit == PriceUnit.Litre ? ProductSizeUnit.Millilitre : ProductSizeUnit.Gram) : null;
+    }
+
+    /// <summary>
     /// The purchase a line stands for, or null for a line without a positive amount or quantity. A quantity in grams
     /// ("958g") or a fractional count ("0.521", kilograms) is weighed: its unit price is per kg. Otherwise the price per
-    /// piece is the unit price, or the total over the quantity; with a reliable size in the name also per kg or litre.
+    /// piece is the unit price, or the total over the quantity; with a known size (<see cref="SizeOf"/>) also per kg,
+    /// litre or item.
     /// </summary>
     public static Purchase? ToPurchase(PriceLine line)
     {
@@ -190,9 +272,9 @@ public static partial class PriceAnalysis
         if (!decimal.TryParse(q, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var count) || count <= 0) return null;
         if (count != decimal.Truncate(count)) return Weighed(line, count);
         var piece = line.UnitCents is > 0 and var u ? u : (long)Math.Round(line.TotalCents / count);
-        var size = ParseSize(line.Name);
+        var size = SizeOf(line);
         long? perBase = size == null ? null : (long)Math.Round(piece / size.Base);
-        return new Purchase(line.ReceiptId, line.Date, line.Name, count, line.TotalCents, piece, perBase, size?.Unit ?? PriceUnit.Kg, false, line.IsOwn);
+        return new Purchase(line.ReceiptId, line.Date, line.Name, count, line.TotalCents, piece, perBase, size?.BaseUnit ?? PriceUnit.Kg, false, line.IsOwn, size);
     }
 
     private static Purchase Weighed(PriceLine line, decimal kg)
@@ -202,33 +284,56 @@ public static partial class PriceAnalysis
     }
 
     /// <summary>
-    /// Groups lines into products per shop. <paramref name="merges"/> maps a product id ("shop|key") to the product it
-    /// was merged into (followed transitively). A product shows its latest name; when its purchases mix weighed and
-    /// pack lines, only those of the latest kind form its history.
+    /// Groups lines into products per shop by <see cref="KeyOf"/>, leaving out lines that are not products.
+    /// <paramref name="merges"/> maps a product id ("shop|key") to the product it was merged into (followed
+    /// transitively). A product shows its latest name. Its purchases compare by size when all of them have one of the
+    /// same kind (weight, volume or items), whatever the pack, and per piece when they are one pack size and lines
+    /// without a size; otherwise each kind, and the purchases without a size, form a product of their own (id
+    /// "shop|key#kind"), shown with its pack size when all its purchases share one.
     /// </summary>
     public static List<ProductHistory> Products(IEnumerable<PriceLine> lines, IReadOnlyDictionary<string, string>? merges = null)
     {
-        var groups = new Dictionary<string, (string Shop, string Key, List<Purchase> Purchases, HashSet<string> Keys)>(StringComparer.Ordinal);
+        var groups = new Dictionary<string, (string Shop, string Key, List<(Purchase P, string Name)> Items, HashSet<string> Keys)>(StringComparer.Ordinal);
         foreach (var line in lines)
         {
-            if (ToPurchase(line) is not { } p) continue;
-            var key = ProductKey(line.Shop, line.Name);
+            if (line.Identity?.Kind == ProductIdentityKind.NotAProduct || ToPurchase(line) is not { } p) continue;
+            var key = KeyOf(line);
             if (key.Length == 0) continue;
             var own = line.Shop + "|" + key;
             var target = Resolve(own, merges);
             if (!groups.TryGetValue(target, out var g))
                 groups[target] = g = (line.Shop, target[(line.Shop.Length + 1)..], [], new HashSet<string>(StringComparer.Ordinal));
-            g.Purchases.Add(p);
+            g.Items.Add((p, line.Identity?.Name ?? line.Name));
             g.Keys.Add(own);
         }
-        return groups.Values.Select(g =>
+        return groups.Values.SelectMany(g =>
         {
-            var ordered = g.Purchases.OrderBy(p => p.Date).ThenBy(p => p.ReceiptId).ToList();
-            var weighed = ordered[^1].Weighed;
-            var kept = ordered.Where(p => p.Weighed == weighed).ToList();
-            return new ProductHistory(g.Key, g.Shop, kept[^1].Name, kept, g.Keys.Order(StringComparer.Ordinal).ToList());
+            var keys = g.Keys.Order(StringComparer.Ordinal).ToList();
+            var ordered = g.Items.OrderBy(x => x.P.Date).ThenBy(x => x.P.ReceiptId).ToList();
+            var kinds = ordered.GroupBy(x => x.P.BaseCents != null ? x.P.BaseUnit : (PriceUnit?)null).ToList();
+            // One pack size and lines without a size: the same pack, compared per piece.
+            if (kinds.Count > 1 && ordered.All(x => !x.P.Weighed) && ordered.Select(x => x.P.Size).Where(s => s != null).Distinct().Count() == 1)
+                kinds = ordered.GroupBy(_ => (PriceUnit?)null).ToList();
+            return kinds.Select(k =>
+            {
+                var purchases = k.Select(x => x.P with { PerBase = k.Key != null }).ToList();
+                var sizes = purchases.Select(x => x.Size).Distinct().ToList();
+                var key = kinds.Count == 1 ? g.Key : g.Key + "#" + KindCode(k.Key);
+                return new ProductHistory(key, g.Shop, k.Last().Name, purchases, keys) { Size = kinds.Count > 1 && sizes.Count == 1 ? sizes[0] : null };
+            });
         }).OrderByDescending(p => p.Last.Date).ThenBy(p => p.Name, StringComparer.CurrentCulture).ToList();
     }
+
+    private static string KindCode(PriceUnit? unit) => unit switch
+    {
+        PriceUnit.Kg => "kg",
+        PriceUnit.Litre => "l",
+        PriceUnit.Each => "pcs",
+        _ => "pack",
+    };
+
+    /// <summary>A product id without the kind <see cref="Products"/> appends when it splits a product by size.</summary>
+    public static string WithoutKind(string id) => id.IndexOf('#', StringComparison.Ordinal) is var i and >= 0 ? id[..i] : id;
 
     /// <summary>Follows merges from a product id to the product it ends up in (cycles stop where they close).</summary>
     public static string Resolve(string id, IReadOnlyDictionary<string, string>? merges)
@@ -253,6 +358,27 @@ public static partial class PriceAnalysis
 
     /// <summary>A purchase costing at most this share of the usual price around it is an offer.</summary>
     public const decimal OfferFactor = 0.9m;
+
+    /// <summary>
+    /// A purchase whose price is more than this multiple of the product's median price (over its whole history), or
+    /// less than its inverse, is unusual: a different pack sold under the same name, a misread line, a one-off. Unusual
+    /// purchases are shown but left out of the usual price, its change, the basket index, the biggest jump and offers.
+    /// </summary>
+    public const decimal UnusualFactor = 2m;
+
+    /// <summary>Unusual purchases need a median of at least this many purchases to stand out from.</summary>
+    private const int UnusualMinPurchases = 3;
+
+    /// <summary>Which of the prices are unusual (see <see cref="UnusualFactor"/>); none with fewer than three.</summary>
+    public static bool[] Unusual(IReadOnlyList<long> prices)
+    {
+        var result = new bool[prices.Count];
+        if (prices.Count < UnusualMinPurchases) return result;
+        var median = (decimal)Median(prices.ToList());
+        for (var i = 0; i < prices.Count; i++)
+            result[i] = prices[i] > median * UnusualFactor || prices[i] * UnusualFactor < median;
+        return result;
+    }
 
     /// <summary>How many purchases on each side of a purchase make up its usual price.</summary>
     private const int Neighbours = 3;
@@ -291,20 +417,38 @@ public static partial class PriceAnalysis
     private const decimal RiseThreshold = 0.03m;
 
     /// <summary>
-    /// A product between <paramref name="start"/> and <paramref name="today"/>, priced per piece (per kg for weighed
-    /// items) or, with <paramref name="perBase"/>, per kg or litre (purchases without a size are left out). Offers are
-    /// told from the whole history; the usual price, its rises and the change leave them out. Null when the product
-    /// has no priced purchase in the period.
+    /// The priced purchases (oldest first) with their offer and unusual marks: unusual ones by
+    /// <see cref="Unusual"/> over all of them, offers by <see cref="Offers"/> over the others.
     /// </summary>
-    public static ProductDetail? Detail(ProductHistory p, DateOnly start, DateOnly today, bool perBase = false)
+    public static List<PricePoint> Points(IEnumerable<(Purchase Purchase, long Price)> purchases)
     {
-        var priced = p.Purchases.Select(x => (Purchase: x, Price: perBase ? x.BaseCents ?? 0 : x.Price)).Where(x => x.Price > 0).ToList();
-        var offers = Offers(priced.Select(x => x.Price).ToList());
-        var all = priced.Select((x, i) => new PricePoint(x.Purchase, x.Price, offers[i])).ToList();
-        var points = all.Where(x => x.Date >= start && x.Date <= today).ToList();
+        var priced = purchases.Where(x => x.Price > 0).ToList();
+        var unusual = Unusual(priced.Select(x => x.Price).ToList());
+        var normal = priced.Where((_, i) => !unusual[i]).ToList();
+        var offers = Offers(normal.Select(x => x.Price).ToList());
+        var result = new List<PricePoint>(priced.Count);
+        var n = 0;
+        for (var i = 0; i < priced.Count; i++)
+            result.Add(new PricePoint(priced[i].Purchase, priced[i].Price, !unusual[i] && offers[n++], unusual[i]));
+        return result;
+    }
+
+    /// <summary>
+    /// A product between <paramref name="start"/> and <paramref name="today"/>, priced by <see cref="Purchase.Price"/>
+    /// or, with <paramref name="perPiece"/>, per piece (purchases without one are left out). Offers and unusual
+    /// purchases are told from the whole history; the usual price, its rises and the change leave them out. The change
+    /// needs a usual purchase before the period and one in it. Null when the product has no priced purchase in the
+    /// period.
+    /// </summary>
+    public static ProductDetail? Detail(ProductHistory p, DateOnly start, DateOnly today, bool perPiece = false)
+    {
+        var all = Points(p.Purchases.Where(x => x.Date <= today).Select(x => (x, perPiece ? x.PieceCents ?? 0 : x.Price)));
+        var points = all.Where(x => x.Date >= start).ToList();
         if (points.Count == 0) return null;
-        var usual = all.Where(x => !x.Offer && x.Date <= today).ToList();
-        var baseline = usual.LastOrDefault(x => x.Date < start) ?? usual.FirstOrDefault(x => x.Date >= start) ?? points[0];
+        var usual = all.Where(x => !x.Offer && !x.Unusual).ToList();
+        var before = usual.LastOrDefault(x => x.Date < start);
+        var latest = usual.LastOrDefault(x => x.Date >= start);
+        var baseline = before ?? usual.FirstOrDefault(x => x.Date >= start) ?? points[0];
         var now = usual.LastOrDefault() ?? points[^1];
         var rises = new List<PriceRise>();
         for (var i = 1; i < usual.Count; i++)
@@ -313,11 +457,13 @@ public static partial class PriceAnalysis
             if (b.Date >= start && b.Price >= a.Price * (1 + RiseThreshold))
                 rises.Add(new PriceRise(a.Date < start ? start : a.Date, b.Date, a.Price, b.Price));
         }
-        decimal? change = now.Date > baseline.Date ? (decimal)now.Price / baseline.Price - 1m : null;
-        var cheapest = points.OrderBy(x => x.Price).ThenByDescending(x => x.Date).First();
-        var average = (long)Math.Round(points.Average(x => (decimal)x.Price));
+        decimal? change = before != null && latest != null ? (decimal)latest.Price / before.Price - 1m : null;
+        var normal = points.Where(x => !x.Unusual).ToList();
+        if (normal.Count == 0) normal = points;
+        var cheapest = normal.OrderBy(x => x.Price).ThenByDescending(x => x.Date).First();
+        var average = (long)Math.Round(normal.Average(x => (decimal)x.Price));
         var monthly = (long)Math.Round(points.Sum(x => x.Purchase.TotalCents) / Months(points[0].Date, today));
-        return new ProductDetail(points, rises, baseline.Price, now.Price, change, cheapest, average, monthly);
+        return new ProductDetail(all, points, rises, baseline.Price, before?.Price, now.Price, change, cheapest, average, monthly);
     }
 
     /// <summary>Products bought at least this often in each half of the period take part in the index.</summary>
@@ -326,8 +472,9 @@ public static partial class PriceAnalysis
     /// <summary>
     /// The basket index from <paramref name="start"/> to <paramref name="today"/>, overall and per shop: for every
     /// product bought at least <see cref="IndexMinPurchases"/> times in each half of the period, its usual price (offers
-    /// left out) at each month's end over its usual price at the start, averaged weighted by the product's spend in the
-    /// period. One point at the start (100), one per month end and one today. Empty without such a product.
+    /// and unusual purchases left out) at each month's end over its usual price at the start, averaged weighted by the
+    /// product's spend in the period. One point at the start (100), one per month end and one today. Empty without such
+    /// a product.
     /// </summary>
     public static List<IndexLine> IndexSeries(IReadOnlyList<ProductHistory> products, DateOnly start, DateOnly today)
     {
@@ -337,8 +484,7 @@ public static partial class PriceAnalysis
         {
             var priced = p.Purchases.Where(x => x.Price > 0 && x.Date <= today).ToList();
             if (priced.Count(x => x.Date >= start && x.Date < mid) < IndexMinPurchases || priced.Count(x => x.Date >= mid) < IndexMinPurchases) continue;
-            var offers = Offers(priced.Select(x => x.Price).ToList());
-            var usual = priced.Where((_, i) => !offers[i]).ToList();
+            var usual = Points(priced.Select(x => (x, x.Price))).Where(x => !x.Offer && !x.Unusual).Select(x => x.Purchase).ToList();
             var baseline = usual.LastOrDefault(x => x.Date <= start) ?? usual.FirstOrDefault(x => x.Date >= start);
             if (baseline == null) continue;
             basket.Add(new BasketItem(p.Shop, usual, baseline.Price, Math.Max(1, priced.Where(x => x.Date >= start).Sum(x => x.TotalCents))));
@@ -379,7 +525,17 @@ public static partial class PriceAnalysis
         return (long)Math.Round(groceries.Sum(r => r.Cents) / Months(groceries.Min(r => r.Date), today));
     }
 
-    /// <summary>The product whose usual price rose the most in the period, bought at least twice in it; null without a rise.</summary>
+    /// <summary>The product lists show products bought at least this often (on distinct receipts) unless one-time purchases are asked for.</summary>
+    public const int MinTimesBought = 2;
+
+    /// <summary>The rows the product lists show: those bought at least <see cref="MinTimesBought"/> times, or all with <paramref name="oneTime"/>.</summary>
+    public static IEnumerable<ProductRow> Listed(IEnumerable<ProductRow> rows, bool oneTime) =>
+        oneTime ? rows : rows.Where(r => r.Product.TimesBought >= MinTimesBought);
+
+    /// <summary>
+    /// The product whose usual price rose the most in the period (see <see cref="ProductDetail.Change"/>), bought at
+    /// least twice in it; null without a rise.
+    /// </summary>
     public static ProductRow? BiggestJump(IEnumerable<ProductRow> rows) =>
         rows.Where(r => r.Times >= 2 && r.Detail.Change > 0).OrderByDescending(r => r.Detail.Change).ThenByDescending(r => r.Spend).FirstOrDefault();
 
@@ -422,6 +578,7 @@ public static partial class PriceAnalysis
     public static string SearchKey(ProductHistory p)
     {
         var sb = new StringBuilder(p.Key);
+        sb.Append(' ').Append(SearchText.Fold(p.Name));
         foreach (var n in p.Purchases.Select(x => x.Name).Distinct(StringComparer.Ordinal)) sb.Append(' ').Append(SearchText.Fold(n));
         return sb.ToString();
     }

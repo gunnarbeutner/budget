@@ -233,7 +233,7 @@
     <value>Anfangs</value>
   </data>
   <data name="Fact_Cheapest" xml:space="preserve">
-    <value>Am günstigsten</value>
+    <value>Am günstigsten im Zeitraum</value>
   </data>
   <data name="Fact_Offer" xml:space="preserve">
     <value>Angebot, {0}</value>
@@ -263,7 +263,7 @@
     <value>Durchschnitt</value>
   </data>
   <data name="Purchases_Heading" xml:space="preserve">
-    <value>Käufe</value>
+    <value>Alle Käufe ({0})</value>
   </data>
   <data name="Col_Date" xml:space="preserve">
     <value>Datum</value>
@@ -327,5 +327,74 @@
   </data>
   <data name="Shop_amazon" xml:space="preserve">
     <value>Amazon</value>
+  </data>
+  <data name="ShowOnce" xml:space="preserve">
+    <value>Einmalige Käufe zeigen</value>
+  </data>
+  <data name="Edit_Open" xml:space="preserve">
+    <value>Produkt bearbeiten</value>
+  </data>
+  <data name="Edit_Help" xml:space="preserve">
+    <value>Gib dem Produkt einen Namen und eine Packungsgröße, damit verschiedene Packungen nach Preis pro kg, Liter oder Stück verglichen werden. Deine Änderung gilt für alle Namen dieses Produkts, nur du siehst sie, und die automatische Erkennung ändert sie nie.</value>
+  </data>
+  <data name="Edit_Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Edit_Count" xml:space="preserve">
+    <value>Anzahl</value>
+  </data>
+  <data name="Edit_Size" xml:space="preserve">
+    <value>Größe je Stück</value>
+  </data>
+  <data name="Edit_Unit" xml:space="preserve">
+    <value>Einheit</value>
+  </data>
+  <data name="Edit_NotAProduct" xml:space="preserve">
+    <value>Kein Produkt (Gebühr, Pfand, Versand, Gutschein, Mitgliedschaft): bei den Preisen weglassen</value>
+  </data>
+  <data name="Edit_Save" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+  <data name="Edit_Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="SizeUnit_Gram" xml:space="preserve">
+    <value>g</value>
+  </data>
+  <data name="SizeUnit_Kilogram" xml:space="preserve">
+    <value>kg</value>
+  </data>
+  <data name="SizeUnit_Millilitre" xml:space="preserve">
+    <value>ml</value>
+  </data>
+  <data name="SizeUnit_Litre" xml:space="preserve">
+    <value>l</value>
+  </data>
+  <data name="SizeUnit_Piece" xml:space="preserve">
+    <value>Stk.</value>
+  </data>
+  <data name="Unit_Each" xml:space="preserve">
+    <value>Pro Einzelstück</value>
+  </data>
+  <data name="Meta_PerLitre" xml:space="preserve">
+    <value>pro Liter</value>
+  </data>
+  <data name="Meta_PerEach" xml:space="preserve">
+    <value>pro Einzelstück</value>
+  </data>
+  <data name="Per_Each" xml:space="preserve">
+    <value>/Stk.</value>
+  </data>
+  <data name="Legend_Unusual" xml:space="preserve">
+    <value>Ungewöhnlich (über {0}× oder unter 1/{0} des Medians)</value>
+  </data>
+  <data name="Unusual" xml:space="preserve">
+    <value>ungewöhnlich</value>
+  </data>
+  <data name="Unusual_Help" xml:space="preserve">
+    <value>Über {0}× oder unter 1/{0} des mittleren Preises dieses Produkts: angezeigt, aber nicht in Änderungen, Index oder Angeboten gezählt.</value>
+  </data>
+  <data name="Purchases_Help" xml:space="preserve">
+    <value>Käufe vor dem Zeitraum sind ausgegraut.</value>
   </data>
 </root>

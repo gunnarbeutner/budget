@@ -12,6 +12,9 @@ public sealed record PriceHistoryView(IReadOnlyList<ProductHistory> Products, IR
     public PriceSummary Summarise(PricePeriod period) => PriceAnalysis.Summarise(Products, Receipts, period, Today);
 }
 
+/// <summary>What the user sets for a product (see <see cref="PriceHistoryService.EditAsync"/>).</summary>
+public sealed record ProductEdit(string Name, int? PackCount, decimal? UnitSize, ProductSizeUnit? Unit, bool NotAProduct);
+
 /// <summary>
 /// Per-user, per-project cache of <see cref="PriceHistoryView"/>. Dropped entirely on any change to imported data,
 /// receipts, cloud files or projects (sharing changes what a user sees), and after <see cref="Lifetime"/>. A singleton
@@ -52,8 +55,10 @@ public sealed class PriceHistoryCache
 /// <summary>
 /// Price history over the itemised receipts of a project, with the visibility of
 /// <see cref="ReceiptService.ListProjectAsync"/>: receipts linked to bookings on the project's accounts that the user
-/// may see, and open receipts of sources booking into it. Product lines only (no deposits, fees or credits). Merges of
-/// products are the user's own and apply in every project.
+/// may see, and open receipts of sources booking into it. Product lines only (no deposits, fees or credits). Each line
+/// takes its identity (<see cref="ReceiptProductIdentity"/>) from the signed-in user's own edit of that name, else
+/// from its owner's identities (the AI's, or the owner's edits), else the name rules decide. Merges are the user's own;
+/// edits are the user's own for other owners' lines and the identity of their own lines. Both apply in every project.
 /// </summary>
 public sealed class PriceHistoryService
 {
@@ -95,13 +100,34 @@ public sealed class PriceHistoryService
             .ToDictionaryAsync(m => m.Shop + "|" + m.FromKey, m => m.Shop + "|" + m.ToKey, StringComparer.Ordinal, ct);
         var today = DateOnly.FromDateTime(now.UtcDateTime);
         var spend = receipts.Select(r => new ReceiptSpend(r.Shop, DateOnly.FromDateTime(r.Date!.Value), r.PaymentCents)).ToList();
-        var view = new PriceHistoryView(PriceAnalysis.Products(lines, merges), spend, today);
+        var view = new PriceHistoryView(PriceAnalysis.Products(await WithIdentitiesAsync(user, lines, ct), merges), spend, today);
         _cache.Set(user, projectId, now, view, generation);
         return view;
     }
 
-    /// <summary>The product lines of the given receipts.</summary>
-    private async Task<List<PriceLine>> LinesAsync(string user, List<long> ids, CancellationToken ct)
+    /// <summary>
+    /// The lines with their identities: the user's own row for the name when it is their line or their edit, else the
+    /// row of the line's owner.
+    /// </summary>
+    private async Task<List<PriceLine>> WithIdentitiesAsync(string user, List<(string Owner, PriceLine Line)> lines, CancellationToken ct)
+    {
+        var owners = lines.Select(l => l.Owner).Append(user).Distinct(StringComparer.Ordinal).ToList();
+        var shops = lines.Select(l => l.Line.Shop).Distinct(StringComparer.Ordinal).ToList();
+        await using var sys = await _system.CreateDbContextAsync(ct);
+        var rows = await sys.ReceiptProductIdentities.AsNoTracking().Where(i => owners.Contains(i.OwnerUserId) && shops.Contains(i.Shop)).ToListAsync(ct);
+        var map = rows.ToDictionary(i => (i.OwnerUserId, i.Shop, i.NameKey), ProductIdentity.From);
+        return lines.Select(x =>
+        {
+            var (owner, line) = x;
+            var name = PriceAnalysis.NameKey(line.Name);
+            var identity = map.TryGetValue((user, line.Shop, name), out var mine) && (owner == user || mine.Source == ProductIdentitySource.User) ? mine
+                : map.GetValueOrDefault((owner, line.Shop, name));
+            return line with { Identity = identity };
+        }).ToList();
+    }
+
+    /// <summary>The product lines of the given receipts, with their owners.</summary>
+    private async Task<List<(string Owner, PriceLine Line)>> LinesAsync(string user, List<long> ids, CancellationToken ct)
     {
         await using var sys = await _system.CreateDbContextAsync(ct);
         var rows = new List<LineRow>();
@@ -114,7 +140,7 @@ public sealed class PriceHistoryService
         // A shop listing an order's items with each of its charges' receipts: one purchase per order and position.
         return rows.Where(r => r.Date != null)
             .DistinctBy(r => r.OrderNumber != null && ReceiptSourceProfiles.Default.For(r.Shop)?.ItemsPerOrder == true ? $"{r.OwnerUserId}|{r.OrderNumber}|{r.Position}" : $"#{r.ReceiptInvoiceId}|{r.Position}", StringComparer.Ordinal)
-            .Select(r => new PriceLine(r.ReceiptInvoiceId, r.Shop, DateOnly.FromDateTime(r.Date!.Value), r.Name, r.Quantity, r.UnitCents, r.TotalCents, r.OwnerUserId == user))
+            .Select(r => (r.OwnerUserId, new PriceLine(r.ReceiptInvoiceId, r.Shop, DateOnly.FromDateTime(r.Date!.Value), r.Name, r.Quantity, r.UnitCents, r.TotalCents, r.OwnerUserId == user)))
             .ToList();
     }
 
@@ -125,8 +151,8 @@ public sealed class PriceHistoryService
     public async Task MergeAsync(string fromId, string toId, CancellationToken ct = default)
     {
         var user = await UserAsync();
-        var (shop, from) = Split(fromId);
-        var (toShop, to) = Split(toId);
+        var (shop, from) = Split(PriceAnalysis.WithoutKind(fromId));
+        var (toShop, to) = Split(PriceAnalysis.WithoutKind(toId));
         if (shop != toShop) throw new InvalidOperationException("Only products of the same shop can be merged.");
         if (from == to) return;
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
@@ -145,13 +171,52 @@ public sealed class PriceHistoryService
     public async Task UnmergeAsync(string id, CancellationToken ct = default)
     {
         var user = await UserAsync();
-        var (shop, key) = Split(id);
+        var (shop, key) = Split(PriceAnalysis.WithoutKind(id));
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var rows = await db.ReceiptProductMerges.Where(m => m.OwnerUserId == user && m.Shop == shop && m.FromKey == key).ToListAsync(ct);
         db.ReceiptProductMerges.RemoveRange(rows);
         await db.SaveChangesAsync(ct);
         Changed(user);
     }
+
+    /// <summary>
+    /// Sets what the given line names of a shop stand for, for the signed-in user (<see cref="ProductIdentitySource.User"/>:
+    /// the AI never overwrites it). A product edited to "not a product" leaves every price view.
+    /// </summary>
+    public async Task EditAsync(string shop, IEnumerable<string> names, ProductEdit edit, CancellationToken ct = default)
+    {
+        var user = await UserAsync();
+        var productName = edit.Name.Trim();
+        if (productName.Length == 0) throw new InvalidOperationException("A product needs a name.");
+        if (productName.Length > 200) productName = productName[..200];
+        var keys = names.Select(PriceAnalysis.NameKey).Where(k => k.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+        var count = edit.PackCount is > 1 and <= 1000 ? edit.PackCount : null;
+        var sized = edit.UnitSize is > 0m && edit.Unit != null;
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var existing = await db.ReceiptProductIdentities.Where(i => i.OwnerUserId == user && i.Shop == shop && keys.Contains(i.NameKey)).ToListAsync(ct);
+        var now = _clock.GetUtcNow().UtcDateTime;
+        foreach (var key in keys)
+        {
+            var row = existing.FirstOrDefault(i => i.NameKey == key);
+            if (row == null)
+            {
+                row = new ReceiptProductIdentity { OwnerUserId = user, Shop = shop, NameKey = key };
+                db.ReceiptProductIdentities.Add(row);
+            }
+            row.ProductName = productName;
+            row.Brand = null;
+            row.PackCount = count;
+            row.UnitSize = sized ? edit.UnitSize : null;
+            row.Unit = sized ? edit.Unit : count != null ? ProductSizeUnit.Piece : null;
+            row.Kind = edit.NotAProduct ? ProductIdentityKind.NotAProduct : ProductIdentityKind.Product;
+            row.Source = ProductIdentitySource.User;
+            row.Model = null;
+            row.ResolvedAt = now;
+        }
+        await db.SaveChangesAsync(ct);
+        Changed(user);
+    }
+
 
     private void Changed(string user)
     {
