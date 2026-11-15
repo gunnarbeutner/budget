@@ -10,7 +10,7 @@
    into one row that opens on click; the bonus and the payment close the receipt. The owner moves an item by its
    category chip: the receipt remembers it for the product, splits the booking again, and the dialog shows the result. *@
 
-<Modal Show="ReceiptId != null" Title="@(view?.Title ?? L["Title"])" SizeClass="modal-lg modal-fullscreen-sm-down" OnClose="CloseAsync">
+<Modal Show="ReceiptId != null" Title="@(view?.Title ?? L["Title"])" SizeClass="modal-lg ob-fullscreen-phone" OnClose="CloseAsync">
     @if (view == null)
     {
         <div class="skeleton skeleton-line" style="width: 50%;"></div>

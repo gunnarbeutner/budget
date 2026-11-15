@@ -1831,8 +1831,6 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
     .docs-selbar > .flex-grow-1 { display: none; }
     .docs-selbar .ob-btn { flex: 1 1 auto; justify-content: center; padding-left: 6px; padding-right: 6px; }
     .docs-selbar-label { font-size: 12px; }
-    .doc-viewer .modal-dialog { margin: 0; max-width: 100%; }
-    .doc-viewer .modal-content { height: 100vh; border-radius: 0; }
 }
 
 /* Context menu: destructive entries. */
@@ -2064,6 +2062,16 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
     }
     .project-settings-nav .shell-view { flex: 0 0 auto; border-radius: 6px; }
     .project-settings-nav .shell-view.active { box-shadow: none; }
+}
+
+/* Dialogs marked .ob-fullscreen-phone fill the whole dynamic viewport on phones; the body scrolls inside, clear of the
+   home indicator, and the bottom bar is hidden while one is open. */
+@media (max-width: 767.98px) {
+    .modal-dialog.ob-fullscreen-phone { width: 100vw; max-width: none; height: 100%; height: 100dvh; margin: 0; }
+    .ob-fullscreen-phone .modal-content { height: 100%; max-height: none; border: 0; border-radius: 0; }
+    .ob-fullscreen-phone .modal-body { overflow-y: auto; }
+    .ob-fullscreen-phone .modal-content > :last-child { padding-bottom: max(var(--bs-modal-padding, 1rem), env(safe-area-inset-bottom)); }
+    body:has(.ob-fullscreen-phone) .app-bottombar { display: none; }
 }
 
 .modal.ob-modal-on-top { z-index: 1065; background: rgba(0, 0, 0, 0.35); }

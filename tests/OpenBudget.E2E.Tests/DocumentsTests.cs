@@ -287,6 +287,25 @@ public sealed class DocumentsTests : EndToEndTestBase
         await Expect(Cards).ToHaveCountAsync(4);
     }
 
+    [Test]
+    public async Task The_viewer_covers_the_whole_phone_screen_including_the_bottom_bar()
+    {
+        await SeedDocumentsAsync();
+        await Page.SetViewportSizeAsync(390, 844);
+        await GoToAsync($"/projects/{Pid}/documents");
+        await Expect(Page.GetByTestId("bottom-bar")).ToBeVisibleAsync();
+        await Cards.First.ClickAsync();
+        var viewer = Page.GetByTestId("doc-viewer");
+        await Expect(viewer.Locator("canvas.doc-page")).ToHaveCountAsync(1, new() { Timeout = 15000 });
+        var shot = Environment.GetEnvironmentVariable("OB_VIEWER_SHOT");
+        if (!string.IsNullOrEmpty(shot)) await Page.ScreenshotAsync(new() { Path = shot });
+
+        // The dialog's own content is what sits at the very bottom edge, not the bar or the backdrop.
+        var bottomInContent = await Page.EvaluateAsync<bool>(
+            "() => !!document.elementFromPoint(195, innerHeight - 2)?.closest('[data-testid=doc-viewer] .modal-content')");
+        Assert.That(bottomInContent, Is.True);
+    }
+
     private ILocator Checks => Page.GetByTestId("doc-check");
 
     [Test]
