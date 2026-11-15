@@ -184,6 +184,22 @@ public sealed class AmazonReceiptStoreTests
         r.Items.OrderBy(i => i.Position).Select(i => (i.Name, i.TotalCents, i.Kind)).ToList();
 
     [Fact]
+    public async Task Charges_on_days_a_read_skipped_stay_and_others_go_when_the_wallet_drops_them()
+    {
+        var (t, login) = await WorldAsync();
+        await using var _ = t;
+        await SyncAsync(t, login, FirstSync());
+        var first = FirstSync();
+
+        // The read skipped the first day: the snack charge stays although the wallet did not list it.
+        await SyncAsync(t, login, first with { Charges = [first.Charges[1]], Orders = [] } with { Skipped = (Day, Day) });
+        Assert.Equal([1247L, 64900L], (await AmazonReceiptsAsync(t)).Select(r => r.PaymentCents).Order());
+
+        await SyncAsync(t, login, first with { Charges = [first.Charges[1]], Orders = [] });
+        Assert.Equal([64900L], (await AmazonReceiptsAsync(t)).Select(r => r.PaymentCents));
+    }
+
+    [Fact]
     public async Task Points_become_a_credit_line_of_the_card_receipt_and_go_when_the_wallet_drops_them()
     {
         var (t, login) = await WorldAsync();

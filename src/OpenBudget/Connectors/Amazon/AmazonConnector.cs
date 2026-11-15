@@ -24,6 +24,9 @@ public sealed class AmazonOptions
     /// <summary>How often a further wallet page that could not be read is asked for again.</summary>
     public int WalletPageRetries { get; init; } = 4;
 
+    /// <summary>The wait between two wallet pages; Amazon throttles a fast read of a long payment list.</summary>
+    public TimeSpan WalletPageDelay { get; init; } = TimeSpan.FromSeconds(5);
+
     /// <summary>The first pause before asking for an unread wallet page again; it doubles with each attempt.</summary>
     public TimeSpan WalletRetryDelay { get; init; } = TimeSpan.FromSeconds(20);
 
@@ -52,6 +55,7 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
     public const string TypeName = "amazon";
     internal const string WebLoginReference = "amazon-web-login";
     internal const string InstrumentsKey = "instruments";
+    internal const string WalletResumeKey = "walletResume";
     internal const string SignInAgain = "Amazon wants you to sign in again.";
 
     /// <summary>Signed in: the wallet shows and no sign-in form or captcha is on the page.</summary>
@@ -184,33 +188,70 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
             ?? throw new ConnectorException("Amazon's payment list could not be read; the page may have changed.");
         var context = AmazonPages.WalletRequestContext(response.Text);
         var charges = new List<RemoteCharge>(page.Charges);
-        var coveredFrom = page.HasMore ? page.Oldest ?? Today : since;
+        var coveredFrom = page.HasMore ? NextDay(page.Oldest) ?? Today : since;
         var pages = 1;
-        while (page.HasMore && page.Oldest is { } oldest && oldest >= since && pages < _options.MaxWalletPages)
+        // A read of the whole list that stopped early left the key of its next page: once the recent pages reach the
+        // days it covered, the read continues there instead of paging through those days again.
+        var resume = LoadResume(since);
+        var resumed = false;
+        (DateOnly From, DateOnly To)? skipped = null;
+        WalletResume? stopped = null;
+        try
         {
-            await Task.Delay(_options.RequestDelay, _context.Clock, ct);
-            // Amazon now and then answers a page with something else; it usually works when asked again a little later.
-            var next = await NextWalletPageAsync(browser, page.NextPageKey!, context, ct);
-            for (var attempt = 1; next == null && attempt <= _options.WalletPageRetries; attempt++)
+            while (page.HasMore && page.Oldest is { } oldest && oldest >= since && pages < _options.MaxWalletPages)
             {
-                // Amazon throttles a long read (HTTP 429): the pause grows to a few minutes before giving up.
-                _context.Progress?.Invoke($"Reading Amazon payments ({pages} pages, Amazon asks to wait)");
-                await Task.Delay(_options.WalletRetryDelay * (1 << (attempt - 1)), _context.Clock, ct);
-                next = await NextWalletPageAsync(browser, page.NextPageKey!, context, ct);
+                AmazonWalletPage? next = null;
+                if (resume != null && !resumed && oldest <= resume.ReadTo.AddDays(-3))
+                {
+                    resumed = true;
+                    await Task.Delay(_options.WalletPageDelay, _context.Clock, ct);
+                    next = await WalletPageAsync(browser, resume.Key, context, pages, retries: 1, ct);
+                    if (next?.Newest is { } newest && newest <= oldest)
+                    {
+                        Log.LogInformation("Amazon: continuing the earlier read of the payment list before {From}.",
+                            resume.From.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                        skipped = (newest, oldest);
+                    }
+                    else
+                    {
+                        Log.LogInformation("Amazon: the earlier read of the payment list cannot be continued; reading on.");
+                        next = null;
+                    }
+                }
+                if (next == null)
+                {
+                    await Task.Delay(_options.WalletPageDelay, _context.Clock, ct);
+                    next = await WalletPageAsync(browser, page.NextPageKey!, context, pages, _options.WalletPageRetries, ct);
+                }
+                if (next == null)
+                {
+                    Log.LogWarning("Amazon: wallet page {Page} could not be read; payments before {Oldest} are left out this time.",
+                        pages + 1, oldest.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                    stopped = new WalletResume(page.NextPageKey!, oldest, Today);
+                    break;
+                }
+                page = next;
+                pages++;
+                charges.AddRange(page.Charges);
+                coveredFrom = page.HasMore ? NextDay(page.Oldest) ?? coveredFrom : since;
+                _context.Progress?.Invoke($"Reading Amazon payments ({pages} pages)");
             }
-            if (next == null)
-            {
-                Log.LogWarning("Amazon: wallet page {Page} could not be read; payments before {Oldest} are left out this time.",
-                    pages + 1, oldest.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-                break;
-            }
-            page = next;
-            pages++;
-            charges.AddRange(page.Charges);
-            coveredFrom = page.HasMore ? page.Oldest ?? coveredFrom : since;
-            _context.Progress?.Invoke($"Reading Amazon payments ({pages} pages)");
+            if (stopped == null && page.HasMore && page.Oldest is { } last && last >= since)
+                stopped = new WalletResume(page.NextPageKey!, last, Today);
+        }
+        catch (OperationCanceledException) when (page.HasMore && page.Oldest is { } last)
+        {
+            stopped = new WalletResume(page.NextPageKey!, last, Today);
+            throw;
+        }
+        finally
+        {
+            // A stop in the recent pages keeps the earlier position: those pages connect to it, the new one would not.
+            if (stopped != null && (resume == null || resumed)) SaveResume(stopped);
+            else if (stopped == null) _session.Values.Remove(WalletResumeKey);
         }
         if (coveredFrom < since) coveredFrom = since;
+        if (skipped is { } gap && gap.To < coveredFrom) skipped = null;
         charges = charges.Where(c => c.Date >= since).ToList();
         Log.LogInformation("Amazon: {Pages} wallet pages, {Count} payments since {Since}.", pages, charges.Count, coveredFrom.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
 
@@ -244,13 +285,50 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
         }
         Log.LogInformation("Amazon: read {Count} order pages ({Items} items).", orders.Count, orders.Sum(o => o.Items.Count));
         return ConnectorStep.Done(new OrderSourceResult(
-            charges, orders, instruments.Select(kv => Instrument(kv.Key, kv.Value)).OrderBy(a => a.Name, StringComparer.Ordinal).ToList(), coveredFrom));
+            charges, orders, instruments.Select(kv => Instrument(kv.Key, kv.Value)).OrderBy(a => a.Name, StringComparer.Ordinal).ToList(), coveredFrom)
+        { Skipped = skipped });
     }
 
     /// <summary>
     /// A further wallet page, asked the way the page asks itself: a JSON POST with the page key, the page's token and
     /// context. Null when the answer cannot be read.
     /// </summary>
+    /// <summary>The wallet page after <paramref name="pageKey"/>; asked for again after a growing pause while Amazon refuses it.</summary>
+    private async Task<AmazonWalletPage?> WalletPageAsync(
+        IBrowserFetcher browser, string pageKey, AmazonWalletRequest? context, int pages, int retries, CancellationToken ct)
+    {
+        // Amazon now and then answers a page with something else, and throttles a long read (HTTP 429); a later try usually works.
+        var next = await NextWalletPageAsync(browser, pageKey, context, ct);
+        for (var attempt = 1; next == null && attempt <= retries; attempt++)
+        {
+            var pause = _options.WalletRetryDelay * (1 << (attempt - 1));
+            _context.Progress?.Invoke($"Reading Amazon payments ({pages} pages, Amazon asks to wait; trying again in {Math.Round(pause.TotalSeconds)} s)");
+            await Task.Delay(pause, _context.Clock, ct);
+            next = await NextWalletPageAsync(browser, pageKey, context, ct);
+        }
+        return next;
+    }
+
+    private sealed record WalletResume(string Key, DateOnly From, DateOnly ReadTo);
+
+    private static DateOnly? NextDay(DateOnly? day) => day?.AddDays(1);
+
+    /// <summary>The stopped read of the whole list, while it still reaches days the sync wants.</summary>
+    private WalletResume? LoadResume(DateOnly since)
+    {
+        if (!_session.Values.TryGetValue(WalletResumeKey, out var json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<WalletResume>(json) is { Key.Length: > 0 } r && r.From >= since ? r : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private void SaveResume(WalletResume resume) => _session.Values[WalletResumeKey] = JsonSerializer.Serialize(resume);
+
     private async Task<AmazonWalletPage?> NextWalletPageAsync(IBrowserFetcher browser, string pageKey, AmazonWalletRequest? context, CancellationToken ct)
     {
         if (context == null)

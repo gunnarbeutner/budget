@@ -13,6 +13,9 @@ internal sealed record AmazonWalletPage(IReadOnlyList<RemoteCharge> Charges, boo
 {
     /// <summary>The oldest day on the page (null: an empty page).</summary>
     public DateOnly? Oldest { get; init; }
+
+    /// <summary>The newest day on the page.</summary>
+    public DateOnly? Newest { get; init; }
 }
 
 /// <summary>
@@ -149,11 +152,12 @@ internal static partial class AmazonPages
     {
         if ((Find(root, "transactionList") ?? Find(root, "transactionsList")) is not JsonArray list) return null;
         var charges = new List<RemoteCharge>();
-        DateOnly? oldest = null;
+        DateOnly? oldest = null, newest = null;
         foreach (var entry in list.OfType<JsonObject>())
         {
             var date = ParseDate(Str(entry["formattedDate"]));
             if (date is { } d && (oldest == null || d < oldest)) oldest = d;
+            if (date is { } e && (newest == null || e > newest)) newest = e;
             if (ParseCharge(entry, date) is { } charge) charges.Add(charge);
         }
         var key = (Find(root, "lastEvaluatedPageKey") ?? Find(root, "lastEvaluatedKey")) switch
@@ -164,7 +168,7 @@ internal static partial class AmazonPages
         };
         // The first page says hasMore; further pages only carry a key while older payments follow.
         var hasMore = Find(root, "hasMore") is not JsonValue v || !v.TryGetValue<bool>(out var more) || more;
-        return new AmazonWalletPage(charges, hasMore && !string.IsNullOrEmpty(key), key, list.Count) { Oldest = oldest };
+        return new AmazonWalletPage(charges, hasMore && !string.IsNullOrEmpty(key), key, list.Count) { Oldest = oldest, Newest = newest };
     }
 
     private static RemoteCharge? ParseCharge(JsonObject entry, DateOnly? date)

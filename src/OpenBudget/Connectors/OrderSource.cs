@@ -27,7 +27,11 @@ public sealed record RemoteOrderItem(string Title, int Quantity, decimal? Price,
 /// for, and every payment instrument seen (as accounts, mapped to existing ones by the owner).
 /// </summary>
 public sealed record OrderSourceResult(
-    IReadOnlyList<RemoteCharge> Charges, IReadOnlyList<RemoteOrder> Orders, IReadOnlyList<RemoteAccount> Instruments, DateOnly CoveredFrom);
+    IReadOnlyList<RemoteCharge> Charges, IReadOnlyList<RemoteOrder> Orders, IReadOnlyList<RemoteAccount> Instruments, DateOnly CoveredFrom)
+{
+    /// <summary>Days (both ends included) inside the covered range that this read skipped; stored charges there stay.</summary>
+    public (DateOnly From, DateOnly To)? Skipped { get; init; }
+}
 
 /// <summary>
 /// A connector that enriches existing bookings instead of delivering its own (an online shop's orders). Its accounts

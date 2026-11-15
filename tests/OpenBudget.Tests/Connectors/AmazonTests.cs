@@ -357,7 +357,7 @@ public sealed class AmazonTests
 
     private static AmazonConnector Connector(bool silent = false) => new(
         new ConnectorContext(new BankHttpClient(), TimeProvider.System, NullLogger.Instance) { Silent = silent },
-        new AmazonOptions { BaseUri = new Uri("https://shop.test/"), RequestDelay = TimeSpan.Zero, WalletRetryDelay = TimeSpan.Zero });
+        new AmazonOptions { BaseUri = new Uri("https://shop.test/"), RequestDelay = TimeSpan.Zero, WalletPageDelay = TimeSpan.Zero, WalletRetryDelay = TimeSpan.Zero });
 
     private static async Task<AmazonConnector> SignedInAsync(IBrowserFetcher browser, bool silent = false)
     {
@@ -384,6 +384,59 @@ public sealed class AmazonTests
 
         Assert.Equal(2, step.Value!.Charges.Count);
         Assert.Equal(0, shop.OddAnswers);
+    }
+
+    private static string KeyedAnswer(string? nextKey, params JsonObject[] entries) => new JsonObject
+    {
+        ["displayResponse"] = new JsonObject { ["transactionsList"] = new JsonArray(entries), ["lastEvaluatedKey"] = nextKey },
+    }.ToJsonString();
+
+    [Fact]
+    public async Task A_read_of_the_whole_list_that_stopped_continues_where_it_stopped()
+    {
+        var shop = new ScriptedShop();
+        shop.Pages["/cpe/yourpayments/transactions"] = WalletHtml(true, Entry("-€10.60", "12 Nov 2026", OrderA, "Amazon Visa", "1111"));
+        shop.ByKey = new(StringComparer.Ordinal) { ["page-2"] = KeyedAnswer("page-3", Entry("-€649.00", "2 Oct 2026", OrderB, "Visa", "2222")) };
+        var connector = await SignedInAsync(shop);
+        var since = new DateOnly(2024, 1, 1);
+        var none = new HashSet<string>([OrderA, OrderB, OrderC], StringComparer.Ordinal);
+
+        // Amazon refuses page 3: the read keeps what it got and covers the days from the day after the last one read.
+        var first = (await connector.FetchOrdersAsync(since, none, [], null, CancellationToken.None)).Value!;
+        Assert.Equal((2, new DateOnly(2026, 10, 3)), (first.Charges.Count, first.CoveredFrom));
+
+        // The next read jumps from the recent pages to page 3; the days in between it does not read again.
+        shop.ByKey["page-3"] = KeyedAnswer(null, Entry("-€1.00", "2 Sept 2025", OrderC, "Visa", "2222"));
+        shop.Keys.Clear();
+        var second = (await connector.FetchOrdersAsync(since, none, [], null, CancellationToken.None)).Value!;
+        Assert.Equal(["page-3"], shop.Keys);
+        Assert.Equal((since, (new DateOnly(2025, 9, 2), new DateOnly(2026, 11, 12))), (second.CoveredFrom, second.Skipped));
+        Assert.Equal([OrderA, OrderC], second.Charges.Select(c => c.OrderId));
+
+        // That read reached the end: the next one pages through from the start again.
+        shop.Keys.Clear();
+        var third = (await connector.FetchOrdersAsync(since, none, [], null, CancellationToken.None)).Value!;
+        Assert.Equal(["page-2", "page-3"], shop.Keys);
+        Assert.Null(third.Skipped);
+    }
+
+    [Fact]
+    public async Task A_position_Amazon_no_longer_accepts_falls_back_to_paging_through()
+    {
+        var shop = new ScriptedShop();
+        shop.Pages["/cpe/yourpayments/transactions"] = WalletHtml(true, Entry("-€10.60", "12 Nov 2026", OrderA, "Amazon Visa", "1111"));
+        shop.ByKey = new(StringComparer.Ordinal) { ["page-2"] = KeyedAnswer("page-3", Entry("-€649.00", "2 Oct 2026", OrderB, "Visa", "2222")) };
+        var connector = await SignedInAsync(shop);
+        var none = new HashSet<string>([OrderA, OrderB, OrderC], StringComparer.Ordinal);
+        await connector.FetchOrdersAsync(new DateOnly(2024, 1, 1), none, [], null, CancellationToken.None);
+
+        shop.ByKey = new(StringComparer.Ordinal) { ["page-2"] = KeyedAnswer(null, Entry("-€649.00", "2 Oct 2026", OrderB, "Visa", "2222")) };
+        shop.Keys.Clear();
+        var result = (await connector.FetchOrdersAsync(new DateOnly(2024, 1, 1), none, [], null, CancellationToken.None)).Value!;
+
+        Assert.Equal(["page-3", "page-3", "page-2"], shop.Keys); // asked once more, then read on from the recent pages
+        Assert.Null(result.Skipped);
+        Assert.Equal(2, result.Charges.Count);
     }
 
     [Fact]
@@ -442,8 +495,12 @@ public sealed class AmazonTests
         public string? NextPage { get; set; }
         public bool SignIn { get; init; }
         public List<string> Requested { get; } = [];
+        public List<string> Keys { get; } = [];
         public string PostBody { get; private set; } = "";
         public string? PostToken { get; private set; }
+
+        /// <summary>Further pages by the key they follow (a missing key answers HTTP 429), used instead of <see cref="NextPage"/>.</summary>
+        public Dictionary<string, string>? ByKey { get; set; }
 
         /// <summary>How many further-page requests are answered with JSON that holds no payment list.</summary>
         public int OddAnswers { get; set; }
@@ -466,6 +523,12 @@ public sealed class AmazonTests
                 {
                     OddAnswers--;
                     return Answer(200, request.Url, "{\"type\":\"Throttled\"}");
+                }
+                if (ByKey != null)
+                {
+                    var key = (string?)JsonNode.Parse(PostBody)?["exclusiveStartKey"] ?? "";
+                    Keys.Add(key);
+                    return ByKey.TryGetValue(key, out var json) ? Answer(200, request.Url, json) : Answer(429, request.Url, "");
                 }
                 return Answer(NextPage == null ? 500 : 200, request.Url, NextPageJson ?? "");
             }

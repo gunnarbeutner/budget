@@ -43,11 +43,15 @@
                             <div class="small" data-testid="sync-running-progress">@RunningText(s)</div>
                             <div class="small text-body-secondary" data-testid="sync-running-elapsed">@(s.Background ? L["Running_Background", FormatElapsed(s.StartedAt)] : L["Running_For", FormatElapsed(s.StartedAt)])</div>
                         </div>
-                        @if (challenge == status && !NeedsUser(status))
-                        {
-                            <button type="button" class="btn btn-sm btn-outline-secondary sync-problem-sync" data-testid="sync-running-open"
-                                    @onclick="() => showBrowser = true">@L["Running_Open"]</button>
-                        }
+                        <div class="d-flex flex-column gap-1">
+                            @if (challenge == status && !NeedsUser(status))
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-secondary sync-problem-sync" data-testid="sync-running-open"
+                                        @onclick="() => showBrowser = true">@L["Running_Open"]</button>
+                            }
+                            <button type="button" class="btn btn-sm btn-outline-secondary sync-problem-sync" data-testid="sync-running-cancel"
+                                    title="@L["CancelSync"]" @onclick="() => Bank.CancelSyncAsync(status.LoginId)">@L["Running_Cancel"]</button>
+                        </div>
                     </li>
                 }
             </ul>

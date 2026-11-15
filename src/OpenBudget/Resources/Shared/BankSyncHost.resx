@@ -76,6 +76,9 @@
   <data name="ExpiresAt" xml:space="preserve">
     <value>Expires at {0}</value>
   </data>
+  <data name="Running_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
   <data name="CancelSync" xml:space="preserve">
     <value>Cancel sync</value>
   </data>

@@ -120,7 +120,8 @@ public static class AmazonReceiptStore
             stored.Add(receipt);
         }
         var from = result.CoveredFrom;
-        var gone = stored.Where(s => s.SourceKey != null && Day(s.DeliveryDate) >= from && !keys.Contains(s.SourceKey)).ToList();
+        bool Read(DateOnly? day) => day >= from && !(result.Skipped is { } skip && day >= skip.From && day <= skip.To);
+        var gone = stored.Where(s => s.SourceKey != null && Read(Day(s.DeliveryDate)) && !keys.Contains(s.SourceKey)).ToList();
         foreach (var g in gone)
         {
             touched.UnionWith(g.OrderNumbers);
@@ -128,7 +129,7 @@ public static class AmazonReceiptStore
         }
         db.ReceiptInvoices.RemoveRange(gone);
         foreach (var s in stored)
-            foreach (var line in s.Items.Where(i => i.SourceKey != null && ChargeOf(i.SourceKey).Date >= from && !keys.Contains(i.SourceKey)).ToList())
+            foreach (var line in s.Items.Where(i => i.SourceKey != null && Read(ChargeOf(i.SourceKey).Date) && !keys.Contains(i.SourceKey)).ToList())
             {
                 touched.UnionWith(s.OrderNumbers);
                 s.Items.Remove(line);

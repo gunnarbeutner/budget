@@ -115,6 +115,9 @@
   <data name="Status_ReenterCredentials" xml:space="preserve">
     <value>Re-enter credentials</value>
   </data>
+  <data name="Button_CancelSync" xml:space="preserve">
+    <value>Cancel sync</value>
+  </data>
   <data name="Button_SyncNow" xml:space="preserve">
     <value>Sync now</value>
   </data>

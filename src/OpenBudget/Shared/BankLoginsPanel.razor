@@ -103,9 +103,18 @@ else
                     </div>
                 </div>
                 <div class="bank-login-actions">
-                    <button class="btn btn-sm btn-primary" data-action="sync-now" disabled="@running" @onclick="() => SyncNowAsync(login.Id)">
-                        <i class="bi bi-arrow-repeat" aria-hidden="true"></i> @L["Button_SyncNow"]
-                    </button>
+                    @if (running)
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" data-action="cancel-sync" @onclick="() => Bank.CancelSyncAsync(login.Id)">
+                            <i class="bi bi-x-circle" aria-hidden="true"></i> @L["Button_CancelSync"]
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-primary" data-action="sync-now" @onclick="() => SyncNowAsync(login.Id)">
+                            <i class="bi bi-arrow-repeat" aria-hidden="true"></i> @L["Button_SyncNow"]
+                        </button>
+                    }
                     <button class="btn btn-sm btn-outline-secondary" data-action="edit" @onclick="() => OpenEdit(login)">@L["Button_Edit"]</button>
                     <button class="btn btn-sm btn-outline-danger" data-action="delete" @onclick="() => pendingDelete = login">@L["Button_Delete"]</button>
                 </div>
