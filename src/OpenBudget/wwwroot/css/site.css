@@ -957,9 +957,17 @@ summary.app-sync:focus-visible { outline: 2px solid var(--bs-primary); outline-o
     .app-topbar-period { order: 10; flex: 0 0 100%; min-height: 40px; padding-bottom: 4px; }
     .app-topbar .period-controls { flex-wrap: wrap; row-gap: 4px; }
 }
+.period-mode-select { display: none; }
 @media (max-width: 575.98px) {
-    .app-topbar .period-nav-heading { min-width: 0; }
-    .app-topbar .segmented .btn { padding: 3px 7px !important; font-size: 12px; }
+    /* One row: the stepper flush with the bar's gutter (the chevron's icon, not its button, on the edge), the modes
+       as a select at the right end. The 44px chevrons are the touch targets. */
+    .app-topbar-period { min-height: 44px; padding-bottom: 0; }
+    .app-topbar .period-controls { flex: 1 1 auto; flex-wrap: nowrap; gap: 4px; }
+    .app-topbar .period-nav-heading { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .app-topbar .period-stepper { min-width: 0; margin-left: -14px; }
+    .app-topbar .period-step { width: 44px; height: 44px; padding: 0; flex: 0 0 auto; }
+    .app-topbar .segmented { display: none; }
+    .app-topbar .period-mode-select { display: block; width: auto; flex: 0 0 auto; margin-left: auto; }
 }
 
 /* The search field of the views with a transaction list (rendered into the top bar), left of the sync status. Hidden
@@ -1391,20 +1399,33 @@ button.cat-pill:hover { filter: brightness(0.96); }
 
 /* ---- Phones / tablets ---- */
 @media (max-width: 767.98px) {
-    .app-topbar { gap: 8px; padding: 0 10px; }
+    /* 16px gutters; the right-hand controls sit in 44px touch boxes without gaps, so their icons are evenly spaced
+       and the avatar lines up with the gutter. */
+    .app-topbar { gap: 0; padding: 0 16px; }
+    .app-topbar .project-selector { margin-right: 8px; min-width: 0; }
+    .app-topbar-search, .app-topbar > .app-sync, .app-topbar > .app-menu { flex: 0 0 auto; }
+    .app-topbar .topbar-search { width: 44px; height: 44px; }
+    .app-topbar > .app-sync, .app-topbar > .app-menu > summary.app-sync { width: 44px; height: 44px; justify-content: center; padding: 0; font-size: 18px; }
+    .app-topbar > .sync-problems, .app-topbar > .user-menu { display: grid; place-items: center; width: 44px; height: 44px; }
+    .app-topbar > .user-menu { margin-right: -8px; }
     .app-wordmark { display: none; }
     .app-sync-label { display: none; }
 
     .page-toolbar { padding: 6px 10px; margin-left: -1rem; margin-right: -1rem; }
 
     .browse-shell { grid-template-columns: minmax(0, 1fr); height: auto; }
-    .browse-main > .page-toolbar { flex-wrap: wrap; padding: 6px 12px; position: sticky; top: var(--ob-topbar-h); }
+    .browse-main > .page-toolbar { flex-wrap: wrap; padding: 6px 16px; position: sticky; top: var(--ob-topbar-h); }
     .browse-scroll { overflow: visible; }
     /* On a phone the page scrolls as a whole: the sticky toolbar (title and actions) stays, the chart scrolls away. */
     .browse-head { max-height: none; overflow: visible; }
     /* The actions take a row of their own under the title and show as icons only (their titles name them). */
-    .browse-toolbar .browse-summary { flex: 1 1 100%; order: 3; justify-content: flex-start; gap: 4px 14px; }
+    .browse-toolbar .browse-summary { flex: 1 1 100%; order: 3; justify-content: flex-start; gap: 0; margin-left: -13px; }
     .browse-summary .browse-action-label { display: none; }
+    /* Icon-only actions: 44px touch targets; a toggle shows its state as a filled background instead of a chevron. */
+    .browse-summary > .btn { display: inline-flex; align-items: center; justify-content: center; position: relative; min-width: 44px; height: 44px; font-size: 18px; border-radius: 6px; }
+    .browse-summary > .btn .bi-chevron-up, .browse-summary > .btn .bi-chevron-down { display: none; }
+    .browse-summary > .btn[aria-expanded="true"] { background: var(--ob-chip-bg); }
+    .browse-summary > .btn .ob-badge { position: absolute; top: 4px; right: 2px; }
     .browse-rail {
         position: fixed;
         top: 0;

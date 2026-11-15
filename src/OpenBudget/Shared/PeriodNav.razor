@@ -110,6 +110,14 @@
                     <button type="button" class="btn @(IsRange ? "active" : "")" data-testid="period-range"
                             aria-expanded="@rangeOpen.ToString().ToLowerInvariant()" @onclick="ToggleRange">@L["Button_Range"]</button>
                 </div>
+                @* Phones show the modes as a compact select beside the stepper instead of the segmented control. *@
+                <select class="form-select form-select-sm period-mode-select" aria-label="@L["Aria_Period"]"
+                        data-testid="period-mode-select" value="@ModeSelectValue" @onchange="OnModeSelect">
+                    <option value="month">@L["Button_Month"]</option>
+                    <option value="ytd">@L["Button_YTD"]</option>
+                    <option value="year">@L["Button_Year"]</option>
+                    <option value="@ViewPeriod.Range">@L["Button_Range"]</option>
+                </select>
                 @if (rangeOpen)
                 {
                     <div class="period-range-popover" role="dialog" aria-label="@L["Button_Range"]" data-testid="period-range-popover">
@@ -151,6 +159,16 @@
     {
         if (rangeOpen) rangeOpen = false;
         else OpenRange();
+    }
+
+    // The select shows the range while its popover is open, so cancelling the popover resets it to the period.
+    private string ModeSelectValue => rangeOpen || IsRange ? ViewPeriod.Range : Period;
+
+    private async Task OnModeSelect(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        if (value == ViewPeriod.Range) OpenRange();
+        else if (value != null) await SetPeriod(value);
     }
 
     private void OnRangeHeadingKey(KeyboardEventArgs e)
