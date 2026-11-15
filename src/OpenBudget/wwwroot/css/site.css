@@ -959,15 +959,24 @@ summary.app-sync:focus-visible { outline: 2px solid var(--bs-primary); outline-o
 }
 .period-mode-select { display: none; }
 @media (max-width: 575.98px) {
-    /* One row: the stepper flush with the bar's gutter (the chevron's icon, not its button, on the edge), the modes
-       as a select at the right end. The 44px chevrons are the touch targets. */
+    /* The rows' content shares the gutter: the project pill's name, the chevron's drawn stroke (not its 44px button)
+       and the view's title start on it. The pill's background reaches into the gutter. */
+    .app-topbar .project-selector { margin-left: -10px; }
+    /* One row: the stepper, then the modes as a select styled like the project pill, ending on the gutter like the
+       avatar. The 44px chevrons are the touch targets. */
     .app-topbar-period { min-height: 44px; padding-bottom: 0; }
-    .app-topbar .period-controls { flex: 1 1 auto; flex-wrap: nowrap; gap: 4px; }
+    .app-topbar .period-controls { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; gap: 4px; }
     .app-topbar .period-nav-heading { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-    .app-topbar .period-stepper { min-width: 0; margin-left: -14px; }
+    .app-topbar .period-stepper { min-width: 0; margin-left: -19px; }
     .app-topbar .period-step { width: 44px; height: 44px; padding: 0; flex: 0 0 auto; }
     .app-topbar .segmented { display: none; }
-    .app-topbar .period-mode-select { display: block; width: auto; flex: 0 0 auto; margin-left: auto; }
+    .app-topbar .period-mode-select {
+        display: block; width: auto; field-sizing: content; flex: 0 0 auto; margin-left: auto;
+        height: 29px; padding: 4px 28px 4px 10px; border: 0; border-radius: 6px;
+        background-color: var(--ob-chip-bg); background-position: right 10px center; background-size: 10px 8px;
+        color: var(--bs-body-color); font-size: 14px; font-weight: 500; line-height: 21px; box-shadow: none;
+    }
+    .app-topbar .period-mode-select:hover { background-color: var(--ob-line); }
 }
 
 /* The search field of the views with a transaction list (rendered into the top bar), left of the sync status. Hidden
@@ -984,8 +993,8 @@ summary.app-sync:focus-visible { outline: 2px solid var(--bs-primary); outline-o
 .app-topbar .topbar-search:focus-within { border-color: var(--ob-input-border); background: var(--bs-body-bg); }
 @media (max-width: 991.98px) { .app-topbar .topbar-search { width: 180px; } }
 @media (max-width: 767.98px) {
-    .app-topbar .topbar-search { width: 32px; padding: 0; justify-content: center; background: transparent; cursor: pointer; }
-    .app-topbar .topbar-search input { width: 0; flex: 0 0 0; }
+    .app-topbar .topbar-search { width: 32px; padding: 0; gap: 0; justify-content: center; background: transparent; cursor: pointer; font-size: 18px; }
+    .app-topbar .topbar-search input { width: 0; flex: 0 0 0; padding: 0; }
     .app-topbar .topbar-search:focus-within,
     .app-topbar .topbar-search.has-value {
         position: absolute;
@@ -996,6 +1005,8 @@ summary.app-sync:focus-visible { outline: 2px solid var(--bs-primary); outline-o
         height: 32px;
         z-index: 2;
         padding: 0 10px;
+        gap: 6px;
+        font-size: 13px;
         justify-content: flex-start;
         border-color: var(--ob-input-border);
         background: var(--bs-body-bg);
@@ -1406,7 +1417,10 @@ button.cat-pill:hover { filter: brightness(0.96); }
     .app-topbar-search, .app-topbar > .app-sync, .app-topbar > .app-menu { flex: 0 0 auto; }
     .app-topbar .topbar-search { width: 44px; height: 44px; }
     .app-topbar > .app-sync, .app-topbar > .app-menu > summary.app-sync { width: 44px; height: 44px; justify-content: center; padding: 0; font-size: 18px; }
-    .app-topbar > .sync-problems, .app-topbar > .user-menu { display: grid; place-items: center; width: 44px; height: 44px; }
+    /* A <details> does not lay out its <summary> as a grid item, so the fixed-size badge and avatar are centred in
+       their boxes by absolute positioning. */
+    .app-topbar > .sync-problems, .app-topbar > .user-menu { width: 44px; height: 44px; }
+    .app-topbar > .sync-problems > .app-sync-attention, .app-topbar > .user-menu > .app-avatar { position: absolute; inset: 0; margin: auto; }
     .app-topbar > .user-menu { margin-right: -8px; }
     .app-wordmark { display: none; }
     .app-sync-label { display: none; }

@@ -50,6 +50,82 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
     }
 
     /// <summary>
+    /// On a phone the top bar's controls share one centre line and the rows under it (project switcher, period
+    /// stepper, title, summary actions) start at the same left edge; the period select and the total end at the
+    /// avatar's right edge. At desktop width it only takes screenshots. Set OB_PHONE_HEADER_SCREENSHOT_DIR to keep screenshots for review.
+    /// </summary>
+    [TestCase("light", 390)]
+    [TestCase("dark", 390)]
+    [TestCase("light", 1280)]
+    [TestCase("dark", 1280)]
+    public async Task Phone_header_lines_up(string theme, int width)
+    {
+        var dir = Environment.GetEnvironmentVariable("OB_PHONE_HEADER_SCREENSHOT_DIR");
+        await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = theme == "dark" ? ColorScheme.Dark : ColorScheme.Light });
+        await using (var db = await Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
+        {
+            db.BankLogins.Add(new BankLogin
+            {
+                OwnerUserId = E2ESeed.OwnerUserId,
+                DisplayName = "Needs you",
+                ConnectorType = "fake",
+                LastSyncAt = DateTime.UtcNow.AddHours(-1),
+                NeedsManualSync = "The bank wants a TAN or code.",
+                NeedsManualSince = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+        await Page.SetViewportSizeAsync(width, 844);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year={E2ESeed.BudgetYear}&month=1");
+        await Expect(Page.GetByTestId("bank-sync-attention")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("browse-balance")).ToBeVisibleAsync();
+        if (!string.IsNullOrEmpty(dir))
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"header-{width}-{theme}.png") });
+        if (width > 400) return;
+
+        async Task<(float Left, float Right, float CentreY, float Height)> Box(string selector)
+        {
+            var b = (await Page.Locator(selector).First.BoundingBoxAsync())!;
+            return (b.X, b.X + b.Width, b.Y + b.Height / 2, b.Height);
+        }
+        var pill = await Box(".app-topbar .project-selector-toggle");
+        var icons = new[]
+        {
+            await Box(".app-topbar .topbar-search i"), await Box(".app-topbar > .app-sync i"),
+            await Box(".app-topbar .app-sync-attention"), await Box(".app-topbar .app-avatar"),
+        };
+        foreach (var icon in icons)
+            Assert.That(icon.CentreY, Is.EqualTo(pill.CentreY).Within(1), "top bar icons on the pill's centre line");
+        for (var i = 1; i < icons.Length; i++)
+            Assert.That((icons[i].Left + icons[i].Right) / 2 - (icons[i - 1].Left + icons[i - 1].Right) / 2, Is.EqualTo(44).Within(1),
+                "top bar icons evenly spaced");
+
+        // The bootstrap-icons chevron draws its stroke from 4.65/16 of its box.
+        var chevron = await Box(".app-topbar .period-step i");
+        Assert.That((await Box(".app-topbar .project-selector-name")).Left, Is.EqualTo(16).Within(1), "project name on the gutter");
+        Assert.That(chevron.Left + (chevron.Right - chevron.Left) * 4.65f / 16, Is.EqualTo(16).Within(1), "chevron stroke on the gutter");
+        Assert.That((await Box(".browse-title-btn > span")).Left, Is.EqualTo(16).Within(1), "title on the gutter");
+        Assert.That((await Box(".browse-summary > .btn i")).Left, Is.EqualTo(16).Within(1), "first action on the gutter");
+
+        var mode = await Box(".app-topbar .period-mode-select");
+        Assert.That(mode.Height, Is.EqualTo(pill.Height).Within(1), "period select as tall as the project pill");
+        Assert.That(mode.Right, Is.EqualTo(icons[^1].Right).Within(1), "period select ends at the avatar's edge");
+        Assert.That((await Box("[data-testid=browse-balance]")).Right, Is.EqualTo(icons[^1].Right).Within(1), "total ends at the avatar's edge");
+
+        // The summary toggle is filled only while the summary strip shows.
+        var toggle = Page.GetByTestId("summary-toggle");
+        const string transparent = "rgba(0, 0, 0, 0)";
+        await Expect(Page.GetByTestId("summary-strip")).ToBeVisibleAsync();
+        await Expect(toggle).Not.ToHaveCSSAsync("background-color", transparent);
+        await toggle.ClickAsync();
+        await Expect(Page.GetByTestId("summary-strip")).ToHaveCountAsync(0);
+        await Page.Mouse.MoveAsync(0, 400);
+        await Expect(toggle).ToHaveCSSAsync("background-color", transparent);
+        if (!string.IsNullOrEmpty(dir))
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"header-{width}-{theme}-summary-closed.png") });
+    }
+
+    /// <summary>
     /// Transactions, Budget and Cashflow show the period selector in the top bar, after the project switcher and
     /// before the sync status, gear and account menu; below 1200px it takes a second row under the bar. The views'
     /// own toolbars carry none, and the page never scrolls sideways.
