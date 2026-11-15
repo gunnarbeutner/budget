@@ -36,7 +36,7 @@ public sealed record BankSyncStatus(
     int LoginId,
     string OwnerUserId,
     SyncPhase Phase,
-    string? Message,
+    SyncProgress? Progress,
     DateTime StartedAt,
     DateTime? FinishedAt,
     bool? Succeeded,
@@ -379,7 +379,7 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
             _owner.Publish(UserId);
         }
 
-        public void Report(string message) => Update(s => s with { Message = message });
+        public void Report(SyncProgress progress) => Update(s => s with { Progress = progress });
 
         // Counts the web login's waiting episodes, so that a delay that elapses after the mode changed does nothing.
         private int _waitingEpisode;
@@ -487,7 +487,7 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
                 Challenge = null,
                 ChallengeExpiresAt = null,
                 WebLoginSessionId = null,
-                Message = null,
+                Progress = null,
                 NeedsUser = outcome.NeedsUser,
             });
             foreach (var ownerId in outcome.AffectedOwnerIds)

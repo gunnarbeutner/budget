@@ -22,7 +22,7 @@
     <details class="app-menu sync-problems d-print-none" data-testid="bank-sync-running">
         <summary class="app-sync" data-testid="bank-sync-chip" title="@L["Running_Title"]">
             <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-            <span class="app-sync-label">@L[syncing == 1 ? "Syncing_One" : "Syncing", syncing]@if (syncing == 1 && running[0].Message is { Length: > 0 } progress && progress.StartsWith("Fetching documents", StringComparison.Ordinal)) {<span class="text-body-secondary" data-testid="bank-sync-progress"> · @progress</span>}</span>
+            <span class="app-sync-label">@L[syncing == 1 ? "Syncing_One" : "Syncing", syncing]@if (syncing == 1 && SyncProgressText.ShowsInChip(running[0].Progress)) {<span class="text-body-secondary" data-testid="bank-sync-progress"> · @SyncProgressText.Format(running[0].Progress!, L)</span>}</span>
             <span class="visually-hidden">@L["Running_Title"]</span>
         </summary>
         <div class="dropdown-menu dropdown-menu-end show sync-problems-menu">
@@ -223,7 +223,7 @@ else if (lastSync is { } last)
     {
         SyncPhase.WaitingForInput => L["Running_WaitingInput"].Value,
         SyncPhase.WaitingForApproval => L["Running_WaitingApproval"].Value,
-        _ => s.Message is { Length: > 0 } m ? m : L["Running_Started"].Value,
+        _ => s.Progress is { } p ? SyncProgressText.Format(p, L) : L["Running_Started"].Value,
     };
 
     private string FormatElapsed(DateTime startedUtc)

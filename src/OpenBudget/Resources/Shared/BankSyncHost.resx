@@ -132,4 +132,14 @@
   <data name="Running_Open" xml:space="preserve"><value>Open</value></data>
   <data name="Elapsed_Seconds" xml:space="preserve"><value>{0} s</value></data>
   <data name="Elapsed_Minutes" xml:space="preserve"><value>{0}:{1} min</value></data>
+  <data name="Progress_LoggingIn" xml:space="preserve"><value>Logging in</value></data>
+  <data name="Progress_ListingAccounts" xml:space="preserve"><value>Listing accounts</value></data>
+  <data name="Progress_Refreshing" xml:space="preserve"><value>Refreshing</value></data>
+  <data name="Progress_MatchingOrders" xml:space="preserve"><value>Matching orders</value></data>
+  <data name="Progress_MatchingReceipts" xml:space="preserve"><value>Matching receipts</value></data>
+  <data name="Progress_FetchingStatements" xml:space="preserve"><value>Fetching statements</value></data>
+  <data name="Progress_FetchingDocuments" xml:space="preserve"><value>Fetching documents</value></data>
+  <data name="Progress_Count" xml:space="preserve"><value>{0}: {1}</value></data>
+  <data name="Progress_CountOf" xml:space="preserve"><value>{0}: {1} of {2}</value></data>
+  <data name="Progress_Detail" xml:space="preserve"><value>{0}: {1}</value></data>
 </root>

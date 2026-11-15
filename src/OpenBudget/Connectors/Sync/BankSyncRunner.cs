@@ -20,7 +20,7 @@ public sealed record SyncRequest(
 /// <summary>Where the runner reports progress and asks the user for input.</summary>
 public interface ISyncSink
 {
-    void Report(string message);
+    void Report(SyncProgress progress);
 
     /// <summary>Asks the user; null when nobody answered in time (the step then fails).</summary>
     Task<ChallengeAnswer?> AskAsync(ConnectorChallenge challenge, CancellationToken ct);
@@ -209,14 +209,14 @@ public sealed class BankSyncRunner
 
             connector = registration.Create(new ConnectorContext(http, _clock, _loggers.CreateLogger(registration.ConnectorType))
             {
-                Progress = sink.Report,
+                Progress = detail => sink.Report(new SyncProgress(SyncStage.Connector, Detail: detail)),
                 Silent = request.Background,
 #pragma warning disable CA2025 // the connector only calls it during this sync, while the client is alive
                 SaveSession = (session, token) => SaveSessionNowAsync(login.Id, session, http, token),
 #pragma warning restore CA2025
             });
 
-            sink.Report("Logging in");
+            sink.Report(new SyncProgress(SyncStage.LoggingIn));
             var loginStep = await DriveAsync(a => connector.LoginAsync(credentials, stored, a, ct), sink, context, ct);
             if (loginStep.Status == StepStatus.NeedsUser) throw new SilentAbortException(loginStep.FailureReason ?? DefaultNeedsUser);
             if (loginStep.Status != StepStatus.Done)
@@ -229,7 +229,7 @@ public sealed class BankSyncRunner
             if (connector is ISyncHistoryConsumer historyConsumer)
                 historyConsumer.UseSyncHistory(await SyncHistoryAsync(db, login, login.ConnectorType, historyConsumer.HistoryOverlapDays, ct));
 
-            sink.Report("Listing accounts");
+            sink.Report(new SyncProgress(SyncStage.ListingAccounts));
             var remoteAccounts = await connector.ListAccountsAsync(ct);
             _logger.LogInformation("Bank login {LoginId}: the bank lists {Count} accounts.", login.Id, remoteAccounts.Count);
             var vanished = UpsertAccounts(login, remoteAccounts);
@@ -255,10 +255,10 @@ public sealed class BankSyncRunner
                 try { await RefreshAccountsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct); }
                 finally { await context.CloseBrowsersAsync(); }
                 // New bookings may be the ones open receipts (mailbox, Lidl Plus, Amazon charges) were waiting for.
-                sink.Report("Matching receipts");
+                sink.Report(new SyncProgress(SyncStage.MatchingReceipts));
                 try
                 {
-                    await _receipts.MatchAsync(db, login.OwnerUserId, ct, s => sink.Report("Matching receipts: " + s));
+                    await _receipts.MatchAsync(db, login.OwnerUserId, ct, s => sink.Report(new SyncProgress(SyncStage.MatchingReceipts, Detail: s)));
                     await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -638,7 +638,7 @@ public sealed class BankSyncRunner
         foreach (var link in links)
         {
             var remoteAccount = remote.First(r => string.Equals(r.RemoteId, link.RemoteId, StringComparison.Ordinal));
-            sink.Report($"Refreshing {link.Name}");
+            sink.Report(new SyncProgress(SyncStage.Refreshing, Detail: link.Name));
             try
             {
                 var account = await db.Accounts.FirstOrDefaultAsync(a => a.Id == link.LinkedAccountId, ct);
@@ -716,8 +716,8 @@ public sealed class BankSyncRunner
         login.OrderHistoryReadBackTo = login.OrderHistoryCompleteAt == null ? result.CoveredFrom : null;
         UpsertAccounts(login, result.Instruments);
         await db.SaveChangesAsync(ct);
-        sink.Report("Matching orders");
-        await OpenBudget.Connectors.Amazon.AmazonReceiptStore.ApplyAsync(db, login, result, _clock.GetUtcNow().UtcDateTime, _receipts, ct, s => sink.Report("Matching orders: " + s));
+        sink.Report(new SyncProgress(SyncStage.MatchingOrders));
+        await OpenBudget.Connectors.Amazon.AmazonReceiptStore.ApplyAsync(db, login, result, _clock.GetUtcNow().UtcDateTime, _receipts, ct, s => sink.Report(new SyncProgress(SyncStage.MatchingOrders, Detail: s)));
         _logger.LogInformation("Bank login {LoginId}: {Charges} charges and {Orders} order details stored.", login.Id, result.Charges.Count, result.Orders.Count);
         affected.Add(login.OwnerUserId);
         await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct);
@@ -739,12 +739,12 @@ public sealed class BankSyncRunner
         var step = await DriveAsync(a => source.FetchReceiptsAsync(since, known, a, ct), sink, context, ct);
         if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);
         if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Reading the receipts failed.");
-        sink.Report("Matching receipts");
+        sink.Report(new SyncProgress(SyncStage.MatchingReceipts));
         var now = _clock.GetUtcNow().UtcDateTime;
         var added = 0;
         foreach (var r in step.Value!)
             if (await OpenBudget.Connectors.Receipts.ReceiptStore.AddAsync(db, login.OwnerUserId, shop, r.Receipt, null, now, ct, r.Store)) added++;
-        await _receipts.MatchAsync(db, login.OwnerUserId, ct, s => sink.Report("Matching receipts: " + s));
+        await _receipts.MatchAsync(db, login.OwnerUserId, ct, s => sink.Report(new SyncProgress(SyncStage.MatchingReceipts, Detail: s)));
         _logger.LogInformation("Bank login {LoginId}: {Count} new receipts stored.", login.Id, added);
         affected.Add(login.OwnerUserId);
         await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct);
@@ -806,7 +806,7 @@ public sealed class BankSyncRunner
             .ToList();
         if (targets.Count == 0) return;
 
-        sink.Report("Fetching statements");
+        sink.Report(new SyncProgress(SyncStage.FetchingStatements));
         var now = _clock.GetUtcNow().UtcDateTime;
         var known = await BankStatementStore.KnownIdentifiersAsync(db, login.Id, ct);
         // Markers for connectors that read a long history once per account: which requested accounts already have documents.
@@ -844,9 +844,8 @@ public sealed class BankSyncRunner
                 // each batch is kept before the next one is asked for
                 await db.SaveChangesAsync(ct);
                 if (connector is not IBatchedStatements { MoreStatements: true } batched || step.Value!.Count == 0) break;
-                sink.Report(batched.StatementsTotal is { } total
-                    ? $"Fetching documents: {stored} of {stored + total - step.Value!.Count}"
-                    : $"Fetching documents: {stored}");
+                sink.Report(new SyncProgress(SyncStage.FetchingDocuments, stored,
+                    batched.StatementsTotal is { } total ? stored + total - step.Value!.Count : null));
             }
         }
         catch (ConnectorException ex)

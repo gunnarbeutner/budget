@@ -8,6 +8,7 @@
 @inject IStringLocalizer<OpenBudget.Pages.BankLogins> L
 @inject ClockService Clock
 @inject IStringLocalizer<MailboxCard> MailboxL
+@inject IStringLocalizer<BankSyncHost> SyncL
 
 @* The bank logins of the signed-in user: the list with each login's accounts, adding a login (with its sign-in,
    TAN or app-approval dialogs and the first sync), editing and deleting. Shown by the bank logins page and inline
@@ -162,9 +163,9 @@ else
                     @if (running)
                     {
                         <div class="col-sm-6 col-md-8">
-                            @if (!string.IsNullOrEmpty(status!.Message))
+                            @if (status!.Progress is { } progress)
                             {
-                                <div class="text-body-secondary">@status.Message…</div>
+                                <div class="text-body-secondary">@SyncProgressText.Format(progress, SyncL)…</div>
                             }
                             @if (status is { Phase: SyncPhase.WaitingForInput or SyncPhase.WaitingForApproval })
                             {
