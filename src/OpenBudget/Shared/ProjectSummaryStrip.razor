@@ -29,7 +29,8 @@
                 var spent = summary.TotalSpent + UncategorizedSpent;
                 var status = ProjectStatus.BarClass(spent, summary.TotalBudget);
                 var percent = summary.TotalBudget > 0 ? spent / summary.TotalBudget * 100m : 0m;
-                <a class="summary-label" href="@budgetUrl">@L["Spent_Label", PeriodLabel]</a>
+                @* Phones: the header already names the period. *@
+                <a class="summary-label" href="@budgetUrl"><span class="d-none d-md-inline">@L["Spent_Label", PeriodLabel]</span><span class="d-md-none">@L["Spent_LabelShort"]</span></a>
                 <span class="summary-value">@Formatting.FormatMoneyDe(spent) <span class="summary-of">@L["Of", Formatting.FormatMoneyDe(summary.TotalBudget)]</span></span>
                 <span class="ob-bar" role="img" aria-label="@L["Spent_Percent", percent.ToString("F0", CultureInfo.CurrentCulture)]">
                     <span class="status-bg-@status" style="width: @ProjectStatus.BarWidth(spent, summary.TotalBudget)"></span>

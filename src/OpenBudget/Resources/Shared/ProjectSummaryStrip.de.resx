@@ -61,6 +61,9 @@
   <data name="Spent_Label" xml:space="preserve">
     <value>Ausgegeben vom Budget, {0}</value>
   </data>
+  <data name="Spent_LabelShort" xml:space="preserve">
+    <value>Ausgegeben vom Budget</value>
+  </data>
   <data name="Spent_Percent" xml:space="preserve">
     <value>{0} % des Budgets ausgegeben</value>
   </data>

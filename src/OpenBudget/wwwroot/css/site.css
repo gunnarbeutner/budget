@@ -1432,25 +1432,33 @@ button.cat-pill:hover { filter: brightness(0.96); }
     .browse-scroll { overflow: visible; }
     /* On a phone the page scrolls as a whole: the sticky toolbar (title and actions) stays, the chart scrolls away. */
     .browse-head { max-height: none; overflow: visible; }
-    /* One row: the title, its icon actions right after it, then the total at the right gutter. The title track
-       shrinks first (ellipsis); the actions and the total keep their width. The info line stays under the title,
-       and everything else (selection actions, a summary that carries text) takes a full row underneath. */
+    /* One row: the title at its natural width, its icon actions packed right after it, a flexible spacer, then the
+       total at the right gutter. Only the title track shrinks (ellipsis on its text, never the chevron); the actions
+       and the total keep their width. The info line stays under the title, and everything else (selection actions,
+       a summary that carries text) takes a full row underneath. Those full rows and the info line size to the grid
+       instead of contributing their own width to the tracks, which would push free space into the action track. */
     .browse-main > .page-toolbar.browse-toolbar {
         display: grid;
-        grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, auto) max-content minmax(0, 1fr) auto;
         align-items: center;
         column-gap: 0;
     }
-    .browse-toolbar > * { grid-column: 1 / -1; }
-    .browse-toolbar > .browse-ident { grid-column: 1; grid-row: 1; }
-    .browse-toolbar > .browse-summary { grid-column: 2; grid-row: 1; flex-wrap: nowrap; gap: 0; margin-left: 4px; }
-    .browse-toolbar > .browse-balance { grid-column: 4; grid-row: 1; margin-left: 8px; }
-    .browse-toolbar > .browse-summary:has(> :not(.browse-action)) { grid-column: 1 / -1; grid-row: 2; flex-wrap: wrap; margin-left: -10px; }
+    .browse-toolbar > * { grid-column: 1 / -1; contain: inline-size; }
+    .browse-toolbar > .browse-ident { grid-column: 1; grid-row: 1; contain: none; }
+    .browse-toolbar .browse-sub { contain: inline-size; }
+    .browse-toolbar .browse-title-btn { display: inline-flex; align-items: center; }
+    .browse-toolbar .browse-title-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .browse-toolbar .browse-title-btn > i { flex: none; }
+    .browse-toolbar > .browse-summary { grid-column: 2; grid-row: 1; contain: none; flex-wrap: nowrap; justify-content: flex-start; gap: 0; margin-left: 0; }
+    .browse-toolbar > .browse-balance { contain: none; }
+    .browse-toolbar > .browse-balance { grid-column: 4; grid-row: 1; margin-left: 4px; }
+    .browse-toolbar > .browse-summary:has(> :not(.browse-action)) { grid-column: 1 / -1; grid-row: 2; contain: inline-size; flex-wrap: wrap; margin-left: -10px; }
     .browse-summary .browse-action-label { display: none; }
     .browse-toolbar .browse-balance-note { display: none; }
     /* Icon-only actions in 40×44 touch boxes; a toggle shows its state in its colour instead of a chevron. */
     .browse-summary > .btn { display: inline-flex; align-items: center; justify-content: center; position: relative; min-width: 40px; height: 44px; font-size: 18px; border-radius: 6px; }
     .browse-summary > .btn .bi-chevron-up, .browse-summary > .btn .bi-chevron-down { display: none; }
+    .browse-toolbar > .browse-summary:not(:has(> :not(.browse-action))) > .btn { flex: 0 0 40px; width: 40px; }
     .browse-summary > .browse-action[aria-expanded]:not([data-testid=filter-toggle]) { color: var(--ob-muted); }
     .browse-summary > .browse-action[aria-expanded="true"]:not([data-testid=filter-toggle]) { color: var(--ob-accent); }
     .browse-summary > .btn .ob-badge { position: absolute; top: 4px; right: 0; }

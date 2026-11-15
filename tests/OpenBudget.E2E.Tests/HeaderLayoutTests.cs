@@ -143,41 +143,94 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
             await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"header-{width}-{theme}-summary-closed.png") });
     }
 
+    private async Task SeedNovemberTotalAsync(long amount)
+    {
+        var accountId = RowIds.Namespace(E2ESeed.IdSpace, 78);
+        await using var db = await Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync();
+        db.Accounts.Add(new Account
+        {
+            Id = accountId,
+            OwnerUserId = E2ESeed.OwnerUserId,
+            Name = "A very long account name for a narrow phone",
+            Type = 1,
+            Currency = "EUR",
+        });
+        await db.SaveChangesAsync();
+        db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = accountId });
+        var date = ((DateTimeOffset)new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds();
+        db.Transactions.Add(new Transaction
+        {
+            Id = 7900,
+            OwnerUserId = E2ESeed.OwnerUserId,
+            AccountId = accountId,
+            Amount = amount,
+            CategoryId = 200,
+            Currency = "EUR",
+            Name = "Big",
+            Timestamp = date,
+            ValueTimestamp = date,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// On a phone with a typical total the title row has room for everything: the title shows in full with its
+    /// chevron, the icon actions sit packed right after it and the total ends at the avatar's edge. The summary card
+    /// labels its spending without the period, which the header already names.
+    /// </summary>
+    [TestCase("light")]
+    [TestCase("dark")]
+    public async Task Phone_title_row_fits_a_typical_total(string theme)
+    {
+        var dir = Environment.GetEnvironmentVariable("OB_PHONE_HEADER_SCREENSHOT_DIR");
+        await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = theme == "dark" ? ColorScheme.Dark : ColorScheme.Light });
+        await SeedNovemberTotalAsync(-2017593);
+        await Page.SetViewportSizeAsync(390, 844);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=11");
+        var balance = Page.GetByTestId("browse-balance");
+        await Expect(balance).ToContainTextAsync(",");
+        await Expect(Page.GetByTestId("filter-toggle")).ToBeVisibleAsync();
+        Assert.That((await balance.InnerTextAsync()).Count(char.IsDigit), Is.GreaterThanOrEqualTo(7), "a total with 5 digits before the comma");
+        if (!string.IsNullOrEmpty(dir))
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"title-row-390-{theme}.png") });
+
+        var title = Page.Locator(".browse-title-btn > span");
+        Assert.That(await title.EvaluateAsync<bool>("e => e.scrollWidth <= e.clientWidth"), Is.True, "the title is not cut");
+        var chevron = Page.Locator(".browse-title-btn > i");
+        await Expect(chevron).ToBeVisibleAsync();
+        var chevronBox = (await chevron.BoundingBoxAsync())!;
+        var heading = (await Page.Locator(".browse-title").BoundingBoxAsync())!;
+        Assert.That(chevronBox.Width, Is.GreaterThan(8), "the chevron keeps its width");
+        Assert.That(chevronBox.X + chevronBox.Width, Is.LessThanOrEqualTo(heading.X + heading.Width + 1), "the chevron is not clipped");
+
+        var actions = Page.Locator(".browse-toolbar .browse-summary > .browse-action");
+        Assert.That(await actions.CountAsync(), Is.GreaterThanOrEqualTo(3), "filter, summary and mark-all actions");
+        var previousRight = chevronBox.X + chevronBox.Width;
+        for (var i = 0; i < await actions.CountAsync(); i++)
+        {
+            var a = (await actions.Nth(i).BoundingBoxAsync())!;
+            Assert.That(a.Width, Is.EqualTo(40).Within(0.5), "40px action");
+            Assert.That(a.X - previousRight, Is.InRange(-1, i == 0 ? 12 : 4), "actions packed after the title");
+            previousRight = a.X + a.Width;
+        }
+        var total = (await balance.BoundingBoxAsync())!;
+        var avatar = (await Page.Locator(".app-topbar .app-avatar").BoundingBoxAsync())!;
+        Assert.That(previousRight, Is.LessThanOrEqualTo(total.X), "actions before the total");
+        Assert.That(total.X + total.Width, Is.EqualTo(avatar.X + avatar.Width).Within(1), "total ends at the avatar's edge");
+
+        var label = Page.GetByTestId("tile-spent").Locator(".summary-label");
+        Assert.That(await label.InnerTextAsync(), Is.EqualTo("Spent of budget"));
+        Assert.That(await label.EvaluateAsync<bool>("e => e.scrollWidth <= e.clientWidth + 1"), Is.True, "the card label is not cut");
+    }
+
     /// <summary>
     /// On a phone a very large total keeps its width and the title row stays one line: the title gives way with an
-    /// ellipsis, the actions keep their boxes after it and the total still ends at the avatar's edge.
+    /// ellipsis while its chevron stays, the actions keep their boxes after it and the total still ends at the avatar's edge.
     /// </summary>
     [Test]
     public async Task Phone_title_truncates_for_a_large_total()
     {
-        var accountId = RowIds.Namespace(E2ESeed.IdSpace, 78);
-        await using (var db = await Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
-        {
-            db.Accounts.Add(new Account
-            {
-                Id = accountId,
-                OwnerUserId = E2ESeed.OwnerUserId,
-                Name = "A very long account name for a narrow phone",
-                Type = 1,
-                Currency = "EUR",
-            });
-            await db.SaveChangesAsync();
-            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = accountId });
-            var date = ((DateTimeOffset)new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds();
-            db.Transactions.Add(new Transaction
-            {
-                Id = 7900,
-                OwnerUserId = E2ESeed.OwnerUserId,
-                AccountId = accountId,
-                Amount = -98765432198,
-                CategoryId = 200,
-                Currency = "EUR",
-                Name = "Big",
-                Timestamp = date,
-                ValueTimestamp = date,
-            });
-            await db.SaveChangesAsync();
-        }
+        await SeedNovemberTotalAsync(-98765432198);
         await Page.SetViewportSizeAsync(390, 844);
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=11");
         var balance = Page.GetByTestId("browse-balance");
@@ -189,8 +242,11 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
         var titleBox = (await Page.Locator(".browse-title").BoundingBoxAsync())!;
         var avatar = (await Page.Locator(".app-topbar .app-avatar").BoundingBoxAsync())!;
         var total = (await balance.BoundingBoxAsync())!;
-        Assert.That(await Page.Locator(".browse-title-btn").EvaluateAsync<bool>("e => e.scrollWidth > e.clientWidth + 1"),
+        Assert.That(await Page.Locator(".browse-title-btn > span").EvaluateAsync<bool>("e => e.scrollWidth > e.clientWidth + 1"),
             Is.True, "the title is cut");
+        var chevron = (await Page.Locator(".browse-title-btn > i").BoundingBoxAsync())!;
+        Assert.That(chevron.Width, Is.GreaterThan(8), "the chevron stays");
+        Assert.That(chevron.X + chevron.Width, Is.LessThanOrEqualTo(titleBox.X + titleBox.Width + 1), "the chevron is not clipped");
         Assert.That(await balance.EvaluateAsync<bool>("e => e.scrollWidth <= e.clientWidth + 1"), Is.True, "the total is not cut");
         Assert.That(total.Height, Is.LessThan(30), "the total stays on one line");
         Assert.That(titleBox.Height, Is.LessThan(30), "the title stays on one line");
