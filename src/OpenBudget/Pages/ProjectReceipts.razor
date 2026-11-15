@@ -7,8 +7,8 @@
 
 @* The Receipts view of a project: the receipt list (ReceiptList) scoped to the project — receipts on its bookings the
    user may see, and the user's receipts still waiting for a booking from sources that book into it. The title row
-   scrolls away so the list's filter bar is the sticky part. Categories, item memory and AI options stay in
-   Settings › Receipts. *@
+   (desktop only; on phones the bottom bar names the view) scrolls away so the list's filter bar is the sticky part.
+   Categories, item memory and AI options stay in Settings › Receipts, linked from the filter bar. *@
 
 <PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
 
@@ -21,11 +21,10 @@
 <ProjectPageHeader ProjectId="ProjectId" ProjectName="@(project?.Name ?? "")" />
 
 <ProjectShell ProjectId="ProjectId" Active="ProjectTab.Receipts" MainClass="shell-page">
-    <div class="page-toolbar position-static" data-testid="project-receipts-toolbar">
+    <div class="page-toolbar position-static d-none d-md-flex" data-testid="project-receipts-toolbar">
         <h1 class="view-title">@L["Heading"]</h1>
     </div>
-    <p class="text-body-secondary small">@L["Project_Intro"] <a href="/receipts?tab=settings">@L["Project_Settings"]</a></p>
-    <ReceiptList ProjectId="ProjectId" />
+    <ReceiptList ProjectId="ProjectId" SettingsHref="/receipts?tab=settings" />
 </ProjectShell>
 
 @code {

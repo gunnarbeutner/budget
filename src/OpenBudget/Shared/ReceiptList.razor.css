@@ -39,9 +39,57 @@
 .receipts-title { font-size: 13px; text-decoration: none; }
 .receipts-row-open { cursor: pointer; }
 
+/* The short status and the action icons are the phone list's; the badge and the action labels the table's. */
+.receipts-status-short, .receipts-action-icon { display: none; }
+.receipts-dot {
+    display: inline-block;
+    width: .5rem;
+    height: .5rem;
+    border-radius: 50%;
+    margin-right: .3rem;
+    vertical-align: .05rem;
+    background: var(--ob-muted);
+}
+.receipts-dot.bank-pill-ok { background: var(--ob-ok); }
+.receipts-dot.bank-pill-warn { background: var(--ob-warn); }
+.receipts-dot.bank-pill-info { background: var(--ob-accent); }
+
 @media (max-width: 575.98px) {
-    .receipts-col-amount { width: 5.25rem; }
-    .receipts-col-status { width: 7rem; }
+    .receipts-filters .form-select-sm, .receipts-filters .form-control-sm { height: 30px; padding-top: 0; padding-bottom: 0; }
+    .receipts-filters .form-select-sm { max-width: 42%; }
+    .receipts-search { width: auto; min-width: 0; }
+    .receipts-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px; }
+    .receipts-chips::-webkit-scrollbar { display: none; }
+    .receipts-chip { flex: 0 0 auto; white-space: nowrap; }
+
+    /* Two-line rows: title over date · source on the left, amount over status and action on the right. */
+    .receipts-table, .receipts-table tbody { display: block; }
+    .receipts-table thead { display: none; }
+    .receipts-table tr.receipts-row-open {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: "title amount" "title status";
+        column-gap: .75rem;
+        align-items: center;
+        padding: .35rem 0;
+        border-bottom: 1px solid var(--ob-hairline);
+    }
+    .receipts-table tr.receipts-row-open > td { display: block; width: auto; padding: 0; border: 0; box-shadow: none; background: transparent; }
+    .receipts-table td.receipts-col-title { grid-area: title; min-width: 0; }
+    .receipts-table td.receipts-col-amount { grid-area: amount; font-weight: 600; }
+    .receipts-table td.receipts-col-status {
+        grid-area: status;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: .5rem;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+    .receipts-status-full, .receipts-instalments, .receipts-action-text { display: none !important; }
+    .receipts-status-short { display: inline; color: var(--ob-muted); }
+    .receipts-action-icon { display: inline; font-size: 1rem; line-height: 1; }
+    .receipts-action { display: inline-flex !important; padding: 0 .1rem !important; }
 }
 
 .receipts-assign-receipt {

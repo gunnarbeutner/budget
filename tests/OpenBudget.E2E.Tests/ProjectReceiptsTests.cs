@@ -8,7 +8,7 @@ namespace OpenBudget.E2E.Tests;
 /// <summary>
 /// A project's Receipts view: the sidebar link with the count of receipts to review, the list scoped to the project
 /// (receipts on its bookings, open receipts of sources booking into it, not receipts elsewhere), the badge following
-/// an assignment, and the phone bottom bar.
+/// an assignment, the phone bottom bar and the phone list. Set OB_RECEIPTS_SCREENSHOT_DIR to keep screenshots.
 /// </summary>
 [TestFixture]
 public sealed class ProjectReceiptsTests : EndToEndTestBase
@@ -78,5 +78,49 @@ public sealed class ProjectReceiptsTests : EndToEndTestBase
         await bar.GetByTestId("bottom-receipts").ClickAsync();
         await Expect(Page.GetByTestId("receipt-row")).ToHaveCountAsync(3);
         Assert.That(await Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"), Is.True);
+    }
+
+    [Test]
+    public async Task On_a_phone_the_receipts_are_a_compact_two_line_list()
+    {
+        await Page.SetViewportSizeAsync(390, 844);
+        await GoToAsync($"/projects/{Pid}/receipts");
+        var rows = Page.GetByTestId("receipt-row");
+        await Expect(rows).ToHaveCountAsync(3);
+        await Expect(Page.GetByTestId("project-receipts-toolbar")).ToBeHiddenAsync();
+        await Expect(Page.GetByTestId("receipts-settings-link")).ToBeVisibleAsync();
+
+        var booked = rows.Filter(new() { HasText = "Sampletown Booked" });
+        await Expect(booked.GetByTestId("receipt-status")).ToBeHiddenAsync();
+        await Expect(booked.GetByTestId("receipt-status-short")).ToHaveTextAsync(new System.Text.RegularExpressions.Regex(@"^Booked \d\d\.\d\d\.$"));
+
+        var open = rows.Filter(new() { HasText = "Sampletown Open A" });
+        await Expect(open.GetByTestId("receipt-assign")).ToBeVisibleAsync();
+        // Two text lines: the status and the assign action share the second line.
+        foreach (var row in new[] { booked, open })
+        {
+            var box = await row.BoundingBoxAsync();
+            Assert.That(box!.Height, Is.LessThanOrEqualTo(56));
+        }
+        var chips = Page.GetByTestId("receipts-filter-state");
+        Assert.That(await chips.EvaluateAsync<string>("e => getComputedStyle(e).flexWrap"), Is.EqualTo("nowrap"));
+        if (Environment.GetEnvironmentVariable("OB_RECEIPTS_SCREENSHOT_DIR") is { Length: > 0 } dir)
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, "receipts-phone.png") });
+    }
+
+    [Test]
+    public async Task On_a_desktop_the_receipts_are_a_table_with_full_statuses()
+    {
+        await Page.SetViewportSizeAsync(1280, 900);
+        await GoToAsync($"/projects/{Pid}/receipts");
+        var rows = Page.GetByTestId("receipt-row");
+        await Expect(rows).ToHaveCountAsync(3);
+        await Expect(Page.GetByTestId("project-receipts-toolbar")).ToBeVisibleAsync();
+        var open = rows.Filter(new() { HasText = "Sampletown Open A" });
+        await Expect(open.GetByTestId("receipt-status")).ToBeVisibleAsync();
+        await Expect(open.GetByTestId("receipt-status-short")).ToBeHiddenAsync();
+        await Expect(open.GetByTestId("receipt-assign")).ToHaveTextAsync("Assign…");
+        if (Environment.GetEnvironmentVariable("OB_RECEIPTS_SCREENSHOT_DIR") is { Length: > 0 } dir)
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, "receipts-desktop.png") });
     }
 }

@@ -235,12 +235,6 @@
   <data name="PageTitle_WithProject" xml:space="preserve">
     <value>Kassenbons · {0} · OpenBudget</value>
   </data>
-  <data name="Project_Intro" xml:space="preserve">
-    <value>Die Kassenbons der Buchungen dieses Projekts und Kassenbons, die noch auf eine Buchung warten, aus Quellen, die in dieses Projekt buchen. Kategorien und Artikelgedächtnis findest du in den</value>
-  </data>
-  <data name="Project_Settings" xml:space="preserve">
-    <value>Einstellungen.</value>
-  </data>
   <data name="Status_InstalmentsOf" xml:space="preserve">
     <value>Raten {0} von {1}</value>
   </data>
@@ -258,5 +252,38 @@
   </data>
   <data name="OwnerReceipt" xml:space="preserve">
     <value>Beleg von {0}</value>
+  </data>
+  <data name="Short_Split" xml:space="preserve">
+    <value>Aufgeteilt {0}</value>
+  </data>
+  <data name="Short_Booked" xml:space="preserve">
+    <value>Gebucht {0}</value>
+  </data>
+  <data name="Short_Waiting" xml:space="preserve">
+    <value>Wartet</value>
+  </data>
+  <data name="Short_Ambiguous" xml:space="preserve">
+    <value>Mehrere passen</value>
+  </data>
+  <data name="Short_Unmatched" xml:space="preserve">
+    <value>Keine Buchung</value>
+  </data>
+  <data name="Short_NoBooking" xml:space="preserve">
+    <value>Nicht bezahlt</value>
+  </data>
+  <data name="Short_Dismissed" xml:space="preserve">
+    <value>Nicht in App</value>
+  </data>
+  <data name="Short_InstalmentsOf" xml:space="preserve">
+    <value>Raten {0}/{1}</value>
+  </data>
+  <data name="Short_Instalments" xml:space="preserve">
+    <value>Raten</value>
+  </data>
+  <data name="Short_InstalmentsCancelled" xml:space="preserve">
+    <value>Storniert</value>
+  </data>
+  <data name="Settings_Link" xml:space="preserve">
+    <value>Kassenbon-Kategorien und Artikelgedächtnis</value>
   </data>
 </root>

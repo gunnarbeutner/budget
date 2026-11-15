@@ -9,8 +9,9 @@
 
 @* The receipt list: all of the signed-in user's receipts, or with ProjectId a project's receipts (ReceiptService.
    ListProjectAsync: those on the project's bookings the user may see, and the user's open receipts of sources booking
-   into it). Newest first, with a sticky filter bar (source, status chips with counts over all rows, search); the rows
-   are virtualized in the page's scroll container. A row opens the receipt panel; the user's own ambiguous, waiting or
+   into it). Newest first, with a sticky filter bar (source, search, optional settings link, status chips with counts
+   over all rows); the rows are virtualized in the page's scroll container. On phones the table renders as a two-line
+   list (title and amount; date, source, a short status and the row's action) and the chips scroll sideways. A row opens the receipt panel; the user's own ambiguous, waiting or
    unmatched receipt can be assigned to a booking by hand (a dialog lists the bookings near its date) or marked as
    having no booking in the app. *@
 
@@ -21,7 +22,7 @@
 
 <section data-testid="receipts-list">
     <div class="receipts-filters" data-testid="receipts-filters">
-        <div class="d-flex flex-wrap align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2">
             <select class="form-select form-select-sm w-auto" aria-label="@L["Filter_Source"]" data-testid="receipts-filter-source"
                     value="@(source ?? "")" @onchange="e => SourceAsync(e.Value?.ToString() is { Length: > 0 } v ? v : null)">
                 <option value="">@L["Filter_AllSources"]</option>
@@ -32,8 +33,12 @@
             </select>
             <input type="search" class="form-control form-control-sm receipts-search" placeholder="@L["Search"]" aria-label="@L["Search"]"
                    data-testid="receipts-search" @bind="search" @bind:event="oninput" />
+            @if (SettingsHref != null)
+            {
+                <a href="@SettingsHref" class="app-icon-btn" title="@L["Settings_Link"]" aria-label="@L["Settings_Link"]" data-testid="receipts-settings-link"><i class="bi bi-sliders" aria-hidden="true"></i></a>
+            }
         </div>
-        <div class="d-flex flex-wrap gap-1 mt-2" role="group" aria-label="@L["Filter_State"]" data-testid="receipts-filter-state">
+        <div class="receipts-chips d-flex gap-1 mt-2" role="group" aria-label="@L["Filter_State"]" data-testid="receipts-filter-state">
             @foreach (var g in Enum.GetValues<Group>())
             {
                 var count = rows?.Count(r => In(g, r)) ?? 0;
@@ -79,18 +84,19 @@
                         <td class="d-none d-md-table-cell text-end receipts-col-items">@r.Items</td>
                         <td class="text-end text-nowrap receipts-col-amount">@Formatting.FormatMoneyDe(-r.PaymentCents / 100m)</td>
                         <td class="receipts-col-status" @onclick:stopPropagation="true">
-                            <span class="badge rounded-pill @Pill(r.State)" data-testid="receipt-status" title="@Status(r)">@Status(r)</span>
+                            <span class="badge rounded-pill receipts-status-full @Pill(r.State)" data-testid="receipt-status" title="@Status(r)">@Status(r)</span>
+                            <span class="receipts-status-short" data-testid="receipt-status-short" title="@Status(r)"><span class="receipts-dot @Pill(r.State)" aria-hidden="true"></span>@ShortStatus(r)</span>
                             @if (r.Instalments is { Running: true } plan)
                             {
-                                <span class="d-block small text-body-secondary text-nowrap" data-testid="receipt-instalments">@InstalmentLine(plan)</span>
+                                <span class="d-block small text-body-secondary text-nowrap receipts-instalments" data-testid="receipt-instalments">@InstalmentLine(plan)</span>
                             }
                             @if (r.IsOwn && r.State is ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched or ReceiptReviewState.Waiting)
                             {
-                                <button type="button" class="btn btn-sm btn-link p-0 d-block" data-testid="receipt-assign" @onclick="() => OpenAssignAsync(r)">@L["Assign_Row"]</button>
+                                <button type="button" class="btn btn-sm btn-link p-0 d-block receipts-action" data-testid="receipt-assign" title="@L["Assign_Row"]" @onclick="() => OpenAssignAsync(r)"><i class="bi bi-link-45deg receipts-action-icon" aria-hidden="true"></i><span class="receipts-action-text">@L["Assign_Row"]</span></button>
                             }
                             else if (r.IsOwn && r.State == ReceiptReviewState.Dismissed)
                             {
-                                <button type="button" class="btn btn-sm btn-link p-0 d-block" data-testid="receipt-reset" @onclick="() => RunAsync(() => Service.ResetAssignmentAsync(r.Id))">@L["Reset"]</button>
+                                <button type="button" class="btn btn-sm btn-link p-0 d-block receipts-action" data-testid="receipt-reset" title="@L["Reset"]" @onclick="() => RunAsync(() => Service.ResetAssignmentAsync(r.Id))"><i class="bi bi-arrow-counterclockwise receipts-action-icon" aria-hidden="true"></i><span class="receipts-action-text">@L["Reset"]</span></button>
                             }
                         </td>
                     </tr>
@@ -167,6 +173,9 @@
 
     /// <summary>The project whose receipts are listed; null lists all of the user's receipts.</summary>
     [Parameter] public int? ProjectId { get; set; }
+
+    /// <summary>Where the filter bar's settings icon leads (receipt categories and item memory); null shows none.</summary>
+    [Parameter] public string? SettingsHref { get; set; }
 
     private Group group;
     private string? search;
@@ -255,6 +264,20 @@
             ReceiptReviewState.InstalmentsPending when r.Instalments is { } p => L["Status_InstalmentsOf", p.Charged, p.Count],
             ReceiptReviewState.Instalments when r.Instalments is { } p => L["Status_InstalmentsPaid", p.Count],
             _ => L["State_" + r.State],
+        };
+    }
+
+    /// <summary>The phone list's status: a word or two, booking dates as day and month.</summary>
+    private string ShortStatus(ReceiptReviewRow r)
+    {
+        var booked = r.BookingDate?.ToString("dd.MM.", CultureInfo.InvariantCulture) ?? "";
+        return r.State switch
+        {
+            ReceiptReviewState.Split => L["Short_Split", booked],
+            ReceiptReviewState.Matched => L["Short_Booked", booked],
+            ReceiptReviewState.InstalmentsPending or ReceiptReviewState.Instalments when r.Instalments is { } p => L["Short_InstalmentsOf", p.Charged, p.Count],
+            ReceiptReviewState.InstalmentsPending or ReceiptReviewState.Instalments => L["Short_Instalments"],
+            _ => L["Short_" + r.State],
         };
     }
 

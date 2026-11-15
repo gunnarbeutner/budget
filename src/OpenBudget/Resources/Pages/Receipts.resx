@@ -235,12 +235,6 @@
   <data name="PageTitle_WithProject" xml:space="preserve">
     <value>Receipts · {0} · OpenBudget</value>
   </data>
-  <data name="Project_Intro" xml:space="preserve">
-    <value>The receipts of this project's bookings, and receipts still waiting for a booking from sources that book into it. Categories and item memory are in</value>
-  </data>
-  <data name="Project_Settings" xml:space="preserve">
-    <value>Settings.</value>
-  </data>
   <data name="Status_InstalmentsOf" xml:space="preserve">
     <value>Instalments {0} of {1}</value>
   </data>
@@ -258,5 +252,38 @@
   </data>
   <data name="OwnerReceipt" xml:space="preserve">
     <value>{0}’s receipt</value>
+  </data>
+  <data name="Short_Split" xml:space="preserve">
+    <value>Split {0}</value>
+  </data>
+  <data name="Short_Booked" xml:space="preserve">
+    <value>Booked {0}</value>
+  </data>
+  <data name="Short_Waiting" xml:space="preserve">
+    <value>Waiting</value>
+  </data>
+  <data name="Short_Ambiguous" xml:space="preserve">
+    <value>Several fit</value>
+  </data>
+  <data name="Short_Unmatched" xml:space="preserve">
+    <value>No booking</value>
+  </data>
+  <data name="Short_NoBooking" xml:space="preserve">
+    <value>Not paid</value>
+  </data>
+  <data name="Short_Dismissed" xml:space="preserve">
+    <value>Not in app</value>
+  </data>
+  <data name="Short_InstalmentsOf" xml:space="preserve">
+    <value>Instalments {0}/{1}</value>
+  </data>
+  <data name="Short_Instalments" xml:space="preserve">
+    <value>Instalments</value>
+  </data>
+  <data name="Short_InstalmentsCancelled" xml:space="preserve">
+    <value>Cancelled</value>
+  </data>
+  <data name="Settings_Link" xml:space="preserve">
+    <value>Receipt categories and item memory</value>
   </data>
 </root>
