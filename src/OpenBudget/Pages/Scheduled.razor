@@ -100,7 +100,7 @@
                             </span>
                             @if (item.ReceiptId is { } receipt)
                             {
-                                <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-testid="scheduled-receipt" @onclick="() => openReceipt = receipt">@L["OpenReceipt"]</button>
+                                <button type="button" class="btn btn-link sched-receipt" data-testid="scheduled-receipt" @onclick="() => openReceipt = receipt">@L["OpenReceipt"]</button>
                             }
                             @if (!string.IsNullOrEmpty(item.CounterpartyIban))
                             {

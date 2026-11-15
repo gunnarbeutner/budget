@@ -2079,6 +2079,7 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 .sched-name { font-weight: 600; }
 .sched-purpose { overflow-wrap: anywhere; }
 .sched-meta { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 2px; }
+.sched-meta .sched-receipt { padding: 0; border: 0; font-size: inherit; line-height: inherit; vertical-align: baseline; }
 .sched-amount { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; text-align: right; }
 .money-pos { color: var(--bs-success-text-emphasis); }
 @media (max-width: 767.98px) {
