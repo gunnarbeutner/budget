@@ -39,7 +39,9 @@ public sealed record ReceiptMatchOutcome(IReadOnlyDictionary<long, long> Matches
 ///
 /// A receipt with exactly one free candidate takes it. Of the rest, a receipt and booking are paired when their dates
 /// are at least <see cref="ClearlyCloserDays"/> days closer together than any other free pairing either of them has
-/// (repeated purchases of one amount, weeks apart); anything closer stays ambiguous.
+/// (repeated purchases of one amount, weeks apart). A group of receipts and bookings that only fit each other is
+/// paired as a whole when one pairing is clearly closer in total than any other (see <see cref="PairGroups"/>);
+/// anything closer stays ambiguous.
 ///
 /// Twins (receipts of one order with the same amount, day and account, e.g. a shop listing a charge twice) are
 /// interchangeable: when no other receipt wants their bookings, they take them in order, nearest first; a twin left
@@ -99,6 +101,7 @@ public static class ReceiptMatcher
             matches[p.R] = p.B;
             used.Add(p.B);
         }
+        PairGroups(receipts, candidates, matches, used);
         foreach (var twins in receipts.Where(r => !matches.ContainsKey(r.Id) && r.OrderNumber != null)
             .GroupBy(r => (r.OrderNumber, r.PaymentCents, r.AccountId, Day: r.DeliveryDate ?? r.OrderDate))
             .Where(g => g.Count() > 1))
@@ -117,6 +120,63 @@ public static class ReceiptMatcher
         }
         var ambiguous = receipts.Where(r => !matches.ContainsKey(r.Id) && candidates[r.Id].Any(b => !used.Contains(b.Id))).Select(r => r.Id).ToHashSet();
         return new ReceiptMatchOutcome(matches, ambiguous);
+    }
+
+    /// <summary>The most receipts (and bookings) a group may have to be paired as a whole.</summary>
+    private const int MaxGroup = 6;
+
+    /// <summary>
+    /// Groups of open receipts and free bookings that only fit each other, as many receipts as bookings: when one way to
+    /// pair them all has dates at least <see cref="ClearlyCloserDays"/> days closer in total than every other way, the
+    /// group is paired that way (two charges of one amount a few days apart and their two bookings).
+    /// </summary>
+    private static void PairGroups(IReadOnlyList<ReceiptToMatch> receipts, Dictionary<long, List<ReceiptBooking>> candidates,
+        Dictionary<long, long> matches, HashSet<long> used)
+    {
+        var open = receipts.Where(r => !matches.ContainsKey(r.Id)).ToList();
+        var edges = open.ToDictionary(r => r.Id, r => candidates[r.Id].Where(b => !used.Contains(b.Id)).ToList());
+        var seen = new HashSet<long>();
+        foreach (var start in open.Where(r => edges[r.Id].Count > 0))
+        {
+            if (!seen.Add(start.Id)) continue;
+            // The connected group: receipts linked through bookings they share.
+            var group = new List<ReceiptToMatch> { start };
+            var books = new Dictionary<long, ReceiptBooking>();
+            for (var i = 0; i < group.Count; i++)
+                foreach (var b in edges[group[i].Id])
+                {
+                    if (!books.TryAdd(b.Id, b)) continue;
+                    foreach (var o in open.Where(o => edges[o.Id].Any(x => x.Id == b.Id) && seen.Add(o.Id))) group.Add(o);
+                }
+            if (group.Count < 2 || group.Count != books.Count || group.Count > MaxGroup) continue;
+
+            int best = int.MaxValue, second = int.MaxValue;
+            long[]? bestPick = null;
+            void Walk(int i, long[] pick, HashSet<long> taken, int total)
+            {
+                if (total >= second) return;
+                if (i == group.Count)
+                {
+                    if (total < best) { second = best; best = total; bestPick = (long[])pick.Clone(); }
+                    else second = total;
+                    return;
+                }
+                foreach (var b in edges[group[i].Id].Where(b => !taken.Contains(b.Id)))
+                {
+                    pick[i] = b.Id;
+                    taken.Add(b.Id);
+                    Walk(i + 1, pick, taken, total + Gap(group[i], b));
+                    taken.Remove(b.Id);
+                }
+            }
+            Walk(0, new long[group.Count], [], 0);
+            if (bestPick == null || (second != int.MaxValue && second < best + ClearlyCloserDays)) continue;
+            for (var i = 0; i < group.Count; i++)
+            {
+                matches[group[i].Id] = bestPick[i];
+                used.Add(bestPick[i]);
+            }
+        }
     }
 
     private static int Gap(ReceiptToMatch r, ReceiptBooking b) =>

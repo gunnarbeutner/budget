@@ -1,4 +1,5 @@
 using OpenBudget.Connectors.Receipts;
+using OpenBudget.Models;
 using Xunit;
 
 namespace OpenBudget.Tests.Receipts;
@@ -56,5 +57,30 @@ public sealed class ReceiptMatcherTests
         var outcome = ReceiptMatcher.Match([Receipt(2)], [Booking(10, 1)], new HashSet<long> { 10 });
         Assert.Empty(outcome.Matches);
         Assert.Empty(outcome.Ambiguous);
+    }
+
+    private static ReceiptToMatch Charge(long id, DateOnly day, string order) => new(id, 899, day, day, ReceiptShops.Amazon, 7, order);
+
+    private static ReceiptBooking Card(long id, DateOnly day) => new(id, day, -899, "AMZN Mktp DE", null, 7);
+
+    [Fact]
+    public void Two_charges_of_one_amount_days_apart_pair_with_their_bookings_in_order()
+    {
+        var day = new DateOnly(2026, 7, 10);
+        var outcome = ReceiptMatcher.Match([Charge(1, day, "A"), Charge(2, day.AddDays(4), "B")], [Card(10, day.AddDays(-1)), Card(11, day.AddDays(4))]);
+
+        Assert.Equal(10, outcome.Matches[1]);
+        Assert.Equal(11, outcome.Matches[2]);
+        Assert.Empty(outcome.Ambiguous);
+    }
+
+    [Fact]
+    public void Two_charges_whose_pairings_are_nearly_as_close_stay_ambiguous()
+    {
+        var day = new DateOnly(2026, 7, 10);
+        var outcome = ReceiptMatcher.Match([Charge(1, day, "A"), Charge(2, day.AddDays(1), "B")], [Card(10, day.AddDays(2)), Card(11, day.AddDays(3))]);
+
+        Assert.Empty(outcome.Matches);
+        Assert.Equal([1L, 2L], outcome.Ambiguous.Order());
     }
 }
