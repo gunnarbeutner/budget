@@ -32,4 +32,22 @@ public class FormattingTests
     [InlineData(50.0, "EUR", "50,00 €")]
     public void FormatMoneyDe_puts_other_currency_codes_after_the_amount(decimal value, string currency, string expected) =>
         Assert.Equal(expected, Formatting.FormatMoneyDe(value, currency));
+
+    [Fact]
+    public void Dates_use_the_app_format_whatever_the_current_culture()
+    {
+        var prior = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+        try
+        {
+            Assert.Equal("05.11.2025", new DateOnly(2025, 11, 5).ToAppDate());
+            Assert.Equal("20.08.2026", new DateTime(2026, 8, 20, 23, 59, 0).ToAppDate());
+            Assert.Equal("08.2026", new DateOnly(2026, 8, 20).ToAppMonth());
+            Assert.Equal("08.2026", new DateTime(2026, 8, 20).ToAppMonth());
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = prior;
+        }
+    }
 }

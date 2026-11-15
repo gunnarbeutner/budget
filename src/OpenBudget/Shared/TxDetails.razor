@@ -20,10 +20,10 @@
         {
             <span><b>@L["BookingText"]</b>@Row.BookingText</span>
         }
-        <span><b>@L["BookingDate"]</b>@Clock.ToLocal(Row.Date).ToString("dd.MM.yyyy")@(Row.IsPending ? " · " + L["Pending"] : "")</span>
+        <span><b>@L["BookingDate"]</b>@Clock.ToLocal(Row.Date).ToAppDate()@(Row.IsPending ? " · " + L["Pending"] : "")</span>
         @if (Row.ValueDate is { } valueDate)
         {
-            <span><b>@L["ValueDate"]</b>@valueDate.ToString("dd.MM.yyyy")</span>
+            <span><b>@L["ValueDate"]</b>@valueDate.ToAppDate()</span>
         }
         @if (!string.IsNullOrEmpty(Row.CounterpartyIban))
         {

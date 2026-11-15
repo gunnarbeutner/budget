@@ -163,7 +163,7 @@
     private string? message;
     private bool busy;
 
-    private static string Date(DocumentItem d) => d.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+    private static string Date(DocumentItem d) => d.Date.ToAppDate();
 
     /// <summary>The documents by label, the labels alphabetically; within a label newest first.</summary>
     private IEnumerable<IGrouping<string, DocumentItem>> Groups() => (items ?? [])

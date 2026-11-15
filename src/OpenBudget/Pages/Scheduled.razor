@@ -136,7 +136,7 @@
     {
                     <li class="sched-row@(IsExpected(item.Kind) ? " sched-row--expected" : "")" @key="item.Id" data-testid="scheduled-row" data-kind="@KindKey(item.Kind)">
                         <div class="sched-date">
-                            <div class="fw-semibold" data-testid="scheduled-date">@(item.Kind is ScheduledPaymentKind.Instalment or ScheduledPaymentKind.Recurring ? "~" : "")@item.NextDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</div>
+                            <div class="fw-semibold" data-testid="scheduled-date">@(item.Kind is ScheduledPaymentKind.Instalment or ScheduledPaymentKind.Recurring ? "~" : "")@item.NextDate.ToAppDate()</div>
                             <div class="small text-body-secondary" data-testid="scheduled-in">@InDays(item.NextDate)</div>
                         </div>
                         <div class="sched-main min-w-0">
@@ -159,7 +159,7 @@
                                 }
                                 @if (item.WebBankingAsOf is { } asOf)
                                 {
-                                    <span class="sched-source" data-testid="scheduled-web">@L["FromWebBanking", DateTime.SpecifyKind(asOf, DateTimeKind.Utc).ToLocalTime().ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]</span>
+                                    <span class="sched-source" data-testid="scheduled-web">@L["FromWebBanking", DateTime.SpecifyKind(asOf, DateTimeKind.Utc).ToLocalTime().ToAppDate()]</span>
                                 }
                                 <span class="sched-account text-truncate" data-testid="scheduled-account-name">
                                     <i class="bi @item.AccountIcon me-1" style="@AccountIcons.TintStyle(item.AccountColor)" aria-hidden="true"></i>@item.AccountName
@@ -258,7 +258,7 @@
             };
             if (day != null) every = L["Rhythm_OnDay", every, day];
         }
-        var until = item.LastDate is { } last ? L["Until", last.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)].Value : "∞";
+        var until = item.LastDate is { } last ? L["Until", last.ToAppDate()].Value : "∞";
         return $"{every} · {until}";
     }
 

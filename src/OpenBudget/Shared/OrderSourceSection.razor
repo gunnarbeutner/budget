@@ -54,7 +54,7 @@ else
             @foreach (var c in open)
             {
                 <li>
-                    @Clock.ToLocal(c.Date).ToString("dd.MM.yyyy") · @Formatting.FormatMoneyDe(c.AmountCents / 100m) · @c.Instrument ·
+                    @Clock.ToLocal(c.Date).ToAppDate() · @Formatting.FormatMoneyDe(c.AmountCents / 100m) · @c.Instrument ·
                     <a href="@c.OrderUrl" target="_blank" rel="noopener">@c.OrderId</a>
                     @if (c.Ambiguous)
                     {

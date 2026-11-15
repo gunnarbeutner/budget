@@ -19,7 +19,7 @@
     {
         <div data-testid="receipt-panel">
             <div class="small text-body-secondary mb-2">
-                @(view.DeliveryDate?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture))@(view.InvoiceNumber is { Length: > 0 } n ? " · " + n : "")
+                @(view.DeliveryDate?.ToAppDate())@(view.InvoiceNumber is { Length: > 0 } n ? " · " + n : "")
                 @if (view.ShopUrls() is { Count: > 1 } orders)
                 {
                     @foreach (var (number, url) in orders)
@@ -164,7 +164,7 @@
                             {
                                 <tr data-testid="receipt-panel-plan-charge">
                                     <td>@L["Plan_Instalment", i + 1, plan.Count]</td>
-                                    <td class="text-nowrap">@c.Date?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</td>
+                                    <td class="text-nowrap">@c.Date?.ToAppDate()</td>
                                     <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(c.Cents / 100m)</td>
                                     <td class="text-body-secondary">@(c.TransactionId != null ? L["Plan_Booked"] : L["Plan_NotBooked"])</td>
                                 </tr>
@@ -173,7 +173,7 @@
                             {
                                 <tr class="text-body-secondary" data-testid="receipt-panel-plan-due">
                                     <td>@L["Plan_Instalment", d.Number, plan.Count]</td>
-                                    <td class="text-nowrap">@L["Plan_Due", d.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]</td>
+                                    <td class="text-nowrap">@L["Plan_Due", d.Date.ToAppDate()]</td>
                                     <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(d.Cents / 100m)</td>
                                     <td></td>
                                 </tr>

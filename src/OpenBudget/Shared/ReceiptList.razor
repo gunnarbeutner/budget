@@ -109,7 +109,7 @@
     {
         <div class="receipts-assign-receipt small mb-3" data-testid="receipt-assign-summary">
             <div class="fw-semibold text-break">@a.Title</div>
-            <div class="text-body-secondary">@L["Source_" + a.Source] · @a.Date?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) · <b class="text-body">@Formatting.FormatMoneyDe(-a.PaymentCents / 100m)</b> · @L["Items_Count", a.Items]</div>
+            <div class="text-body-secondary">@L["Source_" + a.Source] · @a.Date?.ToAppDate() · <b class="text-body">@Formatting.FormatMoneyDe(-a.PaymentCents / 100m)</b> · @L["Items_Count", a.Items]</div>
         </div>
         <p class="small mb-2">@L["Assign_Help"]</p>
         @if (candidates == null)
@@ -128,7 +128,7 @@
                     var exact = -c.AmountCents == a.PaymentCents;
                     <button type="button" class="list-group-item list-group-item-action receipts-candidate" data-testid="receipt-candidate"
                             @onclick="() => AssignAsync(a.Id, c.TransactionId)">
-                        <span class="receipts-candidate-date text-nowrap small">@c.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</span>
+                        <span class="receipts-candidate-date text-nowrap small">@c.Date.ToAppDate()</span>
                         <span class="receipts-candidate-text small">
                             <span class="d-block text-truncate">@(c.Name ?? "—")</span>
                             @if (!string.IsNullOrWhiteSpace(c.Purpose))
@@ -229,7 +229,7 @@
         return rows.Where(r => In(group, r) && (string.IsNullOrEmpty(q)
             || SearchText.Matches(r.Title, q)
             || SearchText.Matches(L["Source_" + r.Source].Value, q)
-            || (r.Date?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture).Contains(q, StringComparison.Ordinal) ?? false)
+            || (r.Date?.ToAppDate().Contains(q, StringComparison.Ordinal) ?? false)
             || Formatting.FormatMoneyDe(-r.PaymentCents / 100m).Contains(q, StringComparison.Ordinal))).ToList();
     }
 
@@ -247,7 +247,7 @@
 
     private string Status(ReceiptReviewRow r)
     {
-        var booked = r.BookingDate?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) ?? "";
+        var booked = r.BookingDate?.ToAppDate() ?? "";
         return r.State switch
         {
             ReceiptReviewState.Split => L["Status_Split", booked],

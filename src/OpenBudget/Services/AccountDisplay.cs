@@ -36,7 +36,7 @@ public static class AccountDisplay
     }
 
     /// <summary>
-    /// "Today, 20:10" / "Yesterday, 20:10" / "10/03/2026, 20:10" in <paramref name="zone"/>; the
+    /// "Today, 20:10" / "Yesterday, 20:10" / "10.03.2026, 20:10" in <paramref name="zone"/>; the
     /// day words are passed in so callers can localize them.
     /// </summary>
     public static string FormatLastUpdated(DateTime utc, TimeZoneInfo zone, DateTime nowUtc, CultureInfo culture, string today, string yesterday)
@@ -49,7 +49,7 @@ public static class AccountDisplay
         {
             0 => $"{today}, {time}",
             1 => $"{yesterday}, {time}",
-            _ => $"{local.ToString("d", culture)}, {time}",
+            _ => $"{local.ToAppDate()}, {time}",
         };
     }
 }

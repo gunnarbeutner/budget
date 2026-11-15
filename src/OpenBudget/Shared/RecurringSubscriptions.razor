@@ -20,8 +20,8 @@
         {
             <div data-testid="recurring-cancel-warning">
                 <i class="bi bi-exclamation-octagon me-1" aria-hidden="true"></i><b>@PayeeOf(entry.Series)</b>:
-                @L["ChargedAfterCancel", b.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture), Formatting.FormatMoneyDe(b.Cents / 100m)]
-                (@L["CancelledOn", entry.CancelledOn!.Value.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)])
+                @L["ChargedAfterCancel", b.Date.ToAppDate(), Formatting.FormatMoneyDe(b.Cents / 100m)]
+                (@L["CancelledOn", entry.CancelledOn!.Value.ToAppDate()])
             </div>
         }
     </div>
@@ -71,12 +71,12 @@ else
                 <div class="sched-date">
                     @if (s.Status == RecurringStatus.Ended || entry.Cancelled)
                     {
-                        <div class="fw-semibold" data-testid="recurring-date">@s.LastDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</div>
+                        <div class="fw-semibold" data-testid="recurring-date">@s.LastDate.ToAppDate()</div>
                         <div class="small text-body-secondary">@L["Last"]</div>
                     }
                     else
                     {
-                        <div class="fw-semibold" data-testid="recurring-date">~@s.NextDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</div>
+                        <div class="fw-semibold" data-testid="recurring-date">~@s.NextDate.ToAppDate()</div>
                         <div class="small text-body-secondary">@L["Next"]</div>
                     }
                 </div>
@@ -85,7 +85,7 @@ else
                         <span class="sched-name text-truncate" data-testid="recurring-name">@PayeeOf(s)</span>
                         @if (entry.CancelledOn is { } cancelledOn)
                         {
-                            <span class="badge text-bg-secondary" data-testid="recurring-cancelled">@L["CancelledOn", cancelledOn.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]</span>
+                            <span class="badge text-bg-secondary" data-testid="recurring-cancelled">@L["CancelledOn", cancelledOn.ToAppDate()]</span>
                         }
                         else if (s.Status != RecurringStatus.Active)
                         {
@@ -94,21 +94,21 @@ else
                         @if (s.PreviousCents is { } old && s.PriceChangedOn is { } on)
                         {
                             <span class="badge text-bg-warning" data-testid="recurring-price-change"
-                                  title="@L["PriceChange_Title", on.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]">
-                                @L["PriceChange", Formatting.FormatMoneyDe(-old / 100m), Formatting.FormatMoneyDe(-s.Cents / 100m), on.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]
+                                  title="@L["PriceChange_Title", on.ToAppDate()]">
+                                @L["PriceChange", Formatting.FormatMoneyDe(-old / 100m), Formatting.FormatMoneyDe(-s.Cents / 100m), on.ToAppDate()]
                             </span>
                         }
                     </div>
                     @foreach (var b in entry.ChargedAfterCancellation ?? [])
                     {
                         <div class="small text-danger fw-semibold" data-testid="recurring-charged-after">
-                            <i class="bi bi-exclamation-octagon me-1" aria-hidden="true"></i>@L["ChargedAfterCancel", b.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture), Formatting.FormatMoneyDe(b.Cents / 100m)]
+                            <i class="bi bi-exclamation-octagon me-1" aria-hidden="true"></i>@L["ChargedAfterCancel", b.Date.ToAppDate(), Formatting.FormatMoneyDe(b.Cents / 100m)]
                         </div>
                     }
                     <div class="small text-body-secondary sched-meta">
                         <span data-testid="recurring-rhythm"><i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>@RhythmText(s.Rhythm)</span>
                         <span data-testid="recurring-category">@(entry.CategoryName ?? L["NoCategory"])</span>
-                        <span data-testid="recurring-last">@L["LastOn", s.LastDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]</span>
+                        <span data-testid="recurring-last">@L["LastOn", s.LastDate.ToAppDate()]</span>
                         <span class="sched-account text-truncate">
                             <i class="bi @entry.AccountIcon me-1" style="@AccountIcons.TintStyle(entry.AccountColor)" aria-hidden="true"></i>@entry.AccountName
                         </span>
@@ -148,7 +148,7 @@ else
                             @foreach (var b in s.Bookings.Reverse())
                             {
                                 <li class="d-flex gap-3" data-testid="recurring-booking">
-                                    <span class="text-body-secondary">@b.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</span>
+                                    <span class="text-body-secondary">@b.Date.ToAppDate()</span>
                                     <span class="text-truncate flex-grow-1">@(b.Name ?? b.Purpose)</span>
                                     <span class="money-neg">@Formatting.FormatMoneyDe(b.Cents / 100m)</span>
                                 </li>

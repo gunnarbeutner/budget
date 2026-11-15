@@ -273,7 +273,7 @@
                         }
                         else if (s.LastStatementAt is { } last)
                         {
-                            <div class="small text-body-secondary">@L["Settings_LastStatement", Clock.ToLocal(last).ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]</div>
+                            <div class="small text-body-secondary">@L["Settings_LastStatement", Clock.ToLocal(last).ToAppDate()]</div>
                         }
                     </div>
                     @if (s.Enabled && s.Block == null)
@@ -336,7 +336,7 @@
     private DotNetObjectReference<Documents>? selfRef;
     private bool keysBound;
 
-    private string Date(DocumentItem d) => d.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+    private string Date(DocumentItem d) => d.Date.ToAppDate();
 
     private IEnumerable<int> Years => (items ?? []).Select(i => i.Date.Year).Distinct().OrderByDescending(y => y);
 

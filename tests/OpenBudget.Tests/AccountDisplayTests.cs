@@ -70,7 +70,7 @@ public class AccountDisplayTests
         var now = new DateTime(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc);
         var updated = new DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc);
 
-        Assert.Equal("11/3/2026, 1:00 PM", Plain(AccountDisplay.FormatLastUpdated(updated, Berlin, now, En, "Today", "Yesterday")));
+        Assert.Equal("03.11.2026, 1:00 PM", Plain(AccountDisplay.FormatLastUpdated(updated, Berlin, now, En, "Today", "Yesterday")));
         Assert.Equal("03.11.2026, 13:00", AccountDisplay.FormatLastUpdated(updated, Berlin, now, CultureInfo.GetCultureInfo("de-DE"), "Heute", "Gestern"));
     }
 

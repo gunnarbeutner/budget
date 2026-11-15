@@ -34,7 +34,7 @@ else
         {
             <table class="table table-sm small mt-2 mb-2 w-auto" data-testid="assist-preview">
                 <tbody>
-                    <tr><th scope="row">@L["Field_Date"]</th><td>@(DateOnly.TryParseExact(preview.Date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day) ? day.ToString("dd.MM.yyyy") : preview.Date)</td></tr>
+                    <tr><th scope="row">@L["Field_Date"]</th><td>@(DateOnly.TryParseExact(preview.Date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day) ? day.ToAppDate() : preview.Date)</td></tr>
                     <tr><th scope="row">@L["Field_Amount"]</th><td>@Formatting.FormatMoneyDe(preview.Amount, preview.Currency)</td></tr>
                     <tr><th scope="row">@L["Field_Payee"]</th><td>@preview.Payee</td></tr>
                     <tr><th scope="row">@L["Field_Purpose"]</th><td>@preview.Purpose</td></tr>

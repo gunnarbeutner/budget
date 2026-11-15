@@ -27,6 +27,12 @@ window.obMoney = function (v, decimals) {
     return (n < 0 ? '\u2212' : '') + abs + '\u00A0€';
 };
 
+// Date format used app-wide in both UI languages ("15.11.2026"), matching Formatting.ToAppDate on the server.
+window.obDate = function (dt) {
+    const pad2 = x => String(x).padStart(2, '0');
+    return pad2(dt.getDate()) + '.' + pad2(dt.getMonth() + 1) + '.' + dt.getFullYear();
+};
+
 const chartCallbackFactories = {
     // y-axis tick / value formatter: German money with p.decimals places (default 0).
     euroTicks: function (p) {
@@ -45,7 +51,7 @@ const chartCallbackFactories = {
             if (!items.length) return '';
             const i = items[0].dataIndex;
             const dt = new Date(year, 0, 1 + i);
-            return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            return window.obDate(dt);
         };
     },
     // balance-chart tooltip label: "<p.label>: <money>".
@@ -871,7 +877,7 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
     const quarter = s => 'Q' + (Math.floor((s.m - 1) / 3) + 1);
     const titleOf = i => {
         const s = starts[i];
-        if (g === 'D') return pad2(s.day) + '.' + pad2(s.m) + '.' + s.y;
+        if (g === 'D') return window.obDate(new Date(s.y, s.m - 1, s.day));
         if (g === 'Q') return quarter(s) + ' ' + s.y;
         if (g === 'Y') return String(s.y);
         return d.monthNames[s.m - 1] + ' ' + s.y;

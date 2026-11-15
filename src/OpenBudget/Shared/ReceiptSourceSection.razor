@@ -25,7 +25,7 @@ else
             <ul class="mb-0 mt-1">
                 @foreach (var r in summary.Open)
                 {
-                    <li>@(r.OrderDate?.ToString("dd.MM.yyyy", System.Globalization.CultureInfo.InvariantCulture)) · @Formatting.FormatMoneyDe(r.PaymentCents / 100m) · @r.Title</li>
+                    <li>@(r.OrderDate?.ToAppDate()) · @Formatting.FormatMoneyDe(r.PaymentCents / 100m) · @r.Title</li>
                 }
             </ul>
         </details>

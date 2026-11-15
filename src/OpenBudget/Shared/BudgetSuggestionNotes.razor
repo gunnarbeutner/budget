@@ -8,7 +8,7 @@
 @foreach (var o in Row.Outliers)
 {
     <div class="small text-body-secondary" data-testid="budget-suggest-outlier">
-        @L[o.Excluded ? "Outlier_Excluded" : "Outlier_Kept", Formatting.FormatMoneyDe(o.Amount), o.Payee ?? "", o.Date.ToString("MM/yyyy", System.Globalization.CultureInfo.InvariantCulture), L["Kind_" + o.Kind]]
+        @L[o.Excluded ? "Outlier_Excluded" : "Outlier_Kept", Formatting.FormatMoneyDe(o.Amount), o.Payee ?? "", o.Date.ToAppMonth(), L["Kind_" + o.Kind]]
     </div>
 }
 @if (!string.IsNullOrEmpty(Row.Explanation))

@@ -9,7 +9,7 @@
 
 <div class="tx-details-purpose" data-testid="tx-receipt">
     <b class="text-body me-1">@L["Receipt"]</b>
-    <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-start" data-testid="tx-receipt-open" @onclick="() => Open(null)">@Receipt.Title@(Receipt.DeliveryDate is { } d ? " · " + d.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) : "") · @L["Items", Receipt.ItemCount]</button>
+    <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-start" data-testid="tx-receipt-open" @onclick="() => Open(null)">@Receipt.Title@(Receipt.DeliveryDate is { } d ? " · " + d.ToAppDate() : "") · @L["Items", Receipt.ItemCount]</button>
     @if (Receipt.ShopUrls() is { Count: > 1 } orders)
     {
         @foreach (var (number, url) in orders)

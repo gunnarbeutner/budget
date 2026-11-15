@@ -457,7 +457,7 @@
                                      @onclick="e => OnRowClickAsync(item, e)"
                                      @oncontextmenu="e => OnRowContextAsync(item, e)" @oncontextmenu:preventDefault="true">
                                     <div class="tx-date-col">
-                                        <span class="tx-date">@Clock.ToLocal(row.Date).ToString("dd.MM.yyyy")</span>
+                                        <span class="tx-date">@Clock.ToLocal(row.Date).ToAppDate()</span>
                                         @{
                                             var hasCategory = !string.IsNullOrEmpty(row.CategoryName);
                                             var outside = hasCategory ? pickerData?.OutsideOf(row.CategoryId) : null;
@@ -1777,7 +1777,7 @@
             var real = Enumerable.Range(0, bars.Length).Where(i => !chartIsBalance || starts[i] <= Clock.Today).ToArray();
             if (real.Length == 0) real = [0];
             var values = real.Select(i => bars[i].Value).ToArray();
-            var fmt = chartGranularity == "D" ? "dd.MM.yyyy" : "MM.yyyy";
+            var fmt = chartGranularity == "D" ? Formatting.DatePattern : Formatting.MonthPattern;
             var ci = System.Globalization.CultureInfo.InvariantCulture;
             return string.Format(L["Chart_AriaSummary"].Value,
                 chartIsBalance ? L["Chart_Balance"].Value : L["Chart_Amount"].Value,

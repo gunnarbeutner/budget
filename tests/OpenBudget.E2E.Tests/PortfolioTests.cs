@@ -156,6 +156,9 @@ public sealed class PortfolioTests : EndToEndTestBase
         await Expect(chart).ToHaveAttributeAsync("data-start", today.AddYears(-1).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
         // From the carried-in 1.000 € a year ago to today's 1.234,56 €.
         await Expect(Page.GetByTestId("portfolio-value-change")).ToContainTextAsync("+234,56 €");
+        // The x axis labels its days in the app's date format, whatever the browser language.
+        var firstTick = await Page.EvaluateAsync<string>("() => Chart.getChart('portfolioValueChart').scales.x.getLabelForValue(0)");
+        Assert.That(firstTick, Is.EqualTo(today.AddYears(-1).ToString("dd.MM.yyyy", System.Globalization.CultureInfo.InvariantCulture)));
 
         await Page.GetByTestId("portfolio-period-max").ClickAsync();
         await Expect(chart).ToHaveAttributeAsync("data-start", first.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));

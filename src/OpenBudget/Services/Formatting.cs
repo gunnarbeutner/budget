@@ -21,6 +21,24 @@ public static class Formatting
         return (value < 0 ? "\u2212" : "") + number + "\u00A0" + symbol;
     }
 
+    /// <summary>The date format of the whole app, "15.11.2026", in both UI languages.</summary>
+    public const string DatePattern = "dd.MM.yyyy";
+
+    /// <summary>The month format of the whole app, "11.2026".</summary>
+    public const string MonthPattern = "MM.yyyy";
+
+    /// <summary>A day in the app's date format ("15.11.2026"), independent of the request culture.</summary>
+    public static string ToAppDate(this DateOnly day) => day.ToString(DatePattern, CultureInfo.InvariantCulture);
+
+    /// <summary>The day of <paramref name="value"/> in the app's date format ("15.11.2026"); the time is ignored.</summary>
+    public static string ToAppDate(this DateTime value) => value.ToString(DatePattern, CultureInfo.InvariantCulture);
+
+    /// <summary>The month of <paramref name="value"/> in the app's month format ("11.2026").</summary>
+    public static string ToAppMonth(this DateTime value) => value.ToString(MonthPattern, CultureInfo.InvariantCulture);
+
+    /// <summary>The month of <paramref name="day"/> in the app's month format ("11.2026").</summary>
+    public static string ToAppMonth(this DateOnly day) => day.ToString(MonthPattern, CultureInfo.InvariantCulture);
+
     /// <summary>
     /// Human-readable relative age — "just now", "5 minutes ago", "3 days ago", "2 months ago".
     /// Caller passes its IStringLocalizer; the keys (RelativeAge_Future, _JustNow,

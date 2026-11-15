@@ -93,7 +93,7 @@
             await DestroyAsync();
             return;
         }
-        var labels = s.Points.Select(p => p.Day.ToString("d", CultureInfo.CurrentCulture)).ToArray();
+        var labels = s.Points.Select(p => p.Day.ToAppDate()).ToArray();
         var data = s.Points.Select(p => p.Value).ToArray();
         var color = ChartPalette.Templates(2)[1];
         var label = L["Series_Label"].Value;
