@@ -1432,18 +1432,28 @@ button.cat-pill:hover { filter: brightness(0.96); }
     .browse-scroll { overflow: visible; }
     /* On a phone the page scrolls as a whole: the sticky toolbar (title and actions) stays, the chart scrolls away. */
     .browse-head { max-height: none; overflow: visible; }
-    /* The actions take a row of their own under the title and show as icons only (their titles name them). */
-    .browse-toolbar .browse-summary { flex: 1 1 100%; order: 3; justify-content: flex-start; gap: 0; margin-left: -13px; }
+    /* One row: the title, its icon actions right after it, then the total at the right gutter. The title track
+       shrinks first (ellipsis); the actions and the total keep their width. The info line stays under the title,
+       and everything else (selection actions, a summary that carries text) takes a full row underneath. */
+    .browse-main > .page-toolbar.browse-toolbar {
+        display: grid;
+        grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr) auto;
+        align-items: center;
+        column-gap: 0;
+    }
+    .browse-toolbar > * { grid-column: 1 / -1; }
+    .browse-toolbar > .browse-ident { grid-column: 1; grid-row: 1; }
+    .browse-toolbar > .browse-summary { grid-column: 2; grid-row: 1; flex-wrap: nowrap; gap: 0; margin-left: 4px; }
+    .browse-toolbar > .browse-balance { grid-column: 4; grid-row: 1; margin-left: 8px; }
+    .browse-toolbar > .browse-summary:has(> :not(.browse-action)) { grid-column: 1 / -1; grid-row: 2; flex-wrap: wrap; margin-left: -10px; }
     .browse-summary .browse-action-label { display: none; }
-    /* Title left, total right on one line; the uncategorized note is left to the summary card. */
-    .browse-toolbar .browse-ident { flex: 1 1 auto; }
-    .browse-toolbar .browse-balance { margin-left: auto; }
     .browse-toolbar .browse-balance-note { display: none; }
-    /* Icon-only actions: 44px touch targets; a toggle shows its state as a filled background instead of a chevron. */
-    .browse-summary > .btn { display: inline-flex; align-items: center; justify-content: center; position: relative; min-width: 44px; height: 44px; font-size: 18px; border-radius: 6px; }
+    /* Icon-only actions in 40×44 touch boxes; a toggle shows its state in its colour instead of a chevron. */
+    .browse-summary > .btn { display: inline-flex; align-items: center; justify-content: center; position: relative; min-width: 40px; height: 44px; font-size: 18px; border-radius: 6px; }
     .browse-summary > .btn .bi-chevron-up, .browse-summary > .btn .bi-chevron-down { display: none; }
-    .browse-summary > .btn[aria-expanded="true"] { background: var(--ob-chip-bg); }
-    .browse-summary > .btn .ob-badge { position: absolute; top: 4px; right: 2px; }
+    .browse-summary > .browse-action[aria-expanded]:not([data-testid=filter-toggle]) { color: var(--ob-muted); }
+    .browse-summary > .browse-action[aria-expanded="true"]:not([data-testid=filter-toggle]) { color: var(--ob-accent); }
+    .browse-summary > .btn .ob-badge { position: absolute; top: 4px; right: 0; }
     .browse-rail {
         position: fixed;
         top: 0;

@@ -51,8 +51,8 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
 
     /// <summary>
     /// On a phone the top bar's controls share one centre line and the rows under it (project switcher, period
-    /// stepper, title, summary actions) start at the same left edge; the period select and the total end at the
-    /// avatar's right edge. At desktop width it only takes screenshots. Set OB_PHONE_HEADER_SCREENSHOT_DIR to keep screenshots for review.
+    /// stepper, title) start at the same left edge, the summary actions follow the title on its centre line, and the
+    /// period select and the total end at the avatar's right edge. At desktop width it only takes screenshots. Set OB_PHONE_HEADER_SCREENSHOT_DIR to keep screenshots for review.
     /// </summary>
     [TestCase("light", 390)]
     [TestCase("dark", 390)]
@@ -105,24 +105,106 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
         Assert.That((await Box(".app-topbar .project-selector-name")).Left, Is.EqualTo(16).Within(1), "project name on the gutter");
         Assert.That(chevron.Left + (chevron.Right - chevron.Left) * 4.65f / 16, Is.EqualTo(16).Within(1), "chevron stroke on the gutter");
         Assert.That((await Box(".browse-title-btn > span")).Left, Is.EqualTo(16).Within(1), "title on the gutter");
-        Assert.That((await Box(".browse-summary > .btn i")).Left, Is.EqualTo(16).Within(1), "first action on the gutter");
+        var title = await Box(".browse-title-btn > span");
+        var actions = Page.Locator(".browse-toolbar .browse-summary > .browse-action");
+        Assert.That(await actions.CountAsync(), Is.GreaterThanOrEqualTo(3), "filter, summary and mark-all actions");
+        var previousRight = title.Right;
+        for (var i = 0; i < await actions.CountAsync(); i++)
+        {
+            var a = (await actions.Nth(i).BoundingBoxAsync())!;
+            Assert.That(a.Y + a.Height / 2, Is.EqualTo(title.CentreY).Within(1), "actions on the title's centre line");
+            Assert.That(a.Height, Is.EqualTo(44).Within(1), "44px touch target");
+            Assert.That(a.X, Is.GreaterThanOrEqualTo(previousRight - 1), "actions follow the title in order");
+            previousRight = a.X + a.Width;
+        }
 
         var mode = await Box(".app-topbar .period-mode-select");
         Assert.That(mode.Height, Is.EqualTo(pill.Height).Within(1), "period select as tall as the project pill");
         Assert.That(mode.Right, Is.EqualTo(icons[^1].Right).Within(1), "period select ends at the avatar's edge");
         Assert.That((await Box("[data-testid=browse-balance]")).Right, Is.EqualTo(icons[^1].Right).Within(1), "total ends at the avatar's edge");
 
-        // The summary toggle is filled only while the summary strip shows.
+        // The summary toggle shows its state in the accent colour (open) or the muted colour (closed), never a fill.
         var toggle = Page.GetByTestId("summary-toggle");
         const string transparent = "rgba(0, 0, 0, 0)";
+        async Task<string> Colour(string variable) => await Page.EvaluateAsync<string>(@"v => {
+            const e = document.createElement('span'); e.style.color = `var(${v})`; document.body.append(e);
+            const c = getComputedStyle(e).color; e.remove(); return c; }", variable);
         await Expect(Page.GetByTestId("summary-strip")).ToBeVisibleAsync();
-        await Expect(toggle).Not.ToHaveCSSAsync("background-color", transparent);
+        await Expect(toggle).ToHaveAttributeAsync("aria-expanded", "true");
+        await Expect(toggle).ToHaveCSSAsync("background-color", transparent);
+        await Expect(toggle).ToHaveCSSAsync("color", await Colour("--ob-accent"));
         await toggle.ClickAsync();
         await Expect(Page.GetByTestId("summary-strip")).ToHaveCountAsync(0);
         await Page.Mouse.MoveAsync(0, 400);
+        await Expect(toggle).ToHaveAttributeAsync("aria-expanded", "false");
         await Expect(toggle).ToHaveCSSAsync("background-color", transparent);
+        await Expect(toggle).ToHaveCSSAsync("color", await Colour("--ob-muted"));
         if (!string.IsNullOrEmpty(dir))
             await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"header-{width}-{theme}-summary-closed.png") });
+    }
+
+    /// <summary>
+    /// On a phone a very large total keeps its width and the title row stays one line: the title gives way with an
+    /// ellipsis, the actions keep their boxes after it and the total still ends at the avatar's edge.
+    /// </summary>
+    [Test]
+    public async Task Phone_title_truncates_for_a_large_total()
+    {
+        var accountId = RowIds.Namespace(E2ESeed.IdSpace, 78);
+        await using (var db = await Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
+        {
+            db.Accounts.Add(new Account
+            {
+                Id = accountId,
+                OwnerUserId = E2ESeed.OwnerUserId,
+                Name = "A very long account name for a narrow phone",
+                Type = 1,
+                Currency = "EUR",
+            });
+            await db.SaveChangesAsync();
+            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = accountId });
+            var date = ((DateTimeOffset)new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds();
+            db.Transactions.Add(new Transaction
+            {
+                Id = 7900,
+                OwnerUserId = E2ESeed.OwnerUserId,
+                AccountId = accountId,
+                Amount = -98765432198,
+                CategoryId = 200,
+                Currency = "EUR",
+                Name = "Big",
+                Timestamp = date,
+                ValueTimestamp = date,
+            });
+            await db.SaveChangesAsync();
+        }
+        await Page.SetViewportSizeAsync(390, 844);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=11");
+        var balance = Page.GetByTestId("browse-balance");
+        await Expect(balance).ToContainTextAsync("987");
+        await Expect(Page.GetByTestId("filter-toggle")).ToBeVisibleAsync();
+        // Squeeze the row further with a long title so it has to give way.
+        await Page.Locator(".browse-title-btn > span").EvaluateAsync("e => e.textContent = 'All transactions of a long project name'");
+
+        var titleBox = (await Page.Locator(".browse-title").BoundingBoxAsync())!;
+        var avatar = (await Page.Locator(".app-topbar .app-avatar").BoundingBoxAsync())!;
+        var total = (await balance.BoundingBoxAsync())!;
+        Assert.That(await Page.Locator(".browse-title-btn").EvaluateAsync<bool>("e => e.scrollWidth > e.clientWidth + 1"),
+            Is.True, "the title is cut");
+        Assert.That(await balance.EvaluateAsync<bool>("e => e.scrollWidth <= e.clientWidth + 1"), Is.True, "the total is not cut");
+        Assert.That(total.Height, Is.LessThan(30), "the total stays on one line");
+        Assert.That(titleBox.Height, Is.LessThan(30), "the title stays on one line");
+        Assert.That(total.X + total.Width, Is.EqualTo(avatar.X + avatar.Width).Within(1), "total ends at the avatar's edge");
+        var actions = Page.Locator(".browse-toolbar .browse-summary > .browse-action");
+        Assert.That(await actions.CountAsync(), Is.GreaterThanOrEqualTo(2), "the actions show");
+        for (var i = 0; i < await actions.CountAsync(); i++)
+        {
+            var a = (await actions.Nth(i).BoundingBoxAsync())!;
+            Assert.That(a.Y + a.Height / 2, Is.EqualTo(total.Y + total.Height / 2).Within(2), "actions on the total's line");
+            Assert.That(a.Width, Is.GreaterThanOrEqualTo(39.5), "actions keep their width");
+            Assert.That(a.X, Is.GreaterThanOrEqualTo(titleBox.X + titleBox.Width - 1), "actions after the title");
+            Assert.That(a.X + a.Width, Is.LessThanOrEqualTo(total.X + 1), "actions before the total");
+        }
     }
 
     /// <summary>
