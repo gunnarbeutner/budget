@@ -8,12 +8,11 @@
 @inject CategorizationService Categorization
 @inject IStringLocalizer<Receipts> L
 
-@* The receipts of all sources (mailbox, Lidl Plus, Amazon) for review, in two tabs. "Receipts": a compact list,
-   newest first, with a sticky filter bar (source, status chips with counts, search) and a page of rows at a time; a
-   row opens the receipt panel; an ambiguous or unmatched receipt can be assigned to a booking by hand (a dialog lists
-   the bookings near its date) or marked as having no booking in the app. "Settings" (also /receipts?tab=settings):
-   each project's categories to split items into (see ProjectReceiptItems), the item memory (product → category, editable) and how the AI takes part. Everything is the
-   signed-in user's own; the sources themselves are on the connections page. *@
+@* Settings › Receipts, in two tabs. "Receipts": all of the signed-in user's receipts across projects (ReceiptList;
+   each project also shows its own receipts as a project view, /projects/{id}/receipts). "Settings" (also
+   /receipts?tab=settings): each project's categories to split items into (see ProjectReceiptItems), the item memory
+   (product → category, editable) and how the AI takes part. Everything is the signed-in user's own; the sources
+   themselves are on the connections page. *@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
@@ -29,100 +28,16 @@
             data-testid="receipts-tab-settings" @onclick="() => tab = Tab.Settings">@L["Tab_Settings"]</button>
 </div>
 
+@if (tab == Tab.List)
+{
+<ReceiptList />
+}
+else
+{
 @if (error != null)
 {
     <div class="alert alert-warning py-2" role="alert">@error</div>
 }
-
-@if (tab == Tab.List)
-{
-<section data-testid="receipts-list">
-    <div class="receipts-filters" data-testid="receipts-filters">
-        <div class="d-flex flex-wrap align-items-center gap-2">
-            <select class="form-select form-select-sm w-auto" aria-label="@L["Filter_Source"]" data-testid="receipts-filter-source"
-                    value="@(source ?? "")" @onchange="e => SourceAsync(e.Value?.ToString() is { Length: > 0 } v ? v : null)">
-                <option value="">@L["Filter_AllSources"]</option>
-                @foreach (var s in ReceiptSources.All)
-                {
-                    <option value="@s">@L["Source_" + s]</option>
-                }
-            </select>
-            <input type="search" class="form-control form-control-sm receipts-search" placeholder="@L["Search"]" aria-label="@L["Search"]"
-                   data-testid="receipts-search" @bind="search" @bind:event="oninput" @bind:after="() => shown = PageSize" />
-        </div>
-        <div class="d-flex flex-wrap gap-1 mt-2" role="group" aria-label="@L["Filter_State"]" data-testid="receipts-filter-state">
-            @foreach (var g in Enum.GetValues<Group>())
-            {
-                var count = rows?.Count(r => In(g, r.State)) ?? 0;
-                if (g != Group.All && g != Group.Review && count == 0 && group != g) continue;
-                <button type="button" class="btn btn-sm rounded-pill receipts-chip @(group == g ? "active" : "")" aria-pressed="@(group == g)"
-                        data-testid="receipts-chip" data-group="@g.ToString().ToLowerInvariant()" @onclick="() => { group = g; shown = PageSize; }">
-                    @L["Group_" + g] <span class="receipts-chip-count">@count</span>
-                </button>
-            }
-        </div>
-    </div>
-    @if (rows == null)
-    {
-        <div class="skeleton skeleton-line mt-3" style="width: 40%;"></div>
-    }
-    else if (VisibleRows().Count == 0)
-    {
-        <p class="small text-body-secondary mt-3" data-testid="receipts-none">@L["List_None"]</p>
-    }
-    else
-    {
-        var visible = VisibleRows();
-        <table class="table table-sm table-hover align-middle receipts-table mt-2">
-            <thead>
-                <tr>
-                    <th class="d-none d-sm-table-cell receipts-col-date">@L["List_Date"]</th>
-                    <th>@L["List_Receipt"]</th>
-                    <th class="d-none d-md-table-cell text-end receipts-col-items">@L["List_Items"]</th>
-                    <th class="text-end receipts-col-amount">@L["List_Amount"]</th>
-                    <th class="receipts-col-status">@L["List_Status"]</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var r in visible.Take(shown))
-                {
-                    <tr data-testid="receipt-row" data-state="@r.State.ToString().ToLowerInvariant()" data-source="@r.Source" @key="(r.Source, r.Id)"
-                        class="receipts-row-open" @onclick="() => Open(r)">
-                        <td class="d-none d-sm-table-cell text-nowrap receipts-col-date">@r.Date?.ToString("dd.MM.yy", CultureInfo.InvariantCulture)</td>
-                        <td class="receipts-col-title">
-                            <button type="button" class="btn btn-link btn-sm p-0 text-start text-truncate d-block mw-100 receipts-title" data-testid="receipt-open"
-                                    @onclick="() => Open(r)" @onclick:stopPropagation="true">@r.Title</button>
-                            <span class="d-block small text-body-secondary text-truncate"><span class="d-sm-none">@r.Date?.ToString("dd.MM.yy", CultureInfo.InvariantCulture) · </span>@L["Source_" + r.Source]<span class="d-none d-sm-inline d-md-none"> · @L["Items_Count", r.Items]</span></span>
-                        </td>
-                        <td class="d-none d-md-table-cell text-end receipts-col-items">@r.Items</td>
-                        <td class="text-end text-nowrap receipts-col-amount">@Formatting.FormatMoneyDe(-r.PaymentCents / 100m)</td>
-                        <td class="receipts-col-status" @onclick:stopPropagation="true">
-                            <span class="badge rounded-pill @Pill(r.State)" data-testid="receipt-status" title="@Status(r)">@Status(r)</span>
-                            @if (r.State is ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched or ReceiptReviewState.Waiting)
-                            {
-                                <button type="button" class="btn btn-sm btn-link p-0 d-block" data-testid="receipt-assign" @onclick="() => OpenAssignAsync(r)">@L["Assign_Row"]</button>
-                            }
-                            else if (r.State == ReceiptReviewState.Dismissed)
-                            {
-                                <button type="button" class="btn btn-sm btn-link p-0 d-block" data-testid="receipt-reset" @onclick="() => RunAsync(() => Service.ResetAssignmentAsync(r.Id))">@L["Reset"]</button>
-                            }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-        <div class="d-flex flex-wrap align-items-center gap-2 small text-body-secondary">
-            <span data-testid="receipts-shown">@L["Shown", Math.Min(shown, visible.Count), visible.Count]</span>
-            @if (shown < visible.Count)
-            {
-                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="receipts-more" @onclick="() => shown += PageSize">@L["More"]</button>
-            }
-        </div>
-    }
-</section>
-}
-else
-{
 <section class="mb-4" data-testid="receipts-categories">
     <h2 class="h5">@L["Categories_Heading"]</h2>
     <p class="small text-body-secondary">@L["Categories_Help"]</p>
@@ -178,87 +93,17 @@ else
     <p class="small text-body-secondary">@L["Ai_Help"] <a href="/assist">@L["Ai_Link"]</a></p>
 </section>
 }
-
-<ReceiptPanel ReceiptId="openId" PickerData="picker" CanEdit="true" OnClose="PanelClosedAsync" />
-
-<Modal Show="assigning != null" Title="@L["Assign_Title"]" SizeClass="modal-lg" OnClose="() => assigning = null">
-    <ChildContent>
-    @if (assigning is { } a)
-    {
-        <div class="receipts-assign-receipt small mb-3" data-testid="receipt-assign-summary">
-            <div class="fw-semibold text-break">@a.Title</div>
-            <div class="text-body-secondary">@L["Source_" + a.Source] · @a.Date?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) · <b class="text-body">@Formatting.FormatMoneyDe(-a.PaymentCents / 100m)</b> · @L["Items_Count", a.Items]</div>
-        </div>
-        <p class="small mb-2">@L["Assign_Help"]</p>
-        @if (candidates == null)
-        {
-            <div class="skeleton skeleton-line" style="width: 50%;"></div>
-        }
-        else if (candidates.Count == 0)
-        {
-            <p class="small text-body-secondary">@L["Assign_None"]</p>
-        }
-        else
-        {
-            <div class="list-group mb-2" data-testid="receipt-candidates">
-                @foreach (var c in candidates)
-                {
-                    var exact = -c.AmountCents == a.PaymentCents;
-                    <button type="button" class="list-group-item list-group-item-action receipts-candidate" data-testid="receipt-candidate"
-                            @onclick="() => AssignAsync(a.Id, c.TransactionId)">
-                        <span class="receipts-candidate-date text-nowrap small">@c.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</span>
-                        <span class="receipts-candidate-text small">
-                            <span class="d-block text-truncate">@(c.Name ?? "—")</span>
-                            @if (!string.IsNullOrWhiteSpace(c.Purpose))
-                            {
-                                <span class="d-block text-truncate text-body-secondary">@c.Purpose</span>
-                            }
-                        </span>
-                        <span class="receipts-candidate-amount text-end text-nowrap small">
-                            <b>@Formatting.FormatMoneyDe(c.AmountCents / 100m)</b>
-                            @if (exact)
-                            {
-                                <span class="badge rounded-pill bank-pill-ok d-block mt-1">@L["Assign_SameAmount"]</span>
-                            }
-                        </span>
-                    </button>
-                }
-            </div>
-        }
-    }
-    </ChildContent>
-    <Footer>
-        @if (assigning is { } a)
-        {
-            <button type="button" class="btn btn-outline-secondary me-auto" data-testid="receipt-dismiss" @onclick="() => AssignAsync(a.Id, null)">@L["Assign_NotInApp"]</button>
-            <button type="button" class="btn btn-secondary" @onclick="() => assigning = null">@L["Cancel"]</button>
-        }
-    </Footer>
-</Modal>
 </SettingsShell>
 
 @code {
-    private const int PageSize = 50;
-
     private enum Tab { List, Settings }
 
-    /// <summary>The status chips: each groups one or more review states.</summary>
-    private enum Group { All, Review, Waiting, Matched, NoBooking }
-
     private Tab tab;
-    private Group group;
-    private int shown = PageSize;
-    private string? search;
-    private List<ReceiptReviewRow>? rows;
     private List<ItemMemoryView>? memory;
     private List<ProjectReceiptSettingsView>? projects;
     private CategoryPickerData? picker;
-    private string? source;
     private string? userId;
     private string? error;
-    private long? openId;
-    private ReceiptReviewRow? assigning;
-    private List<ReceiptCandidate>? candidates;
     private ItemMemoryView? memoryEditing;
     private string? memorySearch;
     private double pickerX, pickerY;
@@ -282,74 +127,8 @@ else
         userId = (await Access.GetAsync()).UserId;
         if (userId == null) return;
         picker ??= await Categorization.GetPickerDataAsync(userId);
-        rows = await Service.ListAllAsync(source, take: 5000);
         memory = await Service.ListMemoryAsync();
         projects = await Service.ListProjectSettingsAsync();
-    }
-
-    private async Task SourceAsync(string? s)
-    {
-        source = s;
-        shown = PageSize;
-        rows = await Service.ListAllAsync(source, take: 5000);
-    }
-
-    private static bool In(Group g, ReceiptReviewState s) => g switch
-    {
-        Group.Review => s is ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched,
-        Group.Waiting => s == ReceiptReviewState.Waiting,
-        Group.Matched => s is ReceiptReviewState.Split or ReceiptReviewState.Matched,
-        Group.NoBooking => s is ReceiptReviewState.NoBooking or ReceiptReviewState.Instalments or ReceiptReviewState.Dismissed,
-        _ => true,
-    };
-
-    /// <summary>The rows of the chosen status chip that match the search (title, source, date or amount).</summary>
-    private List<ReceiptReviewRow> VisibleRows()
-    {
-        if (rows == null) return [];
-        var q = search?.Trim();
-        return rows.Where(r => In(group, r.State) && (string.IsNullOrEmpty(q)
-            || r.Title.Contains(q, StringComparison.CurrentCultureIgnoreCase)
-            || L["Source_" + r.Source].Value.Contains(q, StringComparison.CurrentCultureIgnoreCase)
-            || (r.Date?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture).Contains(q, StringComparison.Ordinal) ?? false)
-            || Formatting.FormatMoneyDe(-r.PaymentCents / 100m).Contains(q, StringComparison.Ordinal))).ToList();
-    }
-
-    private void Open(ReceiptReviewRow r)
-    {
-        openId = r.Id;
-    }
-
-    private static string Pill(ReceiptReviewState s) => s switch
-    {
-        ReceiptReviewState.Split or ReceiptReviewState.Matched => "bank-pill-ok",
-        ReceiptReviewState.Waiting => "bank-pill-info",
-        ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched => "bank-pill-warn",
-        _ => "text-bg-light border",
-    };
-
-    private string Status(ReceiptReviewRow r)
-    {
-        var booked = r.BookingDate?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) ?? "";
-        return r.State switch
-        {
-            ReceiptReviewState.Split => L["Status_Split", booked],
-            ReceiptReviewState.Matched => L["Status_Matched", booked],
-            _ => L["State_" + r.State],
-        };
-    }
-
-    private async Task OpenAssignAsync(ReceiptReviewRow r)
-    {
-        assigning = r;
-        candidates = null;
-        candidates = await Service.CandidatesAsync(r.Id);
-    }
-
-    private async Task AssignAsync(long receiptId, long? transactionId)
-    {
-        assigning = null;
-        await RunAsync(() => Service.AssignAsync(receiptId, transactionId));
     }
 
     private void OpenMemoryPicker(ItemMemoryView m, MouseEventArgs e) => (memoryEditing, pickerX, pickerY) = (m, e.ClientX, e.ClientY);
@@ -358,12 +137,6 @@ else
     {
         memoryEditing = null;
         if (id is { } c) await RunAsync(() => Service.SetMemoryAsync(m.Id, c));
-    }
-
-    private async Task PanelClosedAsync(bool changed)
-    {
-        openId = null;
-        if (changed) await LoadAsync();
     }
 
     private async Task RunAsync(Func<Task> action)

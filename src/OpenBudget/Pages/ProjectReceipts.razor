@@ -1,0 +1,55 @@
+@page "/projects/{ProjectId:int}/receipts"
+@inherits DataChangeAwareComponent
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject ProjectService ProjectService
+@inject IStringLocalizer<Receipts> L
+
+@* The Receipts view of a project: the receipt list (ReceiptList) scoped to the project — receipts on its bookings the
+   user may see, and the user's receipts still waiting for a booking from sources that book into it. The title row
+   scrolls away so the list's filter bar is the sticky part. Categories, item memory and AI options stay in
+   Settings › Receipts. *@
+
+<PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
+
+@if (notFound)
+{
+    <NotFoundMessage />
+    return;
+}
+
+<ProjectPageHeader ProjectId="ProjectId" ProjectName="@(project?.Name ?? "")" />
+
+<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Receipts" MainClass="shell-page">
+    <div class="page-toolbar position-static" data-testid="project-receipts-toolbar">
+        <h1 class="view-title">@L["Heading"]</h1>
+    </div>
+    <p class="text-body-secondary small">@L["Project_Intro"] <a href="/receipts?tab=settings">@L["Project_Settings"]</a></p>
+    <ReceiptList ProjectId="ProjectId" />
+</ProjectShell>
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+
+    private Project? project;
+    private bool notFound;
+    private int _loadedProjectId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedProjectId == ProjectId) return;
+        _loadedProjectId = ProjectId;
+        await LoadAsync();
+    }
+
+    protected override bool IsRelevantChange(DataChange change) => change.Area == DataArea.Projects;
+
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        notFound = false;
+        project = await ProjectService.GetProjectAsync(ProjectId);
+        if (project == null) notFound = true;
+    }
+}

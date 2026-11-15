@@ -100,4 +100,10 @@
   <data name="View_Scheduled" xml:space="preserve">
     <value>Scheduled</value>
   </data>
+  <data name="View_Receipts" xml:space="preserve">
+    <value>Receipts</value>
+  </data>
+  <data name="Receipts_Review" xml:space="preserve">
+    <value>{0} to review</value>
+  </data>
 </root>

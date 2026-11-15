@@ -199,8 +199,8 @@
   <data name="Group_Waiting" xml:space="preserve">
     <value>Wartend</value>
   </data>
-  <data name="Group_Matched" xml:space="preserve">
-    <value>Zugeordnet</value>
+  <data name="Group_Done" xml:space="preserve">
+    <value>Erledigt</value>
   </data>
   <data name="Group_NoBooking" xml:space="preserve">
     <value>Ohne Buchung</value>
@@ -209,10 +209,7 @@
     <value>{0} Artikel</value>
   </data>
   <data name="Shown" xml:space="preserve">
-    <value>{0} von {1}</value>
-  </data>
-  <data name="More" xml:space="preserve">
-    <value>Mehr anzeigen</value>
+    <value>{0} Kassenbons</value>
   </data>
   <data name="Assign_Help" xml:space="preserve">
     <value>Wähle die Buchung, mit der dieser Kassenbon bezahlt wurde. Aufgeführt sind Buchungen um sein Datum, nächstliegender Betrag zuerst.</value>
@@ -231,5 +228,17 @@
   </data>
   <data name="State_Instalments" xml:space="preserve">
     <value>in Raten bezahlt (siehe die Raten)</value>
+  </data>
+  <data name="State_InstalmentsPending" xml:space="preserve">
+    <value>in Raten bezahlt, noch nicht alle abgebucht</value>
+  </data>
+  <data name="PageTitle_WithProject" xml:space="preserve">
+    <value>Kassenbons · {0} · OpenBudget</value>
+  </data>
+  <data name="Project_Intro" xml:space="preserve">
+    <value>Die Kassenbons der Buchungen dieses Projekts und Kassenbons, die noch auf eine Buchung warten, aus Quellen, die in dieses Projekt buchen. Kategorien und Artikelgedächtnis findest du in den</value>
+  </data>
+  <data name="Project_Settings" xml:space="preserve">
+    <value>Einstellungen.</value>
   </data>
 </root>

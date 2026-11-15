@@ -67,17 +67,23 @@ public enum ReceiptReviewState
     /// <summary>Paid in cash (or otherwise without a booking to look for).</summary>
     NoBooking,
 
-    /// <summary>The full price of an order paid in instalments: the instalments have the bookings.</summary>
+    /// <summary>The full price of an order paid in instalments: the instalments have the bookings, and all of them are matched.</summary>
     Instalments,
+
+    /// <summary>The full price of an order paid in instalments whose instalments are not all charged and matched yet.</summary>
+    InstalmentsPending,
 
     /// <summary>The owner said its booking is not in the app.</summary>
     Dismissed,
 }
 
-/// <summary>A receipt of any source as the receipts page lists it.</summary>
+/// <summary>The status chips of the receipt list (see <see cref="ReceiptService.GroupOf"/>).</summary>
+public enum ReceiptReviewGroup { Review, Waiting, Done, NoBooking }
+
+/// <summary>A receipt of any source as the receipts list shows it; <see cref="IsOwn"/>: the signed-in user's own (theirs to assign).</summary>
 public sealed record ReceiptReviewRow(
     long Id, string Source, string Shop, string Title, DateTime? Date, long PaymentCents, int Items, ReceiptReviewState State,
-    long? TransactionId, DateTime? BookingDate);
+    long? TransactionId, DateTime? BookingDate, bool IsOwn = true);
 
 /// <summary>A booking that may be a receipt's: id, date, signed amount, payee and purpose.</summary>
 public sealed record ReceiptCandidate(long TransactionId, DateTime Date, long AmountCents, string? Name, string? Purpose);
@@ -265,20 +271,30 @@ public sealed class ReceiptService
     {
         var user = await UserAsync();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var shops = ReceiptShops.All.Where(s => ReceiptSources.Of(s) == source).ToList();
-        var bookings = db.ReceiptInvoices.Where(r => r.OwnerUserId == user && shops.Contains(r.Shop) && r.TransactionId != null).Select(r => r.TransactionId);
-        var accounts = await db.Transactions.AsNoTracking().Where(t => bookings.Contains(t.Id) && t.AccountId != null).Select(t => t.AccountId!.Value).Distinct().ToListAsync(ct);
-        if (source == ReceiptSources.Amazon)
-        {
-            var logins = db.BankLogins.Where(l => l.OwnerUserId == user && l.ConnectorType == ReceiptShops.Amazon).Select(l => l.Id);
-            accounts.AddRange(await db.BankLoginAccounts.AsNoTracking().Where(a => logins.Contains(a.BankLoginId) && a.EnrichAccountId != null)
-                .Select(a => a.EnrichAccountId!.Value).ToListAsync(ct));
-        }
+        var accounts = await SourceAccountsAsync(db, user, source, ct);
         var rows = await db.ProjectAccountAssignments.AsNoTracking()
             .Where(a => accounts.Contains(a.AccountId) && a.Project.OwnerUserId == user)
             .Select(a => new { a.ProjectId, a.Project.Name, a.Project.SortOrder }).ToListAsync(ct);
         return rows.DistinctBy(p => p.ProjectId).OrderBy(p => p.SortOrder).ThenBy(p => p.ProjectId)
             .Select(p => new ReceiptProjectLink(p.ProjectId, p.Name)).ToList();
+    }
+
+    /// <summary>
+    /// The accounts a receipt source's bookings land on: the accounts of the user's matched bookings of the source (for
+    /// Amazon also the accounts its payment methods are mapped to).
+    /// </summary>
+    private static async Task<HashSet<long>> SourceAccountsAsync(BudgetDbContext db, string user, string source, CancellationToken ct)
+    {
+        var shops = ReceiptShops.All.Where(s => ReceiptSources.Of(s) == source).ToList();
+        var bookings = db.ReceiptInvoices.Where(r => r.OwnerUserId == user && shops.Contains(r.Shop) && r.TransactionId != null).Select(r => r.TransactionId);
+        var accounts = (await db.Transactions.AsNoTracking().Where(t => bookings.Contains(t.Id) && t.AccountId != null).Select(t => t.AccountId!.Value).Distinct().ToListAsync(ct)).ToHashSet();
+        if (source == ReceiptSources.Amazon)
+        {
+            var logins = db.BankLogins.Where(l => l.OwnerUserId == user && l.ConnectorType == ReceiptShops.Amazon).Select(l => l.Id);
+            accounts.UnionWith(await db.BankLoginAccounts.AsNoTracking().Where(a => logins.Contains(a.BankLoginId) && a.EnrichAccountId != null)
+                .Select(a => a.EnrichAccountId!.Value).ToListAsync(ct));
+        }
+        return accounts;
     }
 
     private async Task<int> ProjectOfRowAsync(long id, CancellationToken ct)
@@ -412,28 +428,130 @@ public sealed class ReceiptService
     {
         var user = await UserAsync();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
-        var rows = new List<ReceiptReviewRow>();
-        var invoices = await db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == user)
-            .OrderByDescending(r => r.DeliveryDate ?? r.OrderDate).ThenByDescending(r => r.Id).Take(take * 2)
-            .Select(r => new { r.Id, r.Shop, r.Store, r.OrderNumber, r.OtherOrderNumbers, r.OrderDate, r.DeliveryDate, r.PaymentCents, Items = r.Items.Count, r.State, r.TransactionId, r.SplitSignature })
-            .ToListAsync(ct);
-        rows.AddRange(invoices.Where(r => source == null || ReceiptSources.Of(r.Shop) == source).Select(r =>
+        var invoices = await Project(db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == user)
+            .OrderByDescending(r => r.DeliveryDate ?? r.OrderDate).ThenByDescending(r => r.Id).Take(take * 2)).ToListAsync(ct);
+        return await RowsAsync(db, user, invoices, source, state, take, ct);
+    }
+
+    /// <summary>
+    /// The status chip a receipt falls under. "Done": nothing left to do — matched or split, the full price of an order paid
+    /// in instalments, or nothing to pay (whatever its state). "No booking": it cost money but its booking is not in the app
+    /// (dismissed, or paid without a booking to look for). "Review": ambiguous or unmatched.
+    /// </summary>
+    public static ReceiptReviewGroup GroupOf(ReceiptReviewState state, long paymentCents) => state switch
+    {
+        _ when paymentCents == 0 => ReceiptReviewGroup.Done,
+        ReceiptReviewState.Split or ReceiptReviewState.Matched or ReceiptReviewState.Instalments => ReceiptReviewGroup.Done,
+        ReceiptReviewState.Waiting or ReceiptReviewState.InstalmentsPending => ReceiptReviewGroup.Waiting,
+        ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched => ReceiptReviewGroup.Review,
+        _ => ReceiptReviewGroup.NoBooking,
+    };
+
+    /// <summary>Whether a receipt needs the user (the "Review" chip, a project's receipts badge).</summary>
+    public static bool NeedsReview(ReceiptReviewRow row) => GroupOf(row.State, row.PaymentCents) == ReceiptReviewGroup.Review;
+
+    /// <summary>
+    /// A project's receipts, newest first: receipts linked to bookings on the project's accounts that the user may see (their
+    /// own receipts, and other users' receipts on bookings visible to the user), plus the user's own receipts still without a
+    /// booking (waiting, ambiguous, unmatched, instalment plans still running) from sources whose bookings land on the project's accounts (see
+    /// <see cref="SourceAccountsAsync"/>). Requires view access to the project.
+    /// </summary>
+    public async Task<List<ReceiptReviewRow>> ListProjectAsync(int projectId, string? source = null, int take = 5000, CancellationToken ct = default)
+    {
+        var scope = await _access.GetAsync();
+        var user = scope.UserId ?? throw new AccessDeniedException("Not signed in.");
+        if (!scope.CanView(projectId)) throw new AccessDeniedException("Project not found.");
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var accounts = (await db.ProjectAccountAssignments.AsNoTracking().Where(a => a.ProjectId == projectId).Select(a => a.AccountId).ToListAsync(ct)).ToHashSet();
+        if (accounts.Count == 0) return [];
+
+        await using var sys = await _system.CreateDbContextAsync(ct);
+        var linked = await Project(sys.ReceiptInvoices.AsNoTracking().Where(r => r.TransactionId != null
+            && sys.Transactions.Any(t => t.Id == r.TransactionId && t.AccountId != null && accounts.Contains(t.AccountId.Value)))).ToListAsync(ct);
+        var foreignTx = linked.Where(r => r.OwnerUserId != user).Select(r => r.TransactionId!.Value).Distinct().ToList();
+        var visibleTx = (await db.Transactions.AsNoTracking().Where(t => foreignTx.Contains(t.Id)).Select(t => t.Id).ToListAsync(ct)).ToHashSet();
+        var invoices = linked.Where(r => r.OwnerUserId == user || visibleTx.Contains(r.TransactionId!.Value)).ToList();
+
+        var sources = new List<string>();
+        foreach (var s in ReceiptSources.All)
+            if ((await SourceAccountsAsync(db, user, s, ct)).Overlaps(accounts)) sources.Add(s);
+        if (sources.Count > 0)
         {
-            var date = r.DeliveryDate ?? r.OrderDate;
-            var st = r.State switch
-            {
-                ReceiptMatchState.Matched => r.SplitSignature != null ? ReceiptReviewState.Split : ReceiptReviewState.Matched,
-                ReceiptMatchState.Ambiguous => ReceiptReviewState.Ambiguous,
-                ReceiptMatchState.Dismissed => ReceiptReviewState.Dismissed,
-                ReceiptMatchState.Skipped => ReceiptReviewState.NoBooking,
-                ReceiptMatchState.Instalments => ReceiptReviewState.Instalments,
-                _ when r.PaymentCents == 0 || (r.PaymentCents < 0 && r.Shop != ReceiptShops.Amazon) => ReceiptReviewState.NoBooking,
-                _ when date is { } d && DateOnly.FromDateTime(d).AddDays(WaitingDays) >= today => ReceiptReviewState.Waiting,
-                _ => ReceiptReviewState.Unmatched,
-            };
-            return new ReceiptReviewRow(r.Id, ReceiptSources.Of(r.Shop), r.Shop, Title(r.Shop, r.Store, r.OrderNumber, r.OtherOrderNumbers), date, r.PaymentCents, r.Items, st, r.TransactionId, null);
-        }));
+            var shops = ReceiptShops.All.Where(s => sources.Contains(ReceiptSources.Of(s))).ToList();
+            var open = await Project(db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == user && r.TransactionId == null && shops.Contains(r.Shop))).ToListAsync(ct);
+            invoices.AddRange(open);
+        }
+        var rows = await RowsAsync(sys, user, invoices, source, null, int.MaxValue, ct);
+        return rows.Where(r => r.TransactionId != null || r.State is ReceiptReviewState.Waiting or ReceiptReviewState.InstalmentsPending
+            or ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched).Take(take).ToList();
+    }
+
+    /// <summary>How many of a project's receipts (see <see cref="ListProjectAsync"/>) need review; 0 without access.</summary>
+    public async Task<int> CountProjectReviewAsync(int projectId, CancellationToken ct = default)
+    {
+        var scope = await _access.GetAsync();
+        if (scope.UserId == null || !scope.CanView(projectId)) return 0;
+        return (await ListProjectAsync(projectId, ct: ct)).Count(NeedsReview);
+    }
+
+    private sealed record InvoiceRow(long Id, string OwnerUserId, string Shop, string? Store, string? OrderNumber, string? OtherOrderNumbers, DateTime? OrderDate,
+        DateTime? DeliveryDate, long PaymentCents, int Items, ReceiptMatchState State, long? TransactionId, string? SplitSignature, int? BankLoginId);
+
+    private static IQueryable<InvoiceRow> Project(IQueryable<ReceiptInvoice> q) =>
+        q.Select(r => new InvoiceRow(r.Id, r.OwnerUserId, r.Shop, r.Store, r.OrderNumber, r.OtherOrderNumbers, r.OrderDate, r.DeliveryDate, r.PaymentCents,
+            r.Items.Count, r.State, r.TransactionId, r.SplitSignature, r.BankLoginId));
+
+    private DateOnly Today() => DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+
+    private static ReceiptReviewState StateOf(InvoiceRow r, DateOnly today)
+    {
+        var date = r.DeliveryDate ?? r.OrderDate;
+        return r.State switch
+        {
+            ReceiptMatchState.Matched => r.SplitSignature != null ? ReceiptReviewState.Split : ReceiptReviewState.Matched,
+            ReceiptMatchState.Ambiguous => ReceiptReviewState.Ambiguous,
+            ReceiptMatchState.Dismissed => ReceiptReviewState.Dismissed,
+            ReceiptMatchState.Skipped => ReceiptReviewState.NoBooking,
+            ReceiptMatchState.Instalments => ReceiptReviewState.Instalments,
+            _ when r.PaymentCents == 0 || (r.PaymentCents < 0 && r.Shop != ReceiptShops.Amazon) => ReceiptReviewState.NoBooking,
+            _ when date is { } d && DateOnly.FromDateTime(d).AddDays(WaitingDays) >= today => ReceiptReviewState.Waiting,
+            _ => ReceiptReviewState.Unmatched,
+        };
+    }
+
+    /// <summary>
+    /// The full-price entries of orders paid in instalments whose plan is not complete: the order's instalment charges on the
+    /// same login (a charge of several orders is in no plan, so the order number alone groups them) do not add up to the full
+    /// price yet (one cent of rounding per instalment), or one of them is not matched or split.
+    /// </summary>
+    private static async Task<HashSet<long>> PendingInstalmentPlansAsync(BudgetDbContext db, List<InvoiceRow> plans, CancellationToken ct)
+    {
+        var pending = new HashSet<long>();
+        if (plans.Count == 0) return pending;
+        var orders = plans.Where(p => p.OrderNumber != null).Select(p => p.OrderNumber!).Distinct(StringComparer.Ordinal).ToList();
+        var logins = plans.Select(p => p.BankLoginId).Distinct().ToList();
+        var charges = await db.ReceiptInvoices.AsNoTracking()
+            .Where(r => r.OrderNumber != null && orders.Contains(r.OrderNumber) && logins.Contains(r.BankLoginId) && r.State != ReceiptMatchState.Instalments && r.PaymentCents > 0)
+            .Select(r => new { r.OrderNumber, r.BankLoginId, r.PaymentCents, r.State }).ToListAsync(ct);
+        foreach (var plan in plans)
+        {
+            var of = charges.Where(c => c.OrderNumber == plan.OrderNumber && c.BankLoginId == plan.BankLoginId).ToList();
+            var complete = of.Count > 0 && of.Sum(c => c.PaymentCents) + of.Count >= plan.PaymentCents && of.All(c => c.State == ReceiptMatchState.Matched);
+            if (!complete) pending.Add(plan.Id);
+        }
+        return pending;
+    }
+
+    /// <summary>The review rows of the given invoices (one source, one state), newest first, with their bookings' dates.</summary>
+    private async Task<List<ReceiptReviewRow>> RowsAsync(BudgetDbContext db, string user, IReadOnlyList<InvoiceRow> invoices, string? source, ReceiptReviewState? state, int take, CancellationToken ct)
+    {
+        var today = Today();
+        var rows = invoices.Where(r => source == null || ReceiptSources.Of(r.Shop) == source)
+            .Select(r => new ReceiptReviewRow(r.Id, ReceiptSources.Of(r.Shop), r.Shop, Title(r.Shop, r.Store, r.OrderNumber, r.OtherOrderNumbers),
+                r.DeliveryDate ?? r.OrderDate, r.PaymentCents, r.Items, StateOf(r, today), r.TransactionId, null, r.OwnerUserId == user))
+            .ToList();
+        var pending = await PendingInstalmentPlansAsync(db, invoices.Where(r => r.State == ReceiptMatchState.Instalments).ToList(), ct);
+        rows = rows.Select(r => pending.Contains(r.Id) ? r with { State = ReceiptReviewState.InstalmentsPending } : r).ToList();
         if (state is { } only) rows = rows.Where(r => r.State == only).ToList();
         rows = rows.OrderByDescending(r => r.Date).ThenByDescending(r => r.Id).Take(take).ToList();
         var txIds = rows.Where(r => r.TransactionId != null).Select(r => r.TransactionId!.Value).Distinct().ToList();

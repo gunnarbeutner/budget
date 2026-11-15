@@ -12,4 +12,5 @@ public enum ProjectTab
     Scheduled,
     Portfolio,
     Documents,
+    Receipts,
 }

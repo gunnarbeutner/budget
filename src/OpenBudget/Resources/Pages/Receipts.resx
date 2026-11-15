@@ -199,8 +199,8 @@
   <data name="Group_Waiting" xml:space="preserve">
     <value>Waiting</value>
   </data>
-  <data name="Group_Matched" xml:space="preserve">
-    <value>Matched</value>
+  <data name="Group_Done" xml:space="preserve">
+    <value>Done</value>
   </data>
   <data name="Group_NoBooking" xml:space="preserve">
     <value>No booking</value>
@@ -209,10 +209,7 @@
     <value>{0} items</value>
   </data>
   <data name="Shown" xml:space="preserve">
-    <value>{0} of {1}</value>
-  </data>
-  <data name="More" xml:space="preserve">
-    <value>Show more</value>
+    <value>{0} receipts</value>
   </data>
   <data name="Assign_Help" xml:space="preserve">
     <value>Pick the booking that paid this receipt. Bookings near its date are listed, closest amount first.</value>
@@ -231,5 +228,17 @@
   </data>
   <data name="State_Instalments" xml:space="preserve">
     <value>paid in instalments (see the instalments)</value>
+  </data>
+  <data name="State_InstalmentsPending" xml:space="preserve">
+    <value>paid in instalments, not all charged yet</value>
+  </data>
+  <data name="PageTitle_WithProject" xml:space="preserve">
+    <value>Receipts · {0} · OpenBudget</value>
+  </data>
+  <data name="Project_Intro" xml:space="preserve">
+    <value>The receipts of this project's bookings, and receipts still waiting for a booking from sources that book into it. Categories and item memory are in</value>
+  </data>
+  <data name="Project_Settings" xml:space="preserve">
+    <value>Settings.</value>
   </data>
 </root>

@@ -1,0 +1,57 @@
+/* The filter bar stays at the top while the list scrolls. */
+.receipts-filters {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--bs-body-bg);
+    padding: .5rem 0;
+    border-bottom: 1px solid var(--bs-border-color);
+}
+/* Phones: the page scrolls as a whole under the app's top bar. */
+@media (max-width: 767.98px) {
+    .receipts-filters { top: var(--ob-topbar-h, 0); }
+}
+
+.receipts-search { width: 14rem; max-width: 100%; flex: 1 1 10rem; }
+
+.receipts-chip {
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    font-size: 12px;
+    padding: .1rem .6rem;
+}
+.receipts-chip.active {
+    background: var(--bs-primary-bg-subtle);
+    border-color: var(--bs-primary-border-subtle);
+    color: var(--bs-primary-text-emphasis);
+}
+.receipts-chip-count { opacity: .7; margin-left: .2rem; font-variant-numeric: tabular-nums; }
+
+/* Fixed layout: long titles truncate instead of widening the page. */
+.receipts-table { table-layout: fixed; width: 100%; font-size: 13px; }
+.receipts-table td, .receipts-table th { overflow: hidden; }
+.receipts-col-date { width: 4.75rem; }
+.receipts-col-items { width: 4rem; }
+.receipts-col-amount { width: 6.5rem; font-variant-numeric: tabular-nums; }
+.receipts-col-status { width: 11rem; }
+.receipts-col-status .badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
+.receipts-title { font-size: 13px; text-decoration: none; }
+.receipts-row-open { cursor: pointer; }
+
+@media (max-width: 575.98px) {
+    .receipts-col-amount { width: 5.25rem; }
+    .receipts-col-status { width: 7rem; }
+}
+
+.receipts-assign-receipt {
+    background: var(--bs-tertiary-bg);
+    border-radius: var(--bs-border-radius);
+    padding: .5rem .75rem;
+}
+.receipts-candidate {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr) auto;
+    gap: .75rem;
+    align-items: start;
+}
