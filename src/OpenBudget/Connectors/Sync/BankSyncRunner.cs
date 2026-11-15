@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Browser;
-using OpenBudget.Connectors.LidlPlus;
 using OpenBudget.Models;
 using OpenBudget.Services;
 
@@ -241,32 +240,15 @@ public sealed class BankSyncRunner
             }
             await db.SaveChangesAsync(ct);
 
-            if (request.Transactions && connector is IReceiptSource receiptSource)
+            if (request.Transactions)
             {
-                await FetchReceiptsAsync(db, login, receiptSource, sink, context, affected, ct);
-            }
-            else if (request.Transactions && connector is IOrderSource orderSource)
-            {
-                try { await FetchOrdersAsync(db, login, orderSource, sink, context, affected, ct); }
+                bool matchReceipts;
+                try { matchReceipts = await FetchAsync(db, login, registration, connector, remoteAccounts, request, sink, context, errors, affected, ct); }
                 finally { await context.CloseBrowsersAsync(); }
+                if (matchReceipts) await MatchReceiptsAsync(db, login, sink, ct);
+                await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct);
             }
-            else if (request.Transactions)
-            {
-                try { await RefreshAccountsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct); }
-                finally { await context.CloseBrowsersAsync(); }
-                // New bookings may be the ones open receipts (mailbox, Lidl Plus, Amazon charges) were waiting for.
-                sink.Report(new SyncProgress(SyncStage.MatchingReceipts));
-                try
-                {
-                    await _receipts.MatchAsync(db, login.OwnerUserId, ct, s => sink.Report(new SyncProgress(SyncStage.MatchingReceipts, Detail: s)));
-                    await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    _logger.LogError(ex, "Bank login {LoginId}: matching receipts failed.", login.Id);
-                }
-            }
-            if (request.Statements && !(request.Background && connector is IBackgroundScope { StatementsInBackground: false }))
+            if (request.Statements && !(request.Background && !registration.Background.Statements))
                 await FetchStatementsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct);
             if (connector is IWebScheduledSource webScheduled)
                 await StoreWebScheduledAsync(db, login, webScheduled, affected, ct);
@@ -625,14 +607,53 @@ public sealed class BankSyncRunner
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// The transaction phase of a sync, by what the connector delivers: bookings of its accounts, an online shop's orders
+    /// or a shop's receipts. Returns whether the owner's open receipts are matched afterwards (an order source matches its
+    /// charges while storing them).
+    /// </summary>
+    private async Task<bool> FetchAsync(
+        BudgetDbContext db, BankLogin login, ConnectorRegistration registration, IBankConnector connector, IReadOnlyList<RemoteAccount> remote,
+        SyncRequest request, ISyncSink sink, SyncContext context, List<string> errors, HashSet<string> affected, CancellationToken ct)
+    {
+        switch (registration.Kind)
+        {
+            case SourceKind.Orders:
+                var orders = connector as IOrderSource ?? throw new ConnectorException("The connector does not read orders.");
+                await FetchOrdersAsync(db, login, orders, registration.Orders!.Store, sink, context, affected, ct);
+                return false;
+            case SourceKind.Receipts:
+                var receipts = connector as IReceiptSource ?? throw new ConnectorException("The connector does not read receipts.");
+                await FetchReceiptsAsync(db, login, receipts, registration.ReceiptShop!, sink, context, affected, ct);
+                return true;
+            default:
+                await RefreshAccountsAsync(db, login, connector, registration.Background, remote, request, sink, context, errors, affected, ct);
+                return true;
+        }
+    }
+
+    /// <summary>Matches the owner's open receipts: new bookings or receipts may be the ones the others were waiting for.</summary>
+    private async Task MatchReceiptsAsync(BudgetDbContext db, BankLogin login, ISyncSink sink, CancellationToken ct)
+    {
+        sink.Report(new SyncProgress(SyncStage.MatchingReceipts));
+        try
+        {
+            await _receipts.MatchAsync(db, login.OwnerUserId, ct, s => sink.Report(new SyncProgress(SyncStage.MatchingReceipts, Detail: s)));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Bank login {LoginId}: matching receipts failed.", login.Id);
+        }
+    }
+
     private async Task RefreshAccountsAsync(
-        BudgetDbContext db, BankLogin login, IBankConnector connector, IReadOnlyList<RemoteAccount> remote, SyncRequest request,
+        BudgetDbContext db, BankLogin login, IBankConnector connector, BackgroundCapabilities background, IReadOnlyList<RemoteAccount> remote, SyncRequest request,
         ISyncSink sink, SyncContext context, List<string> errors, HashSet<string> affected, CancellationToken ct)
     {
         var links = login.Accounts
             .Where(a => a.LinkedAccountId != null && !a.Closed && (request.RefreshAccounts == null || request.RefreshAccounts.Contains(a.Id)))
-            .Where(a => !request.Background || connector is not IBackgroundScope scope
-                || scope.RefreshInBackground(remote.First(r => string.Equals(r.RemoteId, a.RemoteId, StringComparison.Ordinal))))
+            .Where(a => !request.Background
+                || background.Refreshes(connector, remote.First(r => string.Equals(r.RemoteId, a.RemoteId, StringComparison.Ordinal))))
             .ToList();
         _logger.LogInformation("Bank login {LoginId}: refreshing {Count} linked accounts.", login.Id, links.Count);
         foreach (var link in links)
@@ -701,12 +722,12 @@ public sealed class BankSyncRunner
 
     /// <summary>An order source: reads charges and new orders, stores them, lists the instruments and matches the charges.</summary>
     private async Task FetchOrdersAsync(
-        BudgetDbContext db, BankLogin login, IOrderSource source, ISyncSink sink, SyncContext context, HashSet<string> affected, CancellationToken ct)
+        BudgetDbContext db, BankLogin login, IOrderSource source, IOrderStore store, ISyncSink sink, SyncContext context, HashSet<string> affected, CancellationToken ct)
     {
         var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
-        var since = await OpenBudget.Connectors.Amazon.AmazonReceiptStore.SinceAsync(db, login, today, OrderHistoryYears, ct);
-        var known = await OpenBudget.Connectors.Amazon.AmazonReceiptStore.KnownOrdersAsync(db, login.Id, ct);
-        var unread = await OpenBudget.Connectors.Amazon.AmazonReceiptStore.UnreadOrdersAsync(db, login.Id, ct);
+        var since = await store.SinceAsync(db, login, today, OrderHistoryYears, ct);
+        var known = await store.KnownOrdersAsync(db, login.Id, ct);
+        var unread = await store.UnreadOrdersAsync(db, login.Id, ct);
         var step = await DriveAsync(a => source.FetchOrdersAsync(since, known, unread, a, ct), sink, context, ct);
         if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);
         if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Reading the orders failed.");
@@ -718,20 +739,18 @@ public sealed class BankSyncRunner
         UpsertAccounts(login, result.Instruments);
         await db.SaveChangesAsync(ct);
         sink.Report(new SyncProgress(SyncStage.MatchingOrders));
-        await OpenBudget.Connectors.Amazon.AmazonReceiptStore.ApplyAsync(db, login, result, _clock.GetUtcNow().UtcDateTime, _receipts, ct, s => sink.Report(new SyncProgress(SyncStage.MatchingOrders, Detail: s)));
+        await store.ApplyAsync(db, login, result, _clock.GetUtcNow().UtcDateTime, _receipts, ct, s => sink.Report(new SyncProgress(SyncStage.MatchingOrders, Detail: s)));
         _logger.LogInformation("Bank login {LoginId}: {Charges} charges and {Orders} order details stored.", login.Id, result.Charges.Count, result.Orders.Count);
         affected.Add(login.OwnerUserId);
-        await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct);
     }
 
     /// <summary>
-    /// A receipt source: reads the receipts not stored yet, stores them with the owner's other receipts and matches
-    /// (and splits) them like those (see <see cref="OpenBudget.Connectors.Receipts.ReceiptStore"/>).
+    /// A receipt source: reads the receipts not stored yet and stores them under <paramref name="shop"/> with the owner's
+    /// other receipts; the sync then matches (and splits) them like those (see <see cref="OpenBudget.Connectors.Receipts.ReceiptStore"/>).
     /// </summary>
     private async Task FetchReceiptsAsync(
-        BudgetDbContext db, BankLogin login, IReceiptSource source, ISyncSink sink, SyncContext context, HashSet<string> affected, CancellationToken ct)
+        BudgetDbContext db, BankLogin login, IReceiptSource source, string shop, ISyncSink sink, SyncContext context, HashSet<string> affected, CancellationToken ct)
     {
-        var shop = source.Shop;
         var stored = db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == login.OwnerUserId && r.Shop == shop);
         var known = (await stored.Select(r => r.InvoiceNumber).ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
         // Every sync walks the source's whole list (a few pages) and reads the details of the receipts not stored yet, so
@@ -740,15 +759,12 @@ public sealed class BankSyncRunner
         var step = await DriveAsync(a => source.FetchReceiptsAsync(since, known, a, ct), sink, context, ct);
         if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);
         if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Reading the receipts failed.");
-        sink.Report(new SyncProgress(SyncStage.MatchingReceipts));
         var now = _clock.GetUtcNow().UtcDateTime;
         var added = 0;
         foreach (var r in step.Value!)
             if (await OpenBudget.Connectors.Receipts.ReceiptStore.AddAsync(db, login.OwnerUserId, shop, r.Receipt, null, now, ct, r.Store)) added++;
-        await _receipts.MatchAsync(db, login.OwnerUserId, ct, s => sink.Report(new SyncProgress(SyncStage.MatchingReceipts, Detail: s)));
         _logger.LogInformation("Bank login {LoginId}: {Count} new receipts stored.", login.Id, added);
         affected.Add(login.OwnerUserId);
-        await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct);
     }
 
     /// <summary>How far back the first sync of an order source reads.</summary>

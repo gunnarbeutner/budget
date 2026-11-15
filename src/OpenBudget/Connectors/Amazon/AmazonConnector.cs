@@ -88,7 +88,8 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
         Silent = SilentCapability.SessionOnly,
         SilentFor = credentials => TotpSecret.TryParse(credentials?.ExtraValue(AmazonSignIn.TotpKey), out _) ? SilentCapability.Full : SilentCapability.SessionOnly,
         SilentWebSignIn = true,
-        OrderSource = true,
+        Orders = new OrderSourceCapabilities(AmazonReceiptStore.Store, AmazonPages.IsPointsLabel, options.OrderUrl),
+        ReceiptShop = Models.ReceiptShops.Amazon,
     };
 
     /// <summary>A usable secret is stored as entered (trimmed); <see cref="TotpSecret.Parse"/> reads it at sign-in.</summary>

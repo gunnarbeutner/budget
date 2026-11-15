@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
-using OpenBudget.Connectors.Amazon;
+using OpenBudget.Connectors;
 using OpenBudget.Connectors.Receipts;
 using OpenBudget.Models;
 
@@ -17,24 +17,26 @@ public sealed record InstrumentCandidate(long AccountId, string Name, bool Sugge
 public sealed record OpenChargeView(DateTime Date, string OrderId, long AmountCents, string Instrument, bool Ambiguous, Uri OrderUrl);
 
 /// <summary>
-/// The owner's view of an order source (Amazon): mapping its payment instruments to existing accounts and the charges
-/// (receipts of the shop <see cref="ReceiptShops.Amazon"/>) still without a booking. Reads and writes through the user-scoped context;
-/// re-matching after a mapping change runs on a system context for the owner only.
+/// The owner's view of an order or receipt source: mapping its payment instruments to existing accounts and the charges
+/// (receipts of the login) still without a booking. What sets an order source apart (instruments never booked on an
+/// account, the order's page at the shop) comes from its <see cref="OrderSourceCapabilities"/>. Reads and writes
+/// through the user-scoped context; re-matching after a mapping change runs on a system context for the owner only.
 /// </summary>
 public sealed partial class OrderEnrichmentService
 {
-    private static readonly AmazonOptions Amazon = new();
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly SystemDbContextFactory _system;
     private readonly ReceiptStore _store;
     private readonly AccessScopeProvider _access;
     private readonly ChangeNotificationService _notifier;
     private readonly ChangeOrigin _origin;
+    private readonly ConnectorRegistry _registry;
 
     public OrderEnrichmentService(
         IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory system, ReceiptStore store, AccessScopeProvider access,
-        ChangeNotificationService notifier, ChangeOrigin origin)
+        ChangeNotificationService notifier, ChangeOrigin origin, ConnectorRegistry registry)
     {
+        _registry = registry;
         _dbFactory = dbFactory;
         _system = system;
         _store = store;
@@ -50,12 +52,13 @@ public sealed partial class OrderEnrichmentService
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var rows = await db.BankLoginAccounts.AsNoTracking().Where(a => a.BankLoginId == loginId).OrderBy(a => a.Name).ToListAsync(ct);
+        var orders = await OrdersOfAsync(db, loginId, ct);
         var mapped = rows.Where(r => r.EnrichAccountId != null).Select(r => r.EnrichAccountId!.Value).ToList();
         var names = await db.Accounts.AsNoTracking().Where(a => mapped.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Name, ct);
         var counts = await db.ReceiptInvoices.AsNoTracking().Where(c => c.BankLoginId == loginId && c.PaymentMethodId != null)
             .GroupBy(c => c.PaymentMethodId!).Select(g => new { g.Key, All = g.Count(), Matched = g.Count(c => c.TransactionId != null) })
             .ToDictionaryAsync(g => g.Key, ct);
-        return rows.Select(r => new InstrumentView(r.Id, r.Name, AmazonPages.IsPointsLabel(r.Name), r.EnrichAccountId,
+        return rows.Select(r => new InstrumentView(r.Id, r.Name, orders?.IsUnbookableInstrument(r.Name) == true, r.EnrichAccountId,
             r.EnrichAccountId is { } a ? names.GetValueOrDefault(a) : null,
             counts.TryGetValue(r.RemoteId, out var c) ? c.All : 0, counts.TryGetValue(r.RemoteId, out var m) ? m.Matched : 0)).ToList();
     }
@@ -120,7 +123,7 @@ public sealed partial class OrderEnrichmentService
         string? sharedOwner = null;
         if (accountId is { } id)
         {
-            if (AmazonPages.IsPointsLabel(instrument.Name)) throw new InvalidOperationException("Points and gift cards are not booked on an account.");
+            if ((await OrdersOfAsync(db, instrument.BankLoginId, ct))?.IsUnbookableInstrument(instrument.Name) == true) throw new InvalidOperationException("Points and gift cards are not booked on an account.");
             var account = await db.Accounts.AsNoTracking().Where(a => a.Id == id).Select(a => new { a.OwnerUserId }).FirstOrDefaultAsync(ct);
             if (account == null || !scope.CanEditTransactionsOf(account.OwnerUserId, id)) throw new AccessDeniedException("Account not found.");
             if (!scope.Owns(account.OwnerUserId)) sharedOwner = account.OwnerUserId;
@@ -141,7 +144,16 @@ public sealed partial class OrderEnrichmentService
         var q = db.ReceiptInvoices.AsNoTracking().Where(c => c.BankLoginId == loginId && (c.State == ReceiptMatchState.Unmatched || c.State == ReceiptMatchState.Ambiguous));
         var count = await q.CountAsync(ct);
         var latest = await q.OrderByDescending(c => c.DeliveryDate).ThenBy(c => c.Id).Take(take).ToListAsync(ct);
+        var orders = await OrdersOfAsync(db, loginId, ct);
+        if (orders == null) return (count, []);
         return (count, latest.Select(c => new OpenChargeView(c.DeliveryDate ?? c.ReadAt, c.OrderNumber ?? "", -c.PaymentCents, c.PaymentMethod ?? "",
-            c.State == ReceiptMatchState.Ambiguous, Amazon.OrderUrl(c.OrderNumber ?? ""))).ToList());
+            c.State == ReceiptMatchState.Ambiguous, orders.OrderUrl(c.OrderNumber ?? ""))).ToList());
+    }
+
+    /// <summary>The order-source capabilities of the login's connector; null for any other login (or one not visible).</summary>
+    private async Task<OrderSourceCapabilities?> OrdersOfAsync(BudgetDbContext db, int loginId, CancellationToken ct)
+    {
+        var type = await db.BankLogins.AsNoTracking().Where(l => l.Id == loginId).Select(l => l.ConnectorType).FirstOrDefaultAsync(ct);
+        return type == null ? null : _registry.Find(type)?.Orders;
     }
 }

@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using OpenBudget.Connectors;
+using OpenBudget.Connectors.Amazon;
 using OpenBudget.Connectors.Receipts;
 using OpenBudget.Models;
 using OpenBudget.Services;
@@ -73,7 +75,8 @@ public sealed class SharedOrderSourceTests
     private static OrderEnrichmentService Orders(TestDb t, string user)
     {
         var view = t.ForUser(user);
-        return new OrderEnrichmentService(view.Factory, t.System, new ReceiptStore(), view.Access, t.Notifier, new ChangeOrigin());
+        return new OrderEnrichmentService(view.Factory, t.System, new ReceiptStore(), view.Access, t.Notifier, new ChangeOrigin(),
+            new ConnectorRegistry([AmazonConnector.CreateRegistration(new AmazonOptions())]));
     }
 
     private static ReceiptService Receipts(TestDb t, string user)

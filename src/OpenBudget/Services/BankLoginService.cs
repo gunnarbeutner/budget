@@ -34,8 +34,8 @@ public sealed record BankLoginView(
 
     public bool FinTsBankAllowed { get; init; }
 
-    /// <summary>An order source (Amazon): its accounts are payment methods mapped to existing accounts.</summary>
-    public bool OrderSource { get; init; }
+    /// <summary>Bank, order source (its accounts are payment methods mapped to existing accounts) or receipt source (no accounts).</summary>
+    public SourceKind Kind { get; init; }
 
     /// <summary>An order source synced at least once whose full history has not been read yet.</summary>
     public bool OrderHistoryIncomplete { get; init; }
@@ -43,8 +43,11 @@ public sealed record BankLoginView(
     /// <summary>While <see cref="OrderHistoryIncomplete"/>: the oldest day the last sync read back to, if known.</summary>
     public DateOnly? OrderHistoryReadBackTo { get; init; }
 
-    /// <summary>The shop of a receipt source (Lidl Plus; see <see cref="ReceiptShops"/>): no accounts; its receipts are matched to the owner's bookings.</summary>
+    /// <summary>The shop (<see cref="ReceiptShops"/>) an order or receipt source's receipts are stored under; null for a bank.</summary>
     public string? ReceiptShop { get; init; }
+
+    /// <summary>The receipt source (<see cref="ReceiptSources"/>) of an order or receipt source; null for a bank.</summary>
+    public string? ReceiptSource { get; init; }
 }
 // StoredExtraCredentials: keys of the extra credential values that are stored (the values themselves never leave the server).
 
@@ -184,10 +187,11 @@ public class BankLoginService
             LastBackgroundSyncAt = l.LastBackgroundSyncAt,
             FinTsBlz = registration?.FinTsBlz,
             FinTsBankAllowed = registration?.FinTsBlz is { } blz && !revokedBanks.Contains(blz),
-            OrderSource = registration?.OrderSource == true,
-            OrderHistoryIncomplete = registration?.OrderSource == true && l.LastSyncAt != null && l.OrderHistoryCompleteAt == null,
+            Kind = registration?.Kind ?? SourceKind.Bank,
+            OrderHistoryIncomplete = registration?.Kind == SourceKind.Orders && l.LastSyncAt != null && l.OrderHistoryCompleteAt == null,
             OrderHistoryReadBackTo = l.OrderHistoryCompleteAt == null ? l.OrderHistoryReadBackTo : null,
             ReceiptShop = registration?.ReceiptShop,
+            ReceiptSource = registration?.ReceiptSource,
         };
     }
 

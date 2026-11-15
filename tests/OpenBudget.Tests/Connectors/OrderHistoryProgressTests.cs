@@ -18,7 +18,7 @@ public sealed class OrderHistoryProgressTests
 
         public DateOnly? StopAt { get; set; }
 
-        public ConnectorRegistration Registration => new(Type, "Example Shop", "Test shop.", _ => new Connector(this)) { OrderSource = true };
+        public ConnectorRegistration Registration => new(Type, "Example Shop", "Test shop.", _ => new Connector(this)) { Orders = new OrderSourceCapabilities(OpenBudget.Connectors.Amazon.AmazonReceiptStore.Store, _ => false, id => new Uri("https://shop.example/order/" + id)), ReceiptShop = OpenBudget.Models.ReceiptShops.Amazon };
 
         private sealed class Connector(Shop shop) : IBankConnector, IOrderSource
         {

@@ -78,16 +78,6 @@ public interface IBackgroundRunInfo
     ConnectorSession? SessionAfterStop { get; }
 }
 
-/// <summary>A connector whose background runs cover only part of a login (the rest is left to manual syncs).</summary>
-public interface IBackgroundScope
-{
-    /// <summary>Whether a background run refreshes this account.</summary>
-    bool RefreshInBackground(RemoteAccount account);
-
-    /// <summary>Whether a background run fetches statements.</summary>
-    bool StatementsInBackground { get; }
-}
-
 /// <summary>
 /// A connector that reads standing orders from a second source the account refresh does not cover (a bank's web
 /// banking, for plans its FinTS does not report). <see cref="WebScheduled"/> holds, per remote account id, the complete

@@ -15,7 +15,7 @@ namespace OpenBudget.Connectors.Ing;
 /// anyway, it also reads the payout and savings plans ("Auszahlpläne", "Sparpläne") of the savings accounts, which
 /// FinTS does not report (<see cref="WebScheduled"/>); background runs never sign in for them.
 /// </summary>
-public sealed class IngConnector : IBankConnector, IBatchedStatements, IBackgroundRunInfo, IBackgroundScope, IWebScheduledSource
+public sealed class IngConnector : IBankConnector, IBatchedStatements, IBackgroundRunInfo, IWebScheduledSource
 {
     public const string TypeName = "ing";
     internal const string WebAccountsKey = "ing.web.accounts";
@@ -66,6 +66,8 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements, IBackgrou
             // background runs do the FinTS part only; the web banking needs an app confirmation
             Silent = SilentCapability.Full,
             FinTsBlz = Config.Blz,
+            // accounts read from the web banking and statements need the owner
+            Background = new BackgroundCapabilities(Statements: false, Refresh: (connector, account) => ((IngConnector)connector).RefreshInBackground(account)),
         };
 
     public string ConnectorType => TypeName;
@@ -220,8 +222,6 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements, IBackgrou
     /// <summary>Web-only accounts and the Postbox need the web banking (an app confirmation): left to manual syncs.</summary>
     public bool RefreshInBackground(RemoteAccount account) =>
         !WebAccounts().Any(w => string.Equals(w.Iban, account.RemoteId, StringComparison.Ordinal));
-
-    public bool StatementsInBackground => false;
 
     public Task<ConnectorStep<AccountRefresh>> RefreshAsync(RemoteAccount account, DateOnly? since, ChallengeAnswer? answer, CancellationToken ct)
     {

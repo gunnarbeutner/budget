@@ -23,6 +23,54 @@ public enum SilentCapability
     Full,
 }
 
+/// <summary>What a connector's data is.</summary>
+public enum SourceKind
+{
+    /// <summary>Accounts with bookings (and statements).</summary>
+    Bank,
+
+    /// <summary>An online shop's orders (<see cref="IOrderSource"/>): payment instruments and charges enriching existing bookings.</summary>
+    Orders,
+
+    /// <summary>A shop's receipts (<see cref="IReceiptSource"/>), matched to existing bookings.</summary>
+    Receipts,
+}
+
+/// <summary>
+/// What a background run does: whether it fetches statements, and which accounts it refreshes (null: all linked ones).
+/// <see cref="Refresh"/> gets the connector after login, as its answer may depend on what the login found out.
+/// </summary>
+public sealed record BackgroundCapabilities(bool Statements = true, Func<IBankConnector, RemoteAccount, bool>? Refresh = null)
+{
+    public static readonly BackgroundCapabilities Everything = new();
+
+    /// <summary>Whether a background run refreshes the account.</summary>
+    public bool Refreshes(IBankConnector connector, RemoteAccount account) => Refresh?.Invoke(connector, account) ?? true;
+}
+
+/// <summary>
+/// An order source's capabilities: where its charges and orders are stored, which of its payment instruments are never
+/// booked on an account (points, gift cards), and the page of an order at the shop.
+/// </summary>
+public sealed record OrderSourceCapabilities(IOrderStore Store, Func<string, bool> IsUnbookableInstrument, Func<string, Uri> OrderUrl);
+
+/// <summary>Where an order source's charges and orders are kept between syncs.</summary>
+public interface IOrderStore
+{
+    /// <summary>The first day the next sync reads, at most <paramref name="historyYears"/> back.</summary>
+    Task<DateOnly> SinceAsync(Services.BudgetDbContext db, Models.BankLogin login, DateOnly today, int historyYears, CancellationToken ct);
+
+    /// <summary>Orders whose details were read already (not asked for again).</summary>
+    Task<HashSet<string>> KnownOrdersAsync(Services.BudgetDbContext db, int loginId, CancellationToken ct);
+
+    /// <summary>Stored orders whose details were not read yet, newest first.</summary>
+    Task<List<string>> UnreadOrdersAsync(Services.BudgetDbContext db, int loginId, CancellationToken ct);
+
+    /// <summary>Stores a sync's charges and order details for the login, then matches the owner's receipts.</summary>
+    Task ApplyAsync(Services.BudgetDbContext db, Models.BankLogin login, OrderSourceResult result, DateTime nowUtc, Receipts.ReceiptStore receipts,
+        CancellationToken ct, Action<string>? progress = null);
+}
+
 /// <summary>One connector type the app can offer: its stable type string, labels and factory.</summary>
 public sealed record ConnectorRegistration(
     string ConnectorType,
@@ -44,11 +92,27 @@ public sealed record ConnectorRegistration(
     /// <summary>Whether a background run may sign in on the bank's web page with the stored credentials (only with <see cref="SilentCapability.Full"/>).</summary>
     public bool SilentWebSignIn { get; init; }
 
-    /// <summary>An order source (<see cref="IOrderSource"/>): its accounts are payment instruments mapped to existing accounts.</summary>
-    public bool OrderSource { get; init; }
+    /// <summary>
+    /// What an order source (<see cref="IOrderSource"/>) brings: its accounts are payment instruments mapped to existing
+    /// accounts; null for every other connector.
+    /// </summary>
+    public OrderSourceCapabilities? Orders { get; init; }
 
-    /// <summary>The shop of a receipt source (<see cref="LidlPlus.IReceiptSource"/>): no accounts; its receipts are matched to the owner's bookings.</summary>
+    /// <summary>
+    /// The shop (<see cref="Models.ReceiptShops"/>) the receipts of an order or receipt source are stored under; null for a
+    /// bank. A receipt source (<see cref="IReceiptSource"/>) has no accounts; its receipts are matched to the
+    /// owner's bookings.
+    /// </summary>
     public string? ReceiptShop { get; init; }
+
+    /// <summary>What a background run does differently from a sync the owner starts.</summary>
+    public BackgroundCapabilities Background { get; init; } = BackgroundCapabilities.Everything;
+
+    /// <summary>Whether the connector delivers bookings, enriches them with orders, or delivers receipts.</summary>
+    public SourceKind Kind => Orders != null ? SourceKind.Orders : ReceiptShop != null ? SourceKind.Receipts : SourceKind.Bank;
+
+    /// <summary>The receipt source (<see cref="Models.ReceiptSources"/>) the connector's receipts belong to; null for a bank.</summary>
+    public string? ReceiptSource => ReceiptShop is { } shop ? Models.ReceiptSources.Of(shop) : null;
 
     /// <summary>The German bank code of a FinTS bank: background FinTS runs are switched on per bank.</summary>
     public string? FinTsBlz { get; init; }

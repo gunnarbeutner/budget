@@ -234,19 +234,21 @@ else
                     <div class="alert alert-warning py-2">@L["Error_ConnectorMissing", login.ConnectorType]</div>
                 }
 
-                @if (login.OrderSource)
+                @if (login.Kind != SourceKind.Bank && login.ReceiptSource is { } receiptSource)
                 {
-                    <OrderSourceSection LoginId="login.Id" Version="loadCount" />
-                    <ReceiptSourceProjects Source="@ReceiptSources.Amazon" Version="loadCount" />
-                }
-                else if (login.ReceiptShop != null)
-                {
-                    <ReceiptSourceSection LoginId="login.Id" Shop="@(login.ReceiptShop ?? string.Empty)" Version="loadCount" />
-                    @if (OpenBudget.Connectors.Receipts.ReceiptService.MappedSources.Contains(ReceiptSources.Of(login.ReceiptShop ?? string.Empty), StringComparer.Ordinal))
+                    @if (login.Kind == SourceKind.Orders)
                     {
-                        <ReceiptSourceAccounts Source="@ReceiptSources.Of(login.ReceiptShop ?? string.Empty)" />
+                        <OrderSourceSection LoginId="login.Id" Version="loadCount" />
                     }
-                    <ReceiptSourceProjects Source="@ReceiptSources.Of(login.ReceiptShop ?? string.Empty)" Version="loadCount" />
+                    else
+                    {
+                        <ReceiptSourceSection LoginId="login.Id" Shop="@(login.ReceiptShop ?? string.Empty)" Version="loadCount" />
+                    }
+                    @if (OpenBudget.Connectors.Receipts.ReceiptService.MappedSources.Contains(receiptSource, StringComparer.Ordinal))
+                    {
+                        <ReceiptSourceAccounts Source="@receiptSource" />
+                    }
+                    <ReceiptSourceProjects Source="@receiptSource" Version="loadCount" />
                 }
                 else
                 {
@@ -568,7 +570,7 @@ else
             if (login.BackgroundEnabled || login.FinTsBlz != null) runsByLogin[login.Id] = await Bank.GetRunsAsync(login.Id);
             var accounts = await Bank.GetAccountsAsync(login.Id);
             accountsByLogin[login.Id] = accounts;
-            if (login.OrderSource || login.ReceiptShop != null) continue;
+            if (login.Kind != SourceKind.Bank) continue;
             foreach (var a in accounts.Where(a => a.LinkedAccountId == null && !a.Closed))
                 candidatesByAccount[a.Id] = await Bank.GetLinkCandidatesAsync(a.Id);
         }

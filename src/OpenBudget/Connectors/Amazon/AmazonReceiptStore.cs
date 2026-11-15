@@ -30,6 +30,9 @@ public sealed record InstalmentPlan(ReceiptInvoice Full, int Count, IReadOnlyLis
 /// </summary>
 public static class AmazonReceiptStore
 {
+    /// <summary>The store as the sync runner sees it (see <see cref="IOrderStore"/>).</summary>
+    public static readonly IOrderStore Store = new AmazonOrderStore();
+
     /// <summary>
     /// A charge (or refund) is booked on the account its payment method is mapped to, with the same signed amount, from 7
     /// days before to 9 days after the date Amazon lists (pending: 14), as card accounts differ; bookings naming Amazon
@@ -491,4 +494,18 @@ public static class AmazonReceiptStore
     private static long Cents(decimal amount) => (long)Math.Round(amount * 100m, MidpointRounding.AwayFromZero);
 
     private static string? Truncate(string? value, int max) => value == null || value.Length <= max ? value : value[..max];
+}
+
+/// <summary>The <see cref="IOrderStore"/> of Amazon logins: <see cref="AmazonReceiptStore"/>.</summary>
+internal sealed class AmazonOrderStore : IOrderStore
+{
+    public Task<DateOnly> SinceAsync(BudgetDbContext db, BankLogin login, DateOnly today, int historyYears, CancellationToken ct) =>
+        AmazonReceiptStore.SinceAsync(db, login, today, historyYears, ct);
+
+    public Task<HashSet<string>> KnownOrdersAsync(BudgetDbContext db, int loginId, CancellationToken ct) => AmazonReceiptStore.KnownOrdersAsync(db, loginId, ct);
+
+    public Task<List<string>> UnreadOrdersAsync(BudgetDbContext db, int loginId, CancellationToken ct) => AmazonReceiptStore.UnreadOrdersAsync(db, loginId, ct);
+
+    public Task ApplyAsync(BudgetDbContext db, BankLogin login, OrderSourceResult result, DateTime nowUtc, ReceiptStore receipts, CancellationToken ct, Action<string>? progress = null) =>
+        AmazonReceiptStore.ApplyAsync(db, login, result, nowUtc, receipts, ct, progress);
 }
