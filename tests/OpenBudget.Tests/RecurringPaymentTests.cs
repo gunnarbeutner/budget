@@ -32,25 +32,6 @@ public sealed class RecurringPaymentTests
         RecurringPaymentDetector.Detect(bookings, standing ?? [], NoIbans, Today);
 
     [Fact]
-    public void Monthly_transfers_to_a_person_of_the_household_are_no_subscription()
-    {
-        var last = new DateOnly(Today.Year, Today.Month, 1).AddMonths(-1);
-        var bookings = Monthly("Erika Maria Mustermann", -3569, 6, last).Concat(Monthly("Streamio Media", -1299, 6, last)).ToList();
-
-        var series = RecurringPaymentDetector.Detect(bookings, [], NoIbans, Today, ["Erika Mustermann"]);
-
-        Assert.Equal(["Streamio Media"], series.Select(s => s.Payee));
-    }
-
-    [Fact]
-    public void A_few_cents_a_year_is_no_subscription()
-    {
-        var bookings = new[] { -3, -2, -3, -2 }.Select((c, i) => B(Today.AddYears(-i).AddDays(-20), c, "Interest tax"));
-
-        Assert.Empty(Detect(bookings));
-    }
-
-    [Fact]
     public void A_shop_visited_irregularly_is_no_subscription_even_with_a_regular_run()
     {
         var start = Today.AddMonths(-13);

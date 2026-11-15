@@ -83,8 +83,8 @@ public sealed record RecurringSeries(
 /// Finds recurring charges in a booking history. Rules:
 /// <list type="bullet">
 /// <item>Only money leaving an account counts; bookings to or from one of the household's own accounts (counterparty IBAN in
-/// <c>ownIbans</c>) are transfers and left out, as are payments to a person of the household (every word of one of
-/// <c>ownNames</c> in the payee, e.g. "Gunnar Nils Beutner" for "Gunnar Beutner"), which often carry no IBAN.</item>
+/// <c>ownIbans</c>) are transfers and left out. Bookings in a transfer category never reach the detector
+/// (<see cref="RecurringPaymentService"/> leaves them out).</item>
 /// <item>A series is dropped when the payee has as many other bookings as the series in its time span (a shop visited
 /// irregularly).</item>
 /// <item>Bookings are grouped per account by payee (<see cref="NormalizePayee"/>); payees of an account that share a
@@ -134,19 +134,14 @@ public static class RecurringPaymentDetector
     private static IEnumerable<string> Distinctive(string payee) =>
         payee.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 4 && !Generic.Contains(w));
 
-    /// <summary>Series costing less per month are left out.</summary>
-    public const long MinMonthlyCents = 10;
-
     public static bool SameAmount(long a, long b) => Math.Abs(a - b) <= Math.Max(10, Math.Max(Math.Abs(a), Math.Abs(b)) * 5 / 100);
 
     public static List<RecurringSeries> Detect(IEnumerable<RecurringBooking> bookings, IReadOnlyCollection<StandingOrderKey> standing,
-        IReadOnlySet<string> ownIbans, DateOnly today, IReadOnlyCollection<string>? ownNames = null)
+        IReadOnlySet<string> ownIbans, DateOnly today)
     {
         var result = new List<RecurringSeries>();
-        var people = (ownNames ?? []).Select(Words).Where(w => w.Count >= 2).ToList();
         var outgoing = bookings.Where(b => b.Cents < 0 && b.Date <= today
-            && (b.CounterpartyIban == null || !ownIbans.Contains(NormalizeIban(b.CounterpartyIban)))
-            && !IsPerson(b.Name, people)).ToList();
+            && (b.CounterpartyIban == null || !ownIbans.Contains(NormalizeIban(b.CounterpartyIban)))).ToList();
         foreach (var account in outgoing.GroupBy(b => b.AccountId))
         {
             foreach (var group in GroupByPayee(account))
@@ -161,8 +156,6 @@ public static class RecurringPaymentDetector
                     var to = series.Bookings.Max(b => b.Date);
                     var others = group.Count(b => !inSeries.Contains(b.Id) && b.Date >= from && b.Date <= to);
                     if (others >= series.Bookings.Count) continue;
-                    // A few cents a year (a tax deduction on interest) is no subscription.
-                    if (series.MonthlyCents > -MinMonthlyCents) continue;
                     if (!CoveredByStandingOrder(series, standing)) result.Add(series);
                 }
             }
@@ -294,17 +287,5 @@ public static class RecurringPaymentDetector
         return standing.Any(o => o.AccountId == series.AccountId
             && ((o.CounterpartyIban != null && ibans.Contains(NormalizeIban(o.CounterpartyIban)))
                 || (SameAmount(o.Cents, series.Cents) && Distinctive(NormalizePayee(o.CounterpartyName)).Any(words.Contains))));
-    }
-
-    private static HashSet<string> Words(string? text) =>
-        new string(OpenBudget.Services.SearchText.Fold(text ?? "").Select(c => char.IsAsciiLetterOrDigit(c) ? c : ' ').ToArray())
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
-
-    /// <summary>Whether a payee names one of the household's people: all words of their name appear in it.</summary>
-    private static bool IsPerson(string? payee, List<HashSet<string>> people)
-    {
-        if (people.Count == 0 || string.IsNullOrWhiteSpace(payee)) return false;
-        var words = Words(payee);
-        return people.Any(p => p.IsSubsetOf(words));
     }
 }
