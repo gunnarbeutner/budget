@@ -43,6 +43,14 @@ public sealed class RecurringPaymentTests
     }
 
     [Fact]
+    public void A_few_cents_a_year_is_no_subscription()
+    {
+        var bookings = new[] { -3, -2, -3, -2 }.Select((c, i) => B(Today.AddYears(-i).AddDays(-20), c, "Interest tax"));
+
+        Assert.Empty(Detect(bookings));
+    }
+
+    [Fact]
     public void A_shop_visited_irregularly_is_no_subscription_even_with_a_regular_run()
     {
         var start = Today.AddMonths(-13);

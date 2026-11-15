@@ -134,6 +134,9 @@ public static class RecurringPaymentDetector
     private static IEnumerable<string> Distinctive(string payee) =>
         payee.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 4 && !Generic.Contains(w));
 
+    /// <summary>Series costing less per month are left out.</summary>
+    public const long MinMonthlyCents = 10;
+
     public static bool SameAmount(long a, long b) => Math.Abs(a - b) <= Math.Max(10, Math.Max(Math.Abs(a), Math.Abs(b)) * 5 / 100);
 
     public static List<RecurringSeries> Detect(IEnumerable<RecurringBooking> bookings, IReadOnlyCollection<StandingOrderKey> standing,
@@ -158,6 +161,8 @@ public static class RecurringPaymentDetector
                     var to = series.Bookings.Max(b => b.Date);
                     var others = group.Count(b => !inSeries.Contains(b.Id) && b.Date >= from && b.Date <= to);
                     if (others >= series.Bookings.Count) continue;
+                    // A few cents a year (a tax deduction on interest) is no subscription.
+                    if (series.MonthlyCents > -MinMonthlyCents) continue;
                     if (!CoveredByStandingOrder(series, standing)) result.Add(series);
                 }
             }

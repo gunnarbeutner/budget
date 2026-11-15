@@ -137,6 +137,7 @@ public class RecurringPaymentService
         var result = new List<RecurringSeries>();
         if (accountIds.Count > 0)
         {
+            const string TransferGroup = "Umbuchungen";
             var since = new DateTimeOffset(today.AddYears(-HistoryYears).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
             var rows = await db.Transactions.AsNoTracking()
                 .Where(t => t.AccountId != null && accountIds.Contains(t.AccountId.Value) && t.Booked && t.Splitted != SplitState.Parent
@@ -153,7 +154,12 @@ public class RecurringPaymentService
                 var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(ownerId ?? string.Empty);
                 projectLeaves = CategoryHierarchyService.BuildItemToLeafCategoryIds(tracked, hierarchy).Values.SelectMany(s => s).ToHashSet();
             }
+            // Bookings in a transfer category (the "Umbuchungen" group: moves between accounts, card statements, the PayPal
+            // side of a payment its bank side shows too) are no subscription.
+            var transfers = (await db.Categories.AsNoTracking().Where(c => c.Group != null && c.Group.Name == TransferGroup)
+                .Select(c => c.Id).ToListAsync(ct)).ToHashSet();
             var bookings = rows
+                .Where(t => t.CategoryId is not { } tc || !transfers.Contains(tc))
                 .Where(t => !shared.Contains(t.AccountId) || t.CategoryId is not { } c || projectLeaves?.Contains(c) == true)
                 .Select(t => new RecurringBooking(t.Id, t.AccountId, DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(t.Timestamp).UtcDateTime),
                     t.Amount, t.Name, t.Purpose, t.CategoryId, t.CounterpartyIban))

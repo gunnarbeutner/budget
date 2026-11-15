@@ -59,18 +59,20 @@ public sealed class SidebarRefreshTests : EndToEndTestBase
         await Account(EditingSeed.BankAccountName).ClickAsync(new() { Button = MouseButton.Right });
         await Page.GetByTestId("ctx-bank-refresh-account").ClickAsync();
 
+        // The bookings land before the sync records its success: wait for both.
         var deadline = DateTime.UtcNow.AddSeconds(20);
         int count;
+        DateTime? success;
         do
         {
             await Task.Delay(100);
             await using var db = await Db.CreateDbContextAsync();
             count = await db.Transactions.CountAsync(t => t.AccountId == EditingSeed.BankAccountId);
+            success = await db.BankLoginAccounts.Where(a => a.RemoteId == "FAKE-GIRO").Select(a => a.LastSuccessAt).SingleAsync();
         }
-        while (count <= 4 && DateTime.UtcNow < deadline);
+        while ((count <= 4 || success == null) && DateTime.UtcNow < deadline);
         Assert.That(count, Is.GreaterThan(4));
-        await using (var db = await Db.CreateDbContextAsync())
-            Assert.That(await db.BankLoginAccounts.Where(a => a.RemoteId == "FAKE-GIRO").Select(a => a.LastSuccessAt).SingleAsync(), Is.Not.Null);
+        Assert.That(success, Is.Not.Null);
 
         // the MoneyMoney account has no bank login: no bank entries
         await Account(EditingSeed.ImportedAccountName).ClickAsync(new() { Button = MouseButton.Right });
