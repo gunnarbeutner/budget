@@ -135,4 +135,17 @@ public sealed class RecurringTests : EndToEndTestBase
         await Expect(rows.Nth(0).GetByTestId("scheduled-date")).ToContainTextAsync("~");
         await Expect(rows.Nth(0).GetByTestId("scheduled-rhythm")).ToHaveTextAsync("Recurring, Monthly · estimated");
     }
+
+    [Test]
+    public async Task Detected_charges_are_listed_apart_from_what_the_bank_reports()
+    {
+        await SeedAsync();
+        await GoToAsync($"/projects/{Pid}/scheduled");
+        var expected = Page.Locator("[data-testid=scheduled-section][data-section=expected]");
+        await Expect(expected.GetByRole(AriaRole.Heading)).ToHaveTextAsync("Expected");
+        await Expect(expected.GetByTestId("scheduled-row")).ToHaveCountAsync(2);
+        await Expect(expected.Locator("[data-testid=scheduled-row][data-kind=recurring]")).ToHaveCountAsync(2);
+        // Nothing detected sits in the bank's section.
+        await Expect(Page.Locator("[data-testid=scheduled-section][data-section=bank] [data-kind=recurring]")).ToHaveCountAsync(0);
+    }
 }

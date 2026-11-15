@@ -172,4 +172,16 @@
   <data name="Aria_Tabs" xml:space="preserve"><value>Bereiche</value></data>
   <data name="Tab_Upcoming" xml:space="preserve"><value>Anstehend</value></data>
   <data name="Tab_Subscriptions" xml:space="preserve"><value>Abos</value></data>
+  <data name="Section_Bank" xml:space="preserve">
+    <value>Von deiner Bank</value>
+  </data>
+  <data name="Section_BankHint" xml:space="preserve">
+    <value>Daueraufträge, Terminüberweisungen sowie Spar- und Auszahlpläne, wie deine Bank sie meldet.</value>
+  </data>
+  <data name="Section_Expected" xml:space="preserve">
+    <value>Erwartet</value>
+  </data>
+  <data name="Section_ExpectedHint" xml:space="preserve">
+    <value>Aus deinen Buchungen und Bestellungen erkannt: Abos und Raten. Datum und Betrag sind geschätzt.</value>
+  </data>
 </root>

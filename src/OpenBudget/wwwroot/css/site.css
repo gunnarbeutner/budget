@@ -2078,6 +2078,10 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 }
 .sched-name { font-weight: 600; }
 .sched-purpose { overflow-wrap: anywhere; }
+.sched-section + .sched-section { margin-top: 1.5rem; }
+.sched-section-title { font-size: 1rem; font-weight: 600; margin: 0 0 .15rem; }
+.sched-section-hint { margin: 0 0 .5rem; }
+.sched-row--expected { border-left: 3px dashed var(--bs-border-color); padding-left: .5rem; }
 .sched-meta { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 2px; }
 .sched-meta .sched-receipt { padding: 0; border: 0; font-size: inherit; line-height: inherit; vertical-align: baseline; }
 .sched-amount { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; text-align: right; }

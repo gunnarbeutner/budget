@@ -13,9 +13,10 @@
 @* The Scheduled view of a project, in two tabs (?tab=subscriptions selects the second):
    - Upcoming: the standing orders and future-dated transfers the banks reported for the project's accounts at the
      last sync, plus the expected instalments of running Amazon plans paid from them (an estimated day, opening the
-     order's receipt) and the next expected charge of each active recurring series (an estimated day), soonest first,
-     with filters in the URL (?kind=standing|scheduled|instalment|recurring, ?account=<id>). Read-only: orders are
-     managed at the bank.
+     order's receipt) and the next expected charge of each active recurring series (an estimated day). Two sections,
+     each soonest first: "From your bank" (standing orders, transfers, plans) and "Expected" (instalments and detected
+     subscriptions, estimates, marked by a dashed edge). Filters in the URL (?kind=standing|scheduled|instalment|recurring,
+     ?account=<id>). Read-only: orders are managed at the bank.
    - Subscriptions: the detected recurring series (RecurringSubscriptions), filtered by ?show=. *@
 
 <PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
@@ -99,10 +100,41 @@
         }
         else
         {
-            <ul class="sched-list list-unstyled mb-0" data-testid="scheduled-list" aria-label="@L["View_Title"]">
-                @foreach (var item in Visible())
-                {
-                    <li class="sched-row" @key="item.Id" data-testid="scheduled-row" data-kind="@KindKey(item.Kind)">
+            @foreach (var section in Sections())
+            {
+                <section class="sched-section" data-testid="scheduled-section" data-section="@section.Key" aria-labelledby="sched-h-@section.Key">
+                    <h2 class="sched-section-title" id="sched-h-@section.Key">@section.Title</h2>
+                    <p class="small text-body-secondary sched-section-hint">@section.Hint</p>
+                    <ul class="sched-list list-unstyled mb-0" data-testid="scheduled-list" aria-labelledby="sched-h-@section.Key">
+                        @foreach (var item in section.Items)
+                        {
+                            @Row(item)
+                        }
+                    </ul>
+                </section>
+            }
+        }
+    }
+</ProjectShell>
+
+<ReceiptPanel ReceiptId="openReceipt" OnClose="_ => openReceipt = null" />
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+
+    private Project? project;
+    private bool notFound;
+    private ScheduledOverview? overview;
+    private int _loadedProjectId;
+    private string kind = "all";
+    private string account = "all";
+    private long? openReceipt;
+    private bool subscriptions;
+    private string show = "active";
+
+    private RenderFragment Row(ScheduledItem item) => __builder =>
+    {
+                    <li class="sched-row@(IsExpected(item.Kind) ? " sched-row--expected" : "")" @key="item.Id" data-testid="scheduled-row" data-kind="@KindKey(item.Kind)">
                         <div class="sched-date">
                             <div class="fw-semibold" data-testid="scheduled-date">@(item.Kind is ScheduledPaymentKind.Instalment or ScheduledPaymentKind.Recurring ? "~" : "")@item.NextDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</div>
                             <div class="small text-body-secondary" data-testid="scheduled-in">@InDays(item.NextDate)</div>
@@ -138,26 +170,22 @@
                             @Formatting.FormatMoneyDe(item.Amount, item.Currency)
                         </div>
                     </li>
-                }
-            </ul>
-        }
+    };
+
+    /// <summary>Detected subscriptions and instalments are estimates; standing orders, transfers and plans come from the bank.</summary>
+    private static bool IsExpected(ScheduledPaymentKind k) => k is ScheduledPaymentKind.Instalment or ScheduledPaymentKind.Recurring;
+
+    private sealed record Section(string Key, string Title, string Hint, List<ScheduledItem> Items);
+
+    /// <summary>The visible items in two sections: what the bank reported, then what is expected (estimated); empty ones are left out.</summary>
+    private IEnumerable<Section> Sections()
+    {
+        var visible = Visible();
+        var bank = visible.Where(i => !IsExpected(i.Kind)).ToList();
+        var expected = visible.Where(i => IsExpected(i.Kind)).ToList();
+        if (bank.Count > 0) yield return new Section("bank", L["Section_Bank"], L["Section_BankHint"], bank);
+        if (expected.Count > 0) yield return new Section("expected", L["Section_Expected"], L["Section_ExpectedHint"], expected);
     }
-</ProjectShell>
-
-<ReceiptPanel ReceiptId="openReceipt" OnClose="_ => openReceipt = null" />
-
-@code {
-    [Parameter] public int ProjectId { get; set; }
-
-    private Project? project;
-    private bool notFound;
-    private ScheduledOverview? overview;
-    private int _loadedProjectId;
-    private string kind = "all";
-    private string account = "all";
-    private long? openReceipt;
-    private bool subscriptions;
-    private string show = "active";
 
     private static string KindKey(ScheduledPaymentKind k) => k switch
     {

@@ -172,4 +172,16 @@
   <data name="Aria_Tabs" xml:space="preserve"><value>Sections</value></data>
   <data name="Tab_Upcoming" xml:space="preserve"><value>Upcoming</value></data>
   <data name="Tab_Subscriptions" xml:space="preserve"><value>Subscriptions</value></data>
+  <data name="Section_Bank" xml:space="preserve">
+    <value>From your bank</value>
+  </data>
+  <data name="Section_BankHint" xml:space="preserve">
+    <value>Standing orders, scheduled transfers and savings or payout plans as your bank reports them.</value>
+  </data>
+  <data name="Section_Expected" xml:space="preserve">
+    <value>Expected</value>
+  </data>
+  <data name="Section_ExpectedHint" xml:space="preserve">
+    <value>Detected from your bookings and orders: subscriptions and instalments. Dates and amounts are estimates.</value>
+  </data>
 </root>
