@@ -7,7 +7,8 @@ namespace OpenBudget.Services;
 /// Reads a search text as an amount, so the transaction search can also match bookings by amount. Accepts German and
 /// plain notations ("10,60", "10.60", "1.234,56", "1234.56", "229") with an optional euro sign before or after and an
 /// optional leading sign. A separator followed by exactly three digits groups thousands ("1.234" is 1234); otherwise
-/// the last separator marks the decimals (at most two). Without a sign the amount matches either direction.
+/// the last separator marks the decimals (at most two). The typed decimals set the range: "122" covers 122,00–122,99,
+/// "122,6" 122,60–122,69 and "122,60" exactly 122,60. Without a sign the amount matches either direction.
 /// </summary>
 public static partial class AmountSearch
 {
@@ -40,9 +41,13 @@ public static partial class AmountSearch
         if (whole.Length > 15) return null;
         var cents = long.Parse(whole, CultureInfo.InvariantCulture) * 100
                     + (frac.Length == 0 ? 0 : int.Parse(frac.PadRight(2, '0'), CultureInfo.InvariantCulture));
-        return new AmountSearchMatch(cents, signValue);
+        var span = frac.Length switch { 0 => 99, 1 => 9, _ => 0 };
+        return new AmountSearchMatch(cents, cents + span, signValue);
     }
 }
 
-/// <summary>An amount search: the amount in cents (always ≥ 0) and the sign it is restricted to: +1, −1, or 0 for either.</summary>
-public sealed record AmountSearchMatch(long Cents, int Sign);
+/// <summary>
+/// An amount search: the range of amounts in cents from <paramref name="Cents"/> to <paramref name="MaxCents"/> (both ≥ 0,
+/// inclusive) and the sign it is restricted to: +1, −1, or 0 for either.
+/// </summary>
+public sealed record AmountSearchMatch(long Cents, long MaxCents, int Sign);

@@ -293,9 +293,12 @@ public class TransactionQueryServiceTests
     [InlineData("10.60", new[] { 1L, 2L })]
     [InlineData("-10,60", new[] { 1L })]
     [InlineData("+10,60", new[] { 2L })]
-    [InlineData("229", new[] { 3L, 5L })]       // the whole amount 229,00 and the name containing 229; not 2.290,00
-    [InlineData("€ 229", new[] { 3L })]
-    [InlineData("229 €", new[] { 3L })]
+    [InlineData("229", new[] { 3L, 5L, 7L })]   // 229,00–229,99 and the name containing 229; not 2.290,00
+    [InlineData("€ 229", new[] { 3L, 7L })]
+    [InlineData("229 €", new[] { 3L, 7L })]
+    [InlineData("229,5", new[] { 7L })]
+    [InlineData("229,50", new[] { 7L })]
+    [InlineData("229,00", new[] { 3L })]
     [InlineData("1.234,56", new[] { 4L })]
     [InlineData("1234.56", new[] { 4L })]
     [InlineData("10,6", new[] { 1L, 2L })]
@@ -315,6 +318,47 @@ public class TransactionQueryServiceTests
 
         var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = TestDb.DefaultOwner, SearchText = text });
         Assert.Equal(expected, page.Rows.Select(r => r.Id).OrderBy(x => x).ToArray());
+    }
+
+    [Theory]
+    [InlineData("122", new[] { 1L, 2L, 3L, 4L })]
+    [InlineData("-122", new[] { 1L, 3L })]
+    [InlineData("+122", new[] { 2L, 4L })]
+    [InlineData("122,6", new[] { 2L, 3L })]
+    [InlineData("122.6", new[] { 2L, 3L })]
+    [InlineData("-122,6", new[] { 3L })]
+    [InlineData("+122,6", new[] { 2L })]
+    [InlineData("122,60", new[] { 2L })]
+    [InlineData("-122,60", new long[] { })]
+    [InlineData("+122,69", new long[] { })]
+    public async Task Amount_search_covers_the_range_the_typed_decimals_leave_open(string text, long[] expected)
+    {
+        await using var t = new TestDb();
+        t.AddGroup(100);
+        t.AddLeaf(101, parent: 100);
+        t.AddTransaction(id: 1, categoryId: 101, amountCents: -12200, date: new DateTime(2026, 5, 1), name: "A");
+        t.AddTransaction(id: 2, categoryId: 101, amountCents: 12260, date: new DateTime(2026, 5, 2), name: "B");
+        t.AddTransaction(id: 3, categoryId: 101, amountCents: -12269, date: new DateTime(2026, 5, 3), name: "C");
+        t.AddTransaction(id: 4, categoryId: 101, amountCents: 12299, date: new DateTime(2026, 5, 4), name: "D");
+        t.AddTransaction(id: 5, categoryId: 101, amountCents: -12300, date: new DateTime(2026, 5, 5), name: "E");
+        t.AddTransaction(id: 6, categoryId: 101, amountCents: 12199, date: new DateTime(2026, 5, 6), name: "F");
+        await t.Db.SaveChangesAsync();
+
+        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = TestDb.DefaultOwner, SearchText = text });
+        Assert.Equal(expected, page.Rows.Select(r => r.Id).OrderBy(x => x).ToArray());
+    }
+
+    [Theory]
+    [InlineData("122", 12200L, 12299L)]
+    [InlineData("122,6", 12260L, 12269L)]
+    [InlineData("122.6", 12260L, 12269L)]
+    [InlineData("122,60", 12260L, 12260L)]
+    [InlineData("1.234", 123400L, 123499L)]
+    public void Amount_search_range_follows_the_typed_decimals(string text, long min, long max)
+    {
+        var m = AmountSearch.TryParse(text);
+        Assert.NotNull(m);
+        Assert.Equal((min, max), (m.Cents, m.MaxCents));
     }
 
     [Theory]

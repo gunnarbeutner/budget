@@ -231,14 +231,16 @@ public class TransactionQueryService
         if (!string.IsNullOrWhiteSpace(query.SearchText))
         {
             // Text matches name, comment, note, purpose or order items; a text that reads as an amount (AmountSearch) also matches
-            // bookings of exactly that amount, in either direction unless the text carries a sign.
+            // bookings in the range its decimals leave open ("122" is 122,00–122,99), in either direction unless the text carries a sign.
             // Text compares folded (SearchText.Fold, ob_fold in SQL), so umlauts match their ae/oe/ue/ss spellings.
             var needle = query.SearchText.Trim();
             var folded = SearchText.Fold(needle);
             var amount = AmountSearch.TryParse(needle);
             var hasAmount = amount != null;
             var cents = amount?.Cents ?? 0;
+            var maxCents = amount?.MaxCents ?? 0;
             var negCents = -cents;
+            var negMaxCents = -maxCents;
             var sign = amount?.Sign ?? 0;
             baseQuery = baseQuery.Where(t =>
                 (t.Name != null && BudgetDbContext.SearchFold(t.Name).Contains(folded))
@@ -246,7 +248,7 @@ public class TransactionQueryService
                 || (t.Note != null && BudgetDbContext.SearchFold(t.Note).Contains(folded))
                 || (t.Purpose != null && BudgetDbContext.SearchFold(t.Purpose).Contains(folded))
                 || (t.OrderItems != null && BudgetDbContext.SearchFold(t.OrderItems).Contains(folded))
-                || (hasAmount && ((sign >= 0 && t.Amount == cents) || (sign <= 0 && t.Amount == negCents))));
+                || (hasAmount && ((sign >= 0 && t.Amount >= cents && t.Amount <= maxCents) || (sign <= 0 && t.Amount <= negCents && t.Amount >= negMaxCents))));
         }
 
         if (query.MinAbsAmount is { } minAmt)
