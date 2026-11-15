@@ -1,0 +1,173 @@
+@inherits DataChangeAwareComponent
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject RecurringPaymentService Detection
+@inject ClockService Clock
+@inject IStringLocalizer<RecurringSubscriptions> L
+
+@* The Subscriptions tab of Scheduled: subscriptions and other recurring charges detected in the bookings of the project's
+   accounts (RecurringPaymentDetector), most expensive per month first, with the monthly and yearly cost of the active
+   ones on top. Show: active (default: active and overdue) | ended | dismissed, kept by the page in ?show=. A series
+   opens to list its bookings; "Not a subscription" hides it for the current user (also from Upcoming and Cashflow),
+   "Show again" takes that back. *@
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2" data-testid="recurring-toolbar">
+    @if (entries != null)
+    {
+        <span class="view-sub" data-testid="recurring-totals">
+            @L["Totals", Formatting.FormatMoneyDe(MonthlyTotal), Formatting.FormatMoneyDe(MonthlyTotal * 12)]
+        </span>
+    }
+    <div class="flex-grow-1"></div>
+    <select class="form-select form-select-sm docs-select" aria-label="@L["Filter_Show"]" data-testid="recurring-show"
+            @onchange="e => ShowChanged.InvokeAsync(e.Value?.ToString() ?? Active)">
+        <option value="active" selected="@(Show == Active)">@L["Show_Active"]</option>
+        <option value="ended" selected="@(Show == "ended")">@L["Show_Ended"]</option>
+        <option value="dismissed" selected="@(Show == "dismissed")">@L["Show_Dismissed"]</option>
+    </select>
+</div>
+
+@if (entries == null)
+{
+    <div aria-busy="true">
+        @for (int i = 0; i < 5; i++)
+        {
+            <div class="skeleton skeleton-line"></div>
+        }
+    </div>
+}
+else if (Visible().Count == 0)
+{
+    <div class="text-body-secondary py-5 text-center sched-empty" data-testid="recurring-empty">
+        <i class="bi bi-arrow-repeat" style="font-size: 1.8rem;" aria-hidden="true"></i>
+        <div class="mt-2">@(entries.Count == 0 ? L["Empty"] : L["Empty_Filtered"])</div>
+    </div>
+}
+else
+{
+    <ul class="sched-list list-unstyled mb-0" data-testid="recurring-list" aria-label="@L["View_Title"]">
+        @foreach (var entry in Visible())
+        {
+            var s = entry.Series;
+            var expanded = openKey == s.Key;
+            <li class="sched-row" @key="s.Key" data-testid="recurring-row" data-status="@s.Status.ToString().ToLowerInvariant()">
+                <div class="sched-date">
+                    @if (s.Status == RecurringStatus.Ended)
+                    {
+                        <div class="fw-semibold" data-testid="recurring-date">@s.LastDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</div>
+                        <div class="small text-body-secondary">@L["Last"]</div>
+                    }
+                    else
+                    {
+                        <div class="fw-semibold" data-testid="recurring-date">~@s.NextDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</div>
+                        <div class="small text-body-secondary">@L["Next"]</div>
+                    }
+                </div>
+                <div class="sched-main min-w-0">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="sched-name text-truncate" data-testid="recurring-name">@(s.Payee.Length > 0 ? s.Payee : L["NoName"])</span>
+                        @if (s.Status != RecurringStatus.Active)
+                        {
+                            <span class="badge text-bg-secondary" data-testid="recurring-status">@L["Status_" + s.Status]</span>
+                        }
+                        @if (s.PreviousCents is { } old && s.PriceChangedOn is { } on)
+                        {
+                            <span class="badge text-bg-warning" data-testid="recurring-price-change"
+                                  title="@L["PriceChange_Title", on.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]">
+                                @L["PriceChange", Formatting.FormatMoneyDe(-old / 100m), Formatting.FormatMoneyDe(-s.Cents / 100m), on.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]
+                            </span>
+                        }
+                    </div>
+                    <div class="small text-body-secondary sched-meta">
+                        <span data-testid="recurring-rhythm"><i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>@RhythmText(s.Rhythm)</span>
+                        <span data-testid="recurring-category">@(entry.CategoryName ?? L["NoCategory"])</span>
+                        <span data-testid="recurring-last">@L["LastOn", s.LastDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]</span>
+                        <span class="sched-account text-truncate">
+                            <i class="bi @entry.AccountIcon me-1" style="@AccountIcons.TintStyle(entry.AccountColor)" aria-hidden="true"></i>@entry.AccountName
+                        </span>
+                        <button type="button" class="btn btn-link sched-receipt" aria-expanded="@expanded.ToString().ToLowerInvariant()"
+                                data-testid="recurring-toggle" @onclick="() => openKey = expanded ? null : s.Key">
+                            @L["Bookings", s.Bookings.Count]
+                        </button>
+                        <button type="button" class="btn btn-link sched-receipt" data-testid="recurring-dismiss"
+                                @onclick="() => SetDismissedAsync(entry, !entry.Dismissed)">
+                            @(entry.Dismissed ? L["Restore"] : L["Dismiss"])
+                        </button>
+                    </div>
+                    @if (expanded)
+                    {
+                        <ul class="list-unstyled small mt-2 mb-0" data-testid="recurring-bookings">
+                            @foreach (var b in s.Bookings.Reverse())
+                            {
+                                <li class="d-flex gap-3" data-testid="recurring-booking">
+                                    <span class="text-body-secondary">@b.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</span>
+                                    <span class="text-truncate flex-grow-1">@(b.Name ?? b.Purpose)</span>
+                                    <span class="money-neg">@Formatting.FormatMoneyDe(b.Cents / 100m)</span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+                <div class="sched-amount">
+                    <div class="money-neg" data-testid="recurring-amount">@Formatting.FormatMoneyDe(s.Cents / 100m)</div>
+                    <div class="small text-body-secondary fw-normal" data-testid="recurring-monthly">@L["PerMonth", Formatting.FormatMoneyDe(-s.MonthlyCents / 100m)]</div>
+                </div>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private const string Active = "active";
+
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+
+    /// <summary>active | ended | dismissed.</summary>
+    [Parameter] public string Show { get; set; } = Active;
+
+    [Parameter] public EventCallback<string> ShowChanged { get; set; }
+
+    private List<RecurringEntry>? entries;
+    private int _loadedProjectId;
+    private string? openKey;
+
+    /// <summary>The monthly cost of the active series the user has not dismissed (positive).</summary>
+    private decimal MonthlyTotal => -(entries ?? []).Where(e => !e.Dismissed && e.Series.Status == RecurringStatus.Active).Sum(e => e.Series.MonthlyCents) / 100m;
+
+    private List<RecurringEntry> Visible() => (entries ?? []).Where(e => Show switch
+    {
+        "dismissed" => e.Dismissed,
+        "ended" => !e.Dismissed && e.Series.Status == RecurringStatus.Ended,
+        _ => !e.Dismissed && e.Series.Status != RecurringStatus.Ended,
+    }).ToList();
+
+    private string RhythmText(RecurringRhythm r) => r.Weekly
+        ? (r.Count == 1 ? L["Rhythm_Weekly"] : L["Rhythm_EveryWeeks", r.Count])
+        : r.Count switch
+        {
+            1 => L["Rhythm_Monthly"],
+            3 => L["Rhythm_Quarterly"],
+            6 => L["Rhythm_HalfYearly"],
+            12 => L["Rhythm_Yearly"],
+            _ => L["Rhythm_EveryMonths", r.Count],
+        };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedProjectId == ProjectId) return;
+        _loadedProjectId = ProjectId;
+        await LoadAsync();
+    }
+
+    protected override bool IsRelevantChange(DataChange change) => change.Area is DataArea.BankSync or DataArea.ImportedData or DataArea.Projects or DataArea.TrackingItems;
+
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    private async Task LoadAsync() => entries = await Detection.GetAsync(ProjectId, DateOnly.FromDateTime(Clock.Today));
+
+    private async Task SetDismissedAsync(RecurringEntry entry, bool dismissed)
+    {
+        await Detection.SetDismissedAsync(entry.Series.Key, dismissed);
+        entries = entries?.Select(e => e.Series.Key == entry.Series.Key ? e with { Dismissed = dismissed } : e).ToList();
+    }
+}

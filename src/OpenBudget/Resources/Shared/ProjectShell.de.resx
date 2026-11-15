@@ -106,9 +106,6 @@
   <data name="Receipts_Review" xml:space="preserve">
     <value>{0} zu prüfen</value>
   </data>
-  <data name="View_Recurring" xml:space="preserve">
-    <value>Wiederkehrend</value>
-  </data>
   <data name="View_Prices" xml:space="preserve">
     <value>Preise</value>
   </data>

@@ -169,4 +169,7 @@
   <data name="Rhythm_Recurring" xml:space="preserve">
     <value>Recurring, {0} · estimated</value>
   </data>
+  <data name="Aria_Tabs" xml:space="preserve"><value>Sections</value></data>
+  <data name="Tab_Upcoming" xml:space="preserve"><value>Upcoming</value></data>
+  <data name="Tab_Subscriptions" xml:space="preserve"><value>Subscriptions</value></data>
 </root>

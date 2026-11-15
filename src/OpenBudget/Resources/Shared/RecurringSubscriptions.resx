@@ -58,94 +58,88 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="PageTitle" xml:space="preserve">
-    <value>Wiederkehrend</value>
-  </data>
-  <data name="PageTitle_WithProject" xml:space="preserve">
-    <value>Wiederkehrend · {0}</value>
-  </data>
   <data name="View_Title" xml:space="preserve">
-    <value>Wiederkehrend</value>
+    <value>Subscriptions</value>
   </data>
   <data name="Totals" xml:space="preserve">
-    <value>{0} im Monat · {1} im Jahr</value>
+    <value>{0} per month · {1} per year</value>
   </data>
   <data name="Filter_Show" xml:space="preserve">
-    <value>Anzeigen</value>
+    <value>Show</value>
   </data>
   <data name="Show_Active" xml:space="preserve">
-    <value>Aktiv</value>
+    <value>Active</value>
   </data>
   <data name="Show_Ended" xml:space="preserve">
-    <value>Beendet</value>
+    <value>Ended</value>
   </data>
   <data name="Show_Dismissed" xml:space="preserve">
-    <value>Keine Abos</value>
+    <value>Not subscriptions</value>
   </data>
   <data name="Empty" xml:space="preserve">
-    <value>Keine wiederkehrenden Zahlungen gefunden. Zahlungen, die wöchentlich, monatlich, vierteljährlich oder jährlich mit etwa gleichem Betrag wiederkommen, erscheinen hier nach drei Buchungen.</value>
+    <value>No recurring charges found. Charges that come back weekly, monthly, quarterly or yearly at about the same amount show up here after three bookings.</value>
   </data>
   <data name="Empty_Filtered" xml:space="preserve">
-    <value>Hier gibt es nichts anzuzeigen.</value>
+    <value>Nothing to show here.</value>
   </data>
   <data name="Last" xml:space="preserve">
-    <value>letzte Zahlung</value>
+    <value>last charge</value>
   </data>
   <data name="Next" xml:space="preserve">
-    <value>erwartet</value>
+    <value>expected</value>
   </data>
   <data name="NoName" xml:space="preserve">
-    <value>(ohne Namen)</value>
+    <value>(no name)</value>
   </data>
   <data name="NoCategory" xml:space="preserve">
-    <value>Ohne Kategorie</value>
+    <value>Uncategorised</value>
   </data>
   <data name="Status_Overdue" xml:space="preserve">
-    <value>überfällig</value>
+    <value>overdue</value>
   </data>
   <data name="Status_Ended" xml:space="preserve">
-    <value>beendet</value>
+    <value>ended</value>
   </data>
   <data name="PriceChange" xml:space="preserve">
-    <value>{0} → {1} seit {2}</value>
+    <value>{0} → {1} since {2}</value>
   </data>
   <data name="PriceChange_Title" xml:space="preserve">
-    <value>Der Betrag hat sich am {0} geändert</value>
+    <value>The amount changed on {0}</value>
   </data>
   <data name="LastOn" xml:space="preserve">
-    <value>zuletzt {0}</value>
+    <value>last {0}</value>
   </data>
   <data name="Bookings" xml:space="preserve">
-    <value>{0} Buchungen</value>
+    <value>{0} bookings</value>
   </data>
   <data name="Dismiss" xml:space="preserve">
-    <value>Kein Abo</value>
+    <value>Not a subscription</value>
   </data>
   <data name="Restore" xml:space="preserve">
-    <value>Wieder anzeigen</value>
+    <value>Show again</value>
   </data>
   <data name="PerMonth" xml:space="preserve">
-    <value>≈ {0} / Monat</value>
+    <value>≈ {0} / month</value>
   </data>
   <data name="Rhythm_Weekly" xml:space="preserve">
-    <value>Wöchentlich</value>
+    <value>Weekly</value>
   </data>
   <data name="Rhythm_EveryWeeks" xml:space="preserve">
-    <value>Alle {0} Wochen</value>
+    <value>Every {0} weeks</value>
   </data>
   <data name="Rhythm_Monthly" xml:space="preserve">
-    <value>Monatlich</value>
+    <value>Monthly</value>
   </data>
   <data name="Rhythm_Quarterly" xml:space="preserve">
-    <value>Vierteljährlich</value>
+    <value>Quarterly</value>
   </data>
   <data name="Rhythm_HalfYearly" xml:space="preserve">
-    <value>Halbjährlich</value>
+    <value>Half-yearly</value>
   </data>
   <data name="Rhythm_Yearly" xml:space="preserve">
-    <value>Jährlich</value>
+    <value>Yearly</value>
   </data>
   <data name="Rhythm_EveryMonths" xml:space="preserve">
-    <value>Alle {0} Monate</value>
+    <value>Every {0} months</value>
   </data>
 </root>

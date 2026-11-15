@@ -7,8 +7,8 @@ using OpenBudget.Services;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// The Recurring view: series detected in the bookings with their monthly and yearly cost, dismissing one, and the
-/// expected charge in Scheduled.
+/// Scheduled's Subscriptions tab: series detected in the bookings with their monthly and yearly cost, dismissing one,
+/// the old Recurring address forwarding there, and the expected charge in the Upcoming tab.
 /// </summary>
 [TestFixture]
 public sealed class RecurringTests : EndToEndTestBase
@@ -39,8 +39,11 @@ public sealed class RecurringTests : EndToEndTestBase
     {
         await SeedAsync();
         await GoToAsync($"/projects/{Pid}/browse");
-        await Page.GetByTestId("project-views").GetByTestId("view-recurring").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/recurring$"));
+        await Page.GetByTestId("project-views").GetByTestId("view-scheduled").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/scheduled$"));
+        await Page.GetByTestId("scheduled-tab-subscriptions").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/scheduled\\?tab=subscriptions$"));
+        await Expect(Page.GetByTestId("scheduled-tab-subscriptions")).ToHaveAttributeAsync("aria-selected", "true");
 
         await Expect(Rows).ToHaveCountAsync(2);
         await Expect(Page.GetByTestId("recurring-totals")).ToHaveTextAsync("42,99 € per month · 515,88 € per year");
@@ -57,11 +60,27 @@ public sealed class RecurringTests : EndToEndTestBase
         await Expect(Page.GetByTestId("recurring-totals")).ToHaveTextAsync("12,99 € per month · 155,88 € per year");
 
         await Page.GetByTestId("recurring-show").SelectOptionAsync("dismissed");
+        await Expect(Page).ToHaveURLAsync(new Regex("[?&]show=dismissed"));
         await Expect(Page.GetByTestId("recurring-name")).ToHaveTextAsync(new[] { "Example Gym" });
 
         // The dismissal is stored: a reload keeps it.
-        await GoToAsync($"/projects/{Pid}/recurring");
+        await GoToAsync($"/projects/{Pid}/scheduled?tab=subscriptions");
         await Expect(Page.GetByTestId("recurring-name")).ToHaveTextAsync(new[] { "Streamio Media" });
+    }
+
+    [Test]
+    public async Task The_old_address_forwards_to_the_tab_and_keeps_the_filter()
+    {
+        await SeedAsync();
+        await GoToAsync($"/projects/{Pid}/recurring?show=ended");
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/scheduled\\?tab=subscriptions&show=ended$"));
+        await Expect(Page.GetByTestId("recurring-show")).ToHaveValueAsync("ended");
+        await Expect(Page.GetByTestId("project-views").GetByTestId("view-recurring")).ToHaveCountAsync(0);
+
+        // Back on Upcoming the subscription filter goes and the kind filter works as before.
+        await Page.GetByTestId("scheduled-tab-upcoming").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/scheduled$"));
+        await Expect(Page.GetByTestId("scheduled-kind")).ToBeVisibleAsync();
     }
 
     [Test]
