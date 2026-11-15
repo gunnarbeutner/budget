@@ -34,6 +34,12 @@ internal sealed class FakeOpenbank : HttpMessageHandler
     /// <summary>Whether offset requests are understood (else they answer 400).</summary>
     public bool SupportsOffset { get; set; } = true;
 
+    /// <summary>Whether responses carry metadata.nextCursor for the next page (an opaque value to the client).</summary>
+    public bool UsesCursor { get; set; }
+
+    /// <summary>When set, every cursor answers with the first page again.</summary>
+    public bool IgnoreCursor { get; set; }
+
     public int PageLimit { get; set; } = 3;
 
     /// <summary>Cards the global position leaves out (a card that was cancelled, or a response of another shape).</summary>
@@ -199,13 +205,17 @@ internal sealed class FakeOpenbank : HttpMessageHandler
             if (!SupportsOffset) return Json(HttpStatusCode.BadRequest, new JsonObject { ["error"] = "unknown parameter" });
             offset = int.Parse(o, CultureInfo.InvariantCulture);
         }
+        if (query["cursor"] is { } c)
+        {
+            if (!c.StartsWith("page-", StringComparison.Ordinal)) return Json(HttpStatusCode.BadRequest, new JsonObject { ["error"] = "bad cursor" });
+            offset = IgnoreCursor ? 0 : int.Parse(c["page-".Length..], CultureInfo.InvariantCulture);
+        }
         var page = new JsonArray();
         foreach (var t in Transactions.Skip(offset).Take(limit)) page.Add(t.DeepClone());
-        return Json(HttpStatusCode.OK, new JsonObject
-        {
-            ["metadata"] = new JsonObject { ["hasPendingRecords"] = Transactions.Any(t => (string?)t["transactionStatusCode"] == "AUTHORIZED") },
-            ["elements"] = page,
-        });
+        var metadata = new JsonObject { ["hasPendingRecords"] = Transactions.Any(t => (string?)t["transactionStatusCode"] == "AUTHORIZED") };
+        var body = new JsonObject { ["metadata"] = metadata, ["elements"] = page };
+        if (UsesCursor && offset + limit < Transactions.Count) metadata["nextCursor"] = $"page-{offset + limit}";
+        return Json(HttpStatusCode.OK, body);
     }
 
     public static JsonObject Tx(string id, string date, double amount, string status, string description,

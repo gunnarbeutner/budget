@@ -328,19 +328,25 @@ public sealed class OpenbankConnector : IBankConnector
     }
 
     /// <summary>
-    /// Reads the card's transactions newest first. The web client asks for one page of 99; when a page comes back
-    /// full and still reaches <paramref name="since"/>, the next page is asked for with an offset. If Openbank
-    /// refuses such a follow-up request, what was read so far is kept.
+    /// Reads the card's transactions newest first, one page of <see cref="OpenbankOptions.PageSize"/> at a time.
+    /// While a page comes back full and still reaches <paramref name="since"/>, the next page is asked for with the
+    /// cursor the previous response carries (see <see cref="NextCursor"/>); only a response without a cursor is
+    /// followed up with an offset. Paging stops at a page without new ids. If Openbank refuses a follow-up request,
+    /// what was read so far is kept.
     /// </summary>
     private async Task<List<RemoteTransaction>> FetchTransactionsAsync(RemoteAccount account, DateOnly? since, CancellationToken ct)
     {
         var result = new List<RemoteTransaction>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var basePath = CardsPath + Uri.EscapeDataString(account.RemoteId) + "/transactions?limit=" + _options.PageSize.ToString(CultureInfo.InvariantCulture) + "&epp=true";
+        string? cursor = null;
+        var read = 0;
         for (var page = 0; page < MaxPages; page++)
         {
             JsonElement body;
-            var path = page == 0 ? basePath : basePath + "&offset=" + (page * _options.PageSize).ToString(CultureInfo.InvariantCulture);
+            var path = page == 0 ? basePath
+                : cursor != null ? basePath + "&cursor=" + Uri.EscapeDataString(cursor)
+                : basePath + "&offset=" + read.ToString(CultureInfo.InvariantCulture);
             try
             {
                 body = await GetAsync(path, ct);
@@ -352,6 +358,8 @@ public sealed class OpenbankConnector : IBankConnector
             }
 
             var elements = body.Path("elements").Items().ToList();
+            read += elements.Count;
+            cursor = NextCursor(body);
             var fresh = 0;
             DateOnly? oldest = null;
             foreach (var e in elements)
@@ -368,6 +376,37 @@ public sealed class OpenbankConnector : IBankConnector
             if (!full || fresh == 0 || (since is { } limit && oldest is { } old && old < limit)) break;
         }
         return result;
+    }
+
+    /// <summary>
+    /// The cursor of the next page from a transactions response, or null when it has none. Where Openbank puts it
+    /// is not pinned down, so the usual shapes are accepted: <c>cursor</c>/<c>nextCursor</c> at the top or under
+    /// <c>metadata</c>, <c>pagination</c> or <c>paging</c> (there also <c>next</c>), and a <c>links.next</c> or
+    /// <c>_links.next.href</c> link, of which the <c>cursor</c> query parameter is taken.
+    /// </summary>
+    internal static string? NextCursor(JsonElement body)
+    {
+        if (body.ValueKind != JsonValueKind.Object) return null;
+        foreach (var name in new[] { "nextCursor", "cursor" })
+            if (NonEmpty(body.Str(name)) is { } top) return top;
+        foreach (var parent in new[] { "metadata", "pagination", "paging" })
+            foreach (var name in new[] { "nextCursor", "cursor", "next" })
+                if (NonEmpty(body.Str(parent, name)) is { } nested) return FromLink(nested);
+        var link = body.Str("links", "next") ?? body.Str("links", "next", "href") ?? body.Str("_links", "next", "href");
+        return NonEmpty(link) is { } l ? FromLink(l) : null;
+
+        static string? NonEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+
+        // A link carries the cursor as a query parameter; a link without one gives no cursor.
+        static string? FromLink(string value)
+        {
+            var q = value.IndexOf('?', StringComparison.Ordinal);
+            if (q < 0) return value.Contains('/', StringComparison.Ordinal) ? null : value;
+            foreach (var part in value[(q + 1)..].Split('&'))
+                if (part.StartsWith("cursor=", StringComparison.Ordinal))
+                    return NonEmpty(Uri.UnescapeDataString(part["cursor=".Length..]));
+            return null;
+        }
     }
 
     /// <summary>One card transaction; null for denied authorizations and entries without amount or date.</summary>

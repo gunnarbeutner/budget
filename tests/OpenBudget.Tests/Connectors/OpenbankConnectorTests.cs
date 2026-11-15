@@ -1,5 +1,6 @@
 #pragma warning disable CA2000 // test objects live for the test
 using System.Net;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenBudget.Browser;
 using OpenBudget.Connectors;
@@ -325,6 +326,49 @@ public sealed class OpenbankConnectorTests
         Assert.True((await SyncAsync(rig)).Succeeded);
         Assert.Equal(0, rig.Bank.Count("offset=6"));
         Assert.Equal(6, (await rig.World.TransactionsAsync(cardId)).Count);
+    }
+
+    [Fact]
+    public async Task Transactions_are_paged_with_the_cursor_until_a_response_has_none()
+    {
+        await using var rig = await CreateAsync(b => b.UsesCursor = true);
+        var cardId = await LinkCardAsync(rig);
+        rig.Bank.Requests.Clear();
+        Assert.True((await SyncAsync(rig)).Succeeded);
+        // 7 transactions at 3 per page: three pages, the last one without a cursor.
+        Assert.Equal(1, rig.Bank.Count($"{FakeOpenbank.CardId}/transactions?limit=3&epp=true&cursor=page-3"));
+        Assert.Equal(1, rig.Bank.Count($"{FakeOpenbank.CardId}/transactions?limit=3&epp=true&cursor=page-6"));
+        Assert.Equal(0, rig.Bank.Count("offset="));
+        Assert.Equal(6, (await rig.World.TransactionsAsync(cardId)).Count);
+    }
+
+    [Fact]
+    public async Task A_cursor_page_without_new_ids_ends_the_paging()
+    {
+        await using var rig = await CreateAsync(b => { b.UsesCursor = true; b.IgnoreCursor = true; });
+        var cardId = await LinkCardAsync(rig);
+        rig.Bank.Requests.Clear();
+        Assert.True((await SyncAsync(rig)).Succeeded);
+        Assert.Equal(1, rig.Bank.Count($"{FakeOpenbank.CardId}/transactions?limit=3&epp=true&cursor=page-3"));
+        Assert.Equal(0, rig.Bank.Count("cursor=page-6"));
+        Assert.Equal(2, (await rig.World.TransactionsAsync(cardId)).Count);
+    }
+
+    [Theory]
+    [InlineData("""{"nextCursor":"a1"}""", "a1")]
+    [InlineData("""{"cursor":"a1"}""", "a1")]
+    [InlineData("""{"metadata":{"nextCursor":"a1"}}""", "a1")]
+    [InlineData("""{"pagination":{"cursor":"a1"}}""", "a1")]
+    [InlineData("""{"paging":{"next":"a1"}}""", "a1")]
+    [InlineData("""{"links":{"next":"/cards/x/transactions?limit=25&cursor=a%2B1"}}""", "a+1")]
+    [InlineData("""{"_links":{"next":{"href":"https://example.test/t?cursor=a1&limit=25"}}}""", "a1")]
+    [InlineData("""{"links":{"next":"/cards/x/transactions?limit=25"}}""", null)]
+    [InlineData("""{"metadata":{"hasPendingRecords":true},"elements":[]}""", null)]
+    [InlineData("""{"nextCursor":""}""", null)]
+    public void The_next_cursor_is_found_in_the_usual_places(string json, string? expected)
+    {
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal(expected, OpenbankConnector.NextCursor(doc.RootElement));
     }
 
     [Fact]
