@@ -56,24 +56,65 @@ public sealed record ProductHistory(string Key, string Shop, string Name, IReadO
 
     /// <summary>The product's identity as shown and as merges refer to it.</summary>
     public string Id => Shop + "|" + Key;
+
+    /// <summary>Whether the product's pack purchases also carry a price per kg or litre (a size in the name).</summary>
+    public bool HasBase => !Weighed && Purchases.Any(p => p.BaseCents != null);
+
+    /// <summary>What <see cref="Purchase.BaseCents"/> is given per.</summary>
+    public PriceUnit BaseUnit => Weighed ? PriceUnit.Kg : Purchases.LastOrDefault(p => p.BaseCents != null)?.BaseUnit ?? PriceUnit.Kg;
 }
-
-/// <summary>A price index row: a shop (or all shops, <see cref="Shop"/> null) between two periods.</summary>
-public sealed record PriceIndexRow(string Label, string? Shop, decimal Change, int Products, long Spend);
-
-/// <summary>One product's average price change between the index's periods.</summary>
-public sealed record PriceMover(string ProductId, string Shop, string Name, long Before, long After, decimal Change, long Spend);
-
-/// <summary>The personal inflation: per period pair, per shop and overall; and the trailing period's biggest movers.</summary>
-public sealed record PriceIndex(IReadOnlyList<PriceIndexRow> Rows, IReadOnlyList<PriceMover> Increases, IReadOnlyList<PriceMover> Decreases);
 
 /// <summary>A product bought at least monthly, with what it costs per month.</summary>
 public sealed record RegularProduct(string ProductId, string Shop, string Name, double IntervalDays, long MonthlyCents, int Times);
 
+/// <summary>A receipt's payment, for the grocery spend.</summary>
+public sealed record ReceiptSpend(string Shop, DateOnly Date, long Cents);
+
+/// <summary>The span the prices page looks at, up to today.</summary>
+public enum PricePeriod { SixMonths, TwelveMonths, ThreeYears, All }
+
+/// <summary>One purchase in a product's price chart: its price (per piece or per kg/l) and whether it was an offer.</summary>
+public sealed record PricePoint(Purchase Purchase, long Price, bool Offer)
+{
+    public DateOnly Date => Purchase.Date;
+}
+
+/// <summary>A rise of the usual price between two purchases.</summary>
+public sealed record PriceRise(DateOnly From, DateOnly To, long Before, long After);
+
+/// <summary>
+/// A product within a period: its purchases there (<see cref="Points"/>), the usual price at the period's start
+/// (<see cref="Base"/>: the last usual price before it, or the first in it) and now, the change between them, the price
+/// rises, the cheapest purchase, the average price and the spend per month.
+/// </summary>
+public sealed record ProductDetail(IReadOnlyList<PricePoint> Points, IReadOnlyList<PriceRise> Rises, long Base, long Now, decimal? Change,
+    PricePoint Cheapest, long Average, long MonthlyCents);
+
+/// <summary>A product's row on the prices page for a period.</summary>
+public sealed record ProductRow(ProductHistory Product, ProductDetail Detail, double? IntervalDays, int Times, long Spend);
+
+/// <summary>One point of the basket index: 100 is the basket's price at the period's start.</summary>
+public sealed record IndexPoint(DateOnly Date, decimal Value);
+
+/// <summary>The basket index of all shops (<see cref="Shop"/> null) or one shop, and how many products it follows.</summary>
+public sealed record IndexLine(string? Shop, IReadOnlyList<IndexPoint> Points, int Products)
+{
+    public decimal Latest => Points[^1].Value;
+}
+
+/// <summary>Everything the prices page shows for a period.</summary>
+public sealed record PriceSummary(DateOnly Start, DateOnly Today, IReadOnlyList<ProductRow> Rows, IReadOnlyList<IndexLine> Index,
+    IReadOnlyList<RegularProduct> Regulars, long? GroceryMonthlyCents, ProductRow? BiggestJump)
+{
+    /// <summary>The basket index of all shops, or null when too few products were bought often enough.</summary>
+    public IndexLine? Overall => Index.FirstOrDefault(l => l.Shop == null);
+}
+
 /// <summary>
 /// Price history from itemised receipts: product identity (<see cref="ProductKey"/>), sizes printed in names
-/// (<see cref="ParseSize"/>), unit prices, the personal price index and regular purchases. Pure functions over
-/// <see cref="PriceLine"/>s; <see cref="PriceHistoryService"/> loads and caches them per user.
+/// (<see cref="ParseSize"/>), unit prices, offers, the basket index, regular purchases and the grocery spend of a
+/// period. Pure functions over <see cref="PriceLine"/>s; <see cref="PriceHistoryService"/> loads and caches them per
+/// project.
 /// </summary>
 public static partial class PriceAnalysis
 {
@@ -200,79 +241,180 @@ public static partial class PriceAnalysis
         return id;
     }
 
-    /// <summary>Products bought at least this often in each period take part in the index.</summary>
-    public const int IndexMinPurchases = 3;
+    /// <summary>The first day a period covers: for <see cref="PricePeriod.All"/> the first purchase or receipt.</summary>
+    public static DateOnly PeriodStart(PricePeriod period, DateOnly today, DateOnly? first) => period switch
+    {
+        PricePeriod.SixMonths => today.AddMonths(-6),
+        PricePeriod.TwelveMonths => today.AddMonths(-12),
+        PricePeriod.ThreeYears => today.AddMonths(-36),
+        _ => first is { } f && f < today ? f : today,
+    };
+
+    /// <summary>The months between two days (at least one), for spend per month.</summary>
+    public static double Months(DateOnly from, DateOnly to) => Math.Max(1.0, (to.DayNumber - from.DayNumber + 1) / 30.44);
+
+    /// <summary>A purchase costing at most this share of the usual price around it is an offer.</summary>
+    public const decimal OfferFactor = 0.9m;
+
+    /// <summary>How many purchases on each side of a purchase make up its usual price.</summary>
+    private const int Neighbours = 3;
 
     /// <summary>
-    /// The personal price index: for every product bought at least <see cref="IndexMinPurchases"/> times in both
-    /// periods, its average price in the later period over the earlier one, weighted by its spend in the earlier
-    /// period (a fixed basket). Rows: the trailing twelve months against the twelve before, then each calendar year
-    /// against the one before; each overall and per shop. Movers come from the trailing comparison.
+    /// Which of the prices (oldest first) are offers: at most <see cref="OfferFactor"/> of the usual price on both sides,
+    /// the median of up to three purchases before and after. At either end the one side decides, with at least two
+    /// purchases. A price rise therefore does not turn the earlier, cheaper purchases into offers.
     /// </summary>
-    public static PriceIndex Index(IReadOnlyList<ProductHistory> products, DateOnly today, int movers = 10)
+    public static bool[] Offers(IReadOnlyList<long> prices)
     {
-        var rows = new List<PriceIndexRow>();
-        var end = today.AddDays(1);
-        var mid = end.AddMonths(-12);
-        var start = mid.AddMonths(-12);
-        var trailing = Compare(products, start, mid, end);
-        rows.AddRange(Rows("12M", trailing));
-        if (products.Count > 0)
+        var result = new bool[prices.Count];
+        for (var i = 0; i < prices.Count; i++)
         {
-            var first = products.Min(p => p.First.Date.Year);
-            for (var y = today.Year; y > first; y--)
-                rows.AddRange(Rows(y.ToString(CultureInfo.InvariantCulture), Compare(products, new DateOnly(y - 1, 1, 1), new DateOnly(y, 1, 1), new DateOnly(y + 1, 1, 1))));
-        }
-        var up = trailing.Where(m => m.Change > 0).OrderByDescending(m => m.Change).Take(movers).ToList();
-        var down = trailing.Where(m => m.Change < 0).OrderBy(m => m.Change).Take(movers).ToList();
-        return new PriceIndex(rows, up, down);
-    }
-
-    private static List<PriceMover> Compare(IReadOnlyList<ProductHistory> products, DateOnly start, DateOnly mid, DateOnly end)
-    {
-        var result = new List<PriceMover>();
-        foreach (var p in products)
-        {
-            var before = p.Purchases.Where(x => x.Date >= start && x.Date < mid && x.Price > 0).ToList();
-            var after = p.Purchases.Where(x => x.Date >= mid && x.Date < end && x.Price > 0).ToList();
-            if (before.Count < IndexMinPurchases || after.Count < IndexMinPurchases) continue;
-            var b = before.Average(x => (decimal)x.Price);
-            var a = after.Average(x => (decimal)x.Price);
-            result.Add(new PriceMover(p.Id, p.Shop, p.Name, (long)Math.Round(b), (long)Math.Round(a), a / b - 1m, before.Sum(x => x.TotalCents)));
+            var before = prices.Skip(Math.Max(0, i - Neighbours)).Take(Math.Min(i, Neighbours)).ToList();
+            var after = prices.Skip(i + 1).Take(Neighbours).ToList();
+            long? usual = (before.Count, after.Count) switch
+            {
+                ( > 0, > 0) => Math.Min(Median(before), Median(after)),
+                ( >= 2, 0) => Median(before),
+                (0, >= 2) => Median(after),
+                _ => null,
+            };
+            result[i] = usual is { } u && prices[i] <= u * OfferFactor;
         }
         return result;
     }
 
-    private static IEnumerable<PriceIndexRow> Rows(string label, List<PriceMover> movers)
+    private static long Median(List<long> values)
     {
-        if (movers.Count == 0) yield break;
-        yield return Row(label, null, movers);
-        foreach (var g in movers.GroupBy(m => m.Shop, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
-            yield return Row(label, g.Key, g.ToList());
+        var o = values.Order().ToList();
+        return o.Count % 2 == 1 ? o[o.Count / 2] : (o[o.Count / 2 - 1] + o[o.Count / 2]) / 2;
     }
 
-    private static PriceIndexRow Row(string label, string? shop, List<PriceMover> movers)
+    /// <summary>A change of the usual price of at least this share counts as a rise.</summary>
+    private const decimal RiseThreshold = 0.03m;
+
+    /// <summary>
+    /// A product between <paramref name="start"/> and <paramref name="today"/>, priced per piece (per kg for weighed
+    /// items) or, with <paramref name="perBase"/>, per kg or litre (purchases without a size are left out). Offers are
+    /// told from the whole history; the usual price, its rises and the change leave them out. Null when the product
+    /// has no priced purchase in the period.
+    /// </summary>
+    public static ProductDetail? Detail(ProductHistory p, DateOnly start, DateOnly today, bool perBase = false)
     {
-        var spend = movers.Sum(m => m.Spend);
-        var change = spend == 0 ? movers.Average(m => m.Change) : movers.Sum(m => m.Change * m.Spend) / spend;
-        return new PriceIndexRow(label, shop, change, movers.Count, spend);
+        var priced = p.Purchases.Select(x => (Purchase: x, Price: perBase ? x.BaseCents ?? 0 : x.Price)).Where(x => x.Price > 0).ToList();
+        var offers = Offers(priced.Select(x => x.Price).ToList());
+        var all = priced.Select((x, i) => new PricePoint(x.Purchase, x.Price, offers[i])).ToList();
+        var points = all.Where(x => x.Date >= start && x.Date <= today).ToList();
+        if (points.Count == 0) return null;
+        var usual = all.Where(x => !x.Offer && x.Date <= today).ToList();
+        var baseline = usual.LastOrDefault(x => x.Date < start) ?? usual.FirstOrDefault(x => x.Date >= start) ?? points[0];
+        var now = usual.LastOrDefault() ?? points[^1];
+        var rises = new List<PriceRise>();
+        for (var i = 1; i < usual.Count; i++)
+        {
+            var (a, b) = (usual[i - 1], usual[i]);
+            if (b.Date >= start && b.Price >= a.Price * (1 + RiseThreshold))
+                rises.Add(new PriceRise(a.Date < start ? start : a.Date, b.Date, a.Price, b.Price));
+        }
+        decimal? change = now.Date > baseline.Date ? (decimal)now.Price / baseline.Price - 1m : null;
+        var cheapest = points.OrderBy(x => x.Price).ThenByDescending(x => x.Date).First();
+        var average = (long)Math.Round(points.Average(x => (decimal)x.Price));
+        var monthly = (long)Math.Round(points.Sum(x => x.Purchase.TotalCents) / Months(points[0].Date, today));
+        return new ProductDetail(points, rises, baseline.Price, now.Price, change, cheapest, average, monthly);
+    }
+
+    /// <summary>Products bought at least this often in each half of the period take part in the index.</summary>
+    public const int IndexMinPurchases = 3;
+
+    /// <summary>
+    /// The basket index from <paramref name="start"/> to <paramref name="today"/>, overall and per shop: for every
+    /// product bought at least <see cref="IndexMinPurchases"/> times in each half of the period, its usual price (offers
+    /// left out) at each month's end over its usual price at the start, averaged weighted by the product's spend in the
+    /// period. One point at the start (100), one per month end and one today. Empty without such a product.
+    /// </summary>
+    public static List<IndexLine> IndexSeries(IReadOnlyList<ProductHistory> products, DateOnly start, DateOnly today)
+    {
+        var mid = DateOnly.FromDayNumber((start.DayNumber + today.DayNumber) / 2);
+        var basket = new List<BasketItem>();
+        foreach (var p in products)
+        {
+            var priced = p.Purchases.Where(x => x.Price > 0 && x.Date <= today).ToList();
+            if (priced.Count(x => x.Date >= start && x.Date < mid) < IndexMinPurchases || priced.Count(x => x.Date >= mid) < IndexMinPurchases) continue;
+            var offers = Offers(priced.Select(x => x.Price).ToList());
+            var usual = priced.Where((_, i) => !offers[i]).ToList();
+            var baseline = usual.LastOrDefault(x => x.Date <= start) ?? usual.FirstOrDefault(x => x.Date >= start);
+            if (baseline == null) continue;
+            basket.Add(new BasketItem(p.Shop, usual, baseline.Price, Math.Max(1, priced.Where(x => x.Date >= start).Sum(x => x.TotalCents))));
+        }
+        if (basket.Count == 0) return [];
+        var dates = new List<DateOnly> { start };
+        for (var m = new DateOnly(start.Year, start.Month, 1).AddMonths(1).AddDays(-1); m < today; m = m.AddDays(1).AddMonths(1).AddDays(-1))
+            if (m > start) dates.Add(m);
+        if (today > start) dates.Add(today);
+
+        var lines = new List<IndexLine> { Line(null, basket, dates) };
+        foreach (var g in basket.GroupBy(b => b.Shop, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
+            lines.Add(Line(g.Key, g.ToList(), dates));
+        return lines;
+    }
+
+    private sealed record BasketItem(string Shop, List<Purchase> Usual, long Base, long Weight);
+
+    private static IndexLine Line(string? shop, List<BasketItem> items, List<DateOnly> dates)
+    {
+        var weight = items.Sum(i => (decimal)i.Weight);
+        var points = dates.Select((d, n) => new IndexPoint(d, n == 0 ? 100m : Math.Round(100m * items.Sum(i =>
+            i.Weight * (decimal)(i.Usual.LastOrDefault(x => x.Date <= d)?.Price ?? i.Base) / i.Base) / weight, 1))).ToList();
+        return new IndexLine(shop, points, items.Count);
+    }
+
+    /// <summary>The shops whose receipts count as grocery shopping: REWE (delivery and store) and Lidl, not Amazon.</summary>
+    public static readonly IReadOnlySet<string> GroceryShops = new HashSet<string>(StringComparer.Ordinal) { ReceiptShops.Rewe, ReceiptShops.ReweEbon, ReceiptShops.Lidl };
+
+    /// <summary>
+    /// The average grocery spend per month: the payments of grocery shops' receipts (<see cref="GroceryShops"/>) from
+    /// <paramref name="start"/> to <paramref name="today"/>, over the months since the first of them. Null without one.
+    /// </summary>
+    public static long? GroceryMonthly(IEnumerable<ReceiptSpend> receipts, DateOnly start, DateOnly today)
+    {
+        var groceries = receipts.Where(r => GroceryShops.Contains(r.Shop) && r.Date >= start && r.Date <= today && r.Cents > 0).ToList();
+        if (groceries.Count == 0) return null;
+        return (long)Math.Round(groceries.Sum(r => r.Cents) / Months(groceries.Min(r => r.Date), today));
+    }
+
+    /// <summary>The product whose usual price rose the most in the period, bought at least twice in it; null without a rise.</summary>
+    public static ProductRow? BiggestJump(IEnumerable<ProductRow> rows) =>
+        rows.Where(r => r.Times >= 2 && r.Detail.Change > 0).OrderByDescending(r => r.Detail.Change).ThenByDescending(r => r.Spend).FirstOrDefault();
+
+    /// <summary>The prices page of a period: the products bought in it, the basket index, regulars, grocery spend and biggest jump.</summary>
+    public static PriceSummary Summarise(IReadOnlyList<ProductHistory> products, IReadOnlyList<ReceiptSpend> receipts, PricePeriod period, DateOnly today)
+    {
+        var firsts = products.Select(p => p.First.Date).Concat(receipts.Select(r => r.Date)).ToList();
+        var start = PeriodStart(period, today, firsts.Count == 0 ? null : firsts.Min());
+        var rows = new List<ProductRow>();
+        foreach (var p in products)
+        {
+            if (Detail(p, start, today) is not { } d) continue;
+            var times = d.Points.Select(x => (x.Purchase.ReceiptId, x.Date)).Distinct().Count();
+            rows.Add(new ProductRow(p, d, p.TypicalIntervalDays(start), times, d.Points.Sum(x => x.Purchase.TotalCents)));
+        }
+        return new PriceSummary(start, today, rows, IndexSeries(products, start, today), Regulars(products, today, start),
+            GroceryMonthly(receipts, start, today), BiggestJump(rows));
     }
 
     /// <summary>
-    /// Regular purchases: products bought on at least three days in the twelve months up to <paramref name="today"/>,
-    /// typically at most a month apart, and bought within the last two months; with their spend per month since their
-    /// first purchase in that window.
+    /// Regular purchases: products bought on at least three days since <paramref name="since"/> (default: twelve months
+    /// before <paramref name="today"/>), typically at most a month apart, and bought within the last two months; with
+    /// their spend per month since their first purchase in that window.
     /// </summary>
-    public static List<RegularProduct> Regulars(IReadOnlyList<ProductHistory> products, DateOnly today)
+    public static List<RegularProduct> Regulars(IReadOnlyList<ProductHistory> products, DateOnly today, DateOnly? since = null)
     {
-        var since = today.AddMonths(-12);
+        var from = since ?? today.AddMonths(-12);
         var result = new List<RegularProduct>();
         foreach (var p in products)
         {
-            if (p.Last.Date < today.AddMonths(-2) || p.TypicalIntervalDays(since) is not { } interval || interval > 31) continue;
-            var recent = p.Purchases.Where(x => x.Date >= since).ToList();
-            var months = Math.Max(1.0, (today.DayNumber - recent[0].Date.DayNumber + 1) / 30.44);
-            result.Add(new RegularProduct(p.Id, p.Shop, p.Name, interval, (long)Math.Round(recent.Sum(x => x.TotalCents) / months),
+            if (p.Last.Date < today.AddMonths(-2) || p.TypicalIntervalDays(from) is not { } interval || interval > 31) continue;
+            var recent = p.Purchases.Where(x => x.Date >= from).ToList();
+            result.Add(new RegularProduct(p.Id, p.Shop, p.Name, interval, (long)Math.Round(recent.Sum(x => x.TotalCents) / Months(recent[0].Date, today)),
                 recent.Select(x => (x.ReceiptId, x.Date)).Distinct().Count()));
         }
         return result.OrderByDescending(r => r.MonthlyCents).ToList();

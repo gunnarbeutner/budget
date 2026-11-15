@@ -8,12 +8,11 @@
 @inject CategorizationService Categorization
 @inject IStringLocalizer<Receipts> L
 
-@* Settings › Receipts, in three tabs. "Receipts": all of the signed-in user's receipts across projects (ReceiptList;
-   each project also shows its own receipts as a project view, /projects/{id}/receipts). "Settings" (also
-   /receipts?tab=settings): each project's categories to split items into (see ProjectReceiptItems), the item memory
-   (product → category, editable) and how the AI takes part. "Prices" (also /receipts?tab=prices): price history,
-   personal price index and regular purchases over the receipts the user sees (PriceHistory). Everything is the signed-in user's own; the sources
-   themselves are on the connections page. *@
+@* Settings › Receipts, in two tabs. "Receipts": all of the signed-in user's receipts across projects (ReceiptList;
+   each project also shows its own receipts as a project view, /projects/{id}/receipts, and their prices as
+   /projects/{id}/prices). "Settings" (also /receipts?tab=settings): each project's categories to split items into
+   (see ProjectReceiptItems), the item memory (product → category, editable) and how the AI takes part. Everything is
+   the signed-in user's own; the sources themselves are on the connections page. *@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
@@ -27,17 +26,11 @@
             data-testid="receipts-tab-list" @onclick="() => tab = Tab.List">@L["Tab_List"]</button>
     <button type="button" role="tab" class="btn @(tab == Tab.Settings ? "active" : "")" aria-selected="@(tab == Tab.Settings)"
             data-testid="receipts-tab-settings" @onclick="() => tab = Tab.Settings">@L["Tab_Settings"]</button>
-    <button type="button" role="tab" class="btn @(tab == Tab.Prices ? "active" : "")" aria-selected="@(tab == Tab.Prices)"
-            data-testid="receipts-tab-prices" @onclick="() => tab = Tab.Prices">@L["Tab_Prices"]</button>
 </div>
 
 @if (tab == Tab.List)
 {
 <ReceiptList />
-}
-else if (tab == Tab.Prices)
-{
-<PriceHistory />
 }
 else
 {
@@ -103,7 +96,7 @@ else
 </SettingsShell>
 
 @code {
-    private enum Tab { List, Settings, Prices }
+    private enum Tab { List, Settings }
 
     private Tab tab;
     private List<ItemMemoryView>? memory;
@@ -121,7 +114,6 @@ else
     protected override async Task OnInitializedAsync()
     {
         if (TabParam == "settings") tab = Tab.Settings;
-        else if (TabParam == "prices") tab = Tab.Prices;
         await LoadAsync();
     }
 

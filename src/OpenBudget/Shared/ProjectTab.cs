@@ -14,4 +14,5 @@ public enum ProjectTab
     Portfolio,
     Documents,
     Receipts,
+    Prices,
 }

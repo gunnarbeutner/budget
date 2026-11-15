@@ -259,7 +259,4 @@
   <data name="OwnerReceipt" xml:space="preserve">
     <value>Beleg von {0}</value>
   </data>
-  <data name="Tab_Prices" xml:space="preserve">
-    <value>Preise</value>
-  </data>
 </root>

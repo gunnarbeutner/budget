@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Prices</value>
+  </data>
+  <data name="PageTitle_WithProject" xml:space="preserve">
+    <value>Prices · {0}</value>
+  </data>
+  <data name="View_Title" xml:space="preserve">
+    <value>Prices</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>What you pay for the things you buy again and again, from the receipts of this project.</value>
+  </data>
+  <data name="Period" xml:space="preserve">
+    <value>Period</value>
+  </data>
+  <data name="Period_6m" xml:space="preserve">
+    <value>6 months</value>
+  </data>
+  <data name="Period_12m" xml:space="preserve">
+    <value>12 months</value>
+  </data>
+  <data name="Period_3y" xml:space="preserve">
+    <value>3 years</value>
+  </data>
+  <data name="Period_all" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="Period_Empty" xml:space="preserve">
+    <value>No purchases in this period.</value>
+  </data>
+  <data name="None" xml:space="preserve">
+    <value>No receipts with items in this project yet.</value>
+  </data>
+  <data name="None_Link" xml:space="preserve">
+    <value>Go to the project's receipts</value>
+  </data>
+  <data name="Stat_Inflation" xml:space="preserve">
+    <value>Your inflation</value>
+  </data>
+  <data name="Stat_Inflation_Sub" xml:space="preserve">
+    <value>same basket vs. {0}</value>
+  </data>
+  <data name="Stat_Inflation_None" xml:space="preserve">
+    <value>too little data</value>
+  </data>
+  <data name="Stat_Grocery" xml:space="preserve">
+    <value>Grocery spend</value>
+  </data>
+  <data name="Stat_Grocery_Sub" xml:space="preserve">
+    <value>average, REWE and Lidl</value>
+  </data>
+  <data name="PerMonth" xml:space="preserve">
+    <value>{0} / month</value>
+  </data>
+  <data name="Stat_Regulars" xml:space="preserve">
+    <value>Regulars</value>
+  </data>
+  <data name="Stat_Regulars_Value" xml:space="preserve">
+    <value>{0} products</value>
+  </data>
+  <data name="Stat_Regulars_Sub" xml:space="preserve">
+    <value>bought at least monthly</value>
+  </data>
+  <data name="Stat_Jump" xml:space="preserve">
+    <value>Biggest jump</value>
+  </data>
+  <data name="Stat_Jump_Since" xml:space="preserve">
+    <value>since {0}</value>
+  </data>
+  <data name="Stat_Jump_None" xml:space="preserve">
+    <value>no price rose</value>
+  </data>
+  <data name="Index_Heading" xml:space="preserve">
+    <value>Basket index</value>
+  </data>
+  <data name="Index_Help" xml:space="preserve">
+    <value>100 = what the same products cost in {0}. Only products bought at least {1} times in each half of the period ({2} products); offers left out.</value>
+  </data>
+  <data name="Index_None" xml:space="preserve">
+    <value>Too little data for the index: it needs products bought at least {0} times in each half of the period. Try a longer period.</value>
+  </data>
+  <data name="Index_Aria" xml:space="preserve">
+    <value>Basket index since {0}, now at {1} (100 = start).</value>
+  </data>
+  <data name="AllShops" xml:space="preserve">
+    <value>All shops</value>
+  </data>
+  <data name="Products_Heading" xml:space="preserve">
+    <value>Products</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>Search products</value>
+  </data>
+  <data name="Search_None" xml:space="preserve">
+    <value>No product matches.</value>
+  </data>
+  <data name="Sort" xml:space="preserve">
+    <value>Sort</value>
+  </data>
+  <data name="Sort_Change" xml:space="preserve">
+    <value>Biggest change</value>
+  </data>
+  <data name="Sort_Bought" xml:space="preserve">
+    <value>Most bought</value>
+  </data>
+  <data name="Sort_Spent" xml:space="preserve">
+    <value>Most spent</value>
+  </data>
+  <data name="Meta_PerKg" xml:space="preserve">
+    <value>per kg</value>
+  </data>
+  <data name="Meta_Times" xml:space="preserve">
+    <value>{0}× bought</value>
+  </data>
+  <data name="Every_Days" xml:space="preserve">
+    <value>every ~{0} days</value>
+  </data>
+  <data name="Every_Weeks" xml:space="preserve">
+    <value>every ~{0} weeks</value>
+  </data>
+  <data name="Detail_Heading" xml:space="preserve">
+    <value>Product</value>
+  </data>
+  <data name="Detail_None" xml:space="preserve">
+    <value>Pick a product to see its prices.</value>
+  </data>
+  <data name="Detail_Sub" xml:space="preserve">
+    <value>{0} · {1} purchases since {2}</value>
+  </data>
+  <data name="Detail_Aria" xml:space="preserve">
+    <value>Price from {0} to {1} since {2}: {3} purchases, {4} of them offers, {5} price rises.</value>
+  </data>
+  <data name="Merge_Open" xml:space="preserve">
+    <value>Merge with…</value>
+  </data>
+  <data name="Merge_Help" xml:space="preserve">
+    <value>When the shop renamed a product, merge it into the other name: their purchases then form one price history. Only you see your merges.</value>
+  </data>
+  <data name="Merge_Search" xml:space="preserve">
+    <value>Find a product of the same shop</value>
+  </data>
+  <data name="Merge_Into" xml:space="preserve">
+    <value>Merge into this</value>
+  </data>
+  <data name="Unmerge" xml:space="preserve">
+    <value>Separate</value>
+  </data>
+  <data name="Unit" xml:space="preserve">
+    <value>Price per</value>
+  </data>
+  <data name="Unit_Piece" xml:space="preserve">
+    <value>Per piece</value>
+  </data>
+  <data name="Unit_Kg" xml:space="preserve">
+    <value>Per kg</value>
+  </data>
+  <data name="Unit_Litre" xml:space="preserve">
+    <value>Per litre</value>
+  </data>
+  <data name="Fact_Now" xml:space="preserve">
+    <value>Now</value>
+  </data>
+  <data name="Fact_Then_6m" xml:space="preserve">
+    <value>6 months ago</value>
+  </data>
+  <data name="Fact_Then_12m" xml:space="preserve">
+    <value>12 months ago</value>
+  </data>
+  <data name="Fact_Then_3y" xml:space="preserve">
+    <value>3 years ago</value>
+  </data>
+  <data name="Fact_Then_all" xml:space="preserve">
+    <value>At first</value>
+  </data>
+  <data name="Fact_Cheapest" xml:space="preserve">
+    <value>Cheapest</value>
+  </data>
+  <data name="Fact_Offer" xml:space="preserve">
+    <value>offer, {0}</value>
+  </data>
+  <data name="Fact_Spend" xml:space="preserve">
+    <value>You spend</value>
+  </data>
+  <data name="Fact_PerMonth" xml:space="preserve">
+    <value>per month</value>
+  </data>
+  <data name="Chart_Offer" xml:space="preserve">
+    <value>offer {0}</value>
+  </data>
+  <data name="Chart_Average" xml:space="preserve">
+    <value>avg. {0}</value>
+  </data>
+  <data name="Legend_Purchase" xml:space="preserve">
+    <value>Purchase</value>
+  </data>
+  <data name="Legend_Offer" xml:space="preserve">
+    <value>Offer (below usual price)</value>
+  </data>
+  <data name="Legend_Rise" xml:space="preserve">
+    <value>Price rise</value>
+  </data>
+  <data name="Legend_Average" xml:space="preserve">
+    <value>Average</value>
+  </data>
+  <data name="Purchases_Heading" xml:space="preserve">
+    <value>Purchases</value>
+  </data>
+  <data name="Col_Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="Col_Shop" xml:space="preserve">
+    <value>Shop</value>
+  </data>
+  <data name="Col_Quantity" xml:space="preserve">
+    <value>Qty</value>
+  </data>
+  <data name="Col_Price" xml:space="preserve">
+    <value>Price</value>
+  </data>
+  <data name="Col_Receipt" xml:space="preserve">
+    <value>Receipt</value>
+  </data>
+  <data name="Col_Product" xml:space="preserve">
+    <value>Product</value>
+  </data>
+  <data name="Col_Interval" xml:space="preserve">
+    <value>Bought</value>
+  </data>
+  <data name="Col_Monthly" xml:space="preserve">
+    <value>Per month</value>
+  </data>
+  <data name="Offer" xml:space="preserve">
+    <value>offer</value>
+  </data>
+  <data name="OpenReceipt" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="OpenReceipt_Aria" xml:space="preserve">
+    <value>Open the receipt of {0}</value>
+  </data>
+  <data name="Regulars_Heading" xml:space="preserve">
+    <value>Regulars</value>
+  </data>
+  <data name="Regulars_Help" xml:space="preserve">
+    <value>Products bought at least monthly in the period and within the last two months, with what they cost you per month.</value>
+  </data>
+  <data name="Regulars_None" xml:space="preserve">
+    <value>No product was bought at least monthly in this period.</value>
+  </data>
+  <data name="Regulars_Total" xml:space="preserve">
+    <value>Total</value>
+  </data>
+  <data name="Per_Kg" xml:space="preserve">
+    <value>/kg</value>
+  </data>
+  <data name="Per_Litre" xml:space="preserve">
+    <value>/l</value>
+  </data>
+  <data name="Shop_rewe" xml:space="preserve">
+    <value>REWE delivery</value>
+  </data>
+  <data name="Shop_rewe-ebon" xml:space="preserve">
+    <value>REWE</value>
+  </data>
+  <data name="Shop_lidl" xml:space="preserve">
+    <value>Lidl</value>
+  </data>
+  <data name="Shop_amazon" xml:space="preserve">
+    <value>Amazon</value>
+  </data>
+</root>

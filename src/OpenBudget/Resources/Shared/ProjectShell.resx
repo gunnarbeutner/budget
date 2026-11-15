@@ -109,4 +109,7 @@
   <data name="View_Recurring" xml:space="preserve">
     <value>Recurring</value>
   </data>
+  <data name="View_Prices" xml:space="preserve">
+    <value>Prices</value>
+  </data>
 </root>
