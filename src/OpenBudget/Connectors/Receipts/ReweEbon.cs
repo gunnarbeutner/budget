@@ -58,6 +58,17 @@ public static partial class ReweEbon
 
     public static bool IsEbonSubject(string? subject) => subject != null && SubjectPattern().IsMatch(subject.Trim());
 
+    /// <summary>An eBon is paid by card or app (REWE or PAYBACK PAY) on its day, booked up to 10 days later.</summary>
+    public static readonly ReceiptSourceProfile MatchProfile = new()
+    {
+        Shop = ReceiptShops.ReweEbon,
+        DaysAfter = 10,
+        PayeeWords = ["rewe", "payback"],
+        DisplayName = (store, orderNumber, _) => (ReceiptShops.ReweEbon + " " + (store ?? orderNumber)).Trim(),
+        MailSubjectPrefix = SubjectPrefix,
+        IsMailSubject = IsEbonSubject,
+    };
+
     public static bool IsEbonAttachment(string? name) => string.Equals(name?.Trim(), "REWE-eBon.pdf", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Parses the PDF; throws <see cref="InvalidDataException"/> when it is not a REWE eBon whose lines add up.</summary>

@@ -152,13 +152,8 @@ public sealed class ReceiptService
     public static Uri? ShopUrl(string shop, string? orderNumber) =>
         shop == ReceiptShops.Amazon && !string.IsNullOrEmpty(orderNumber) ? new OpenBudget.Connectors.Amazon.AmazonOptions().OrderUrl(orderNumber) : null;
 
-    public static string Title(string shop, string? store, string? orderNumber, string? otherOrderNumbers = null) => shop switch
-    {
-        ReceiptShops.Lidl => store is { Length: > 0 } s ? (s.StartsWith("Lidl", StringComparison.OrdinalIgnoreCase) ? s : "Lidl " + s) : "Lidl",
-        ReceiptShops.Rewe => ("REWE " + orderNumber).Trim(),
-        ReceiptShops.Amazon => ("Amazon " + string.Join(", ", ReceiptInvoice.OrderNumbersOf(orderNumber, otherOrderNumbers))).Trim(),
-        _ => (shop + " " + (store ?? orderNumber)).Trim(),
-    };
+    public static string Title(string shop, string? store, string? orderNumber, string? otherOrderNumbers = null) =>
+        ReceiptSourceProfiles.Default.For(shop)?.DisplayName(store, orderNumber, otherOrderNumbers) ?? (shop + " " + (store ?? orderNumber)).Trim();
 
     private async Task<string> UserAsync() => (await _access.GetAsync()).UserId ?? throw new AccessDeniedException("Not signed in.");
 
@@ -678,6 +673,9 @@ public sealed class ReceiptService
             ? r with { BookingDate = DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime } : r).ToList();
     }
 
+    /// <summary>How much later than automatic matching a booking picked by hand may come (a bank booking unusually late).</summary>
+    private const int HandPickedSlackDays = 10;
+
     /// <summary>
     /// Bookings that may be a receipt's: bookings near its date the user may edit (their own and those on accounts shared
     /// with them as editor) not linked to another receipt, closest amount first.
@@ -690,11 +688,10 @@ public sealed class ReceiptService
         var invoice = await db.ReceiptInvoices.AsNoTracking().FirstOrDefaultAsync(r => r.Id == receiptId && r.OwnerUserId == user, ct)
             ?? throw new AccessDeniedException("Receipt not found.");
         var day = invoice.DeliveryDate ?? invoice.OrderDate ?? invoice.ReadAt;
-        var min = new DateTimeOffset(day.AddDays(-3), TimeSpan.Zero).ToUnixTimeSeconds();
-        var max = new DateTimeOffset(day.AddDays(ReceiptMatcher.MaxDaysAfter + 10), TimeSpan.Zero).ToUnixTimeSeconds();
+        var (min, max) = ReceiptSourceProfiles.Default.QueryRange(DateOnly.FromDateTime(day), DateOnly.FromDateTime(day), HandPickedSlackDays);
         var rows = await db.Transactions.AsNoTracking()
             .Where(t => (t.OwnerUserId == user || (t.AccountId != null && editable.Contains(t.AccountId.Value)))
-                && t.Timestamp >= min && t.Timestamp <= max && t.Splitted != SplitState.Child)
+                && t.Timestamp >= min && t.Timestamp < max && t.Splitted != SplitState.Child)
             .Select(t => new { t.Id, t.Timestamp, Cents = t.SplitOriginalAmount ?? t.Amount, t.Name, t.Purpose })
             .ToListAsync(ct);
         // Linked to a receipt of any owner (the user's own other receipts and those of the users they share with).

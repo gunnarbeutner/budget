@@ -233,11 +233,15 @@ public sealed class MailReceiptSync : BackgroundService
         return new MailCheckResult(mails, added, unreadable, error);
     }
 
-    /// <summary>The ids of mails received since <paramref name="since"/> (all when null) that look like REWE invoices (subject and attachments).</summary>
+    /// <summary>The shops whose receipts come by mail.</summary>
+    private static readonly IReadOnlyList<ReceiptSourceProfile> MailProfiles =
+        ReceiptSourceProfiles.Default.All.Where(p => p.MailSubjectPrefix != null && p.IsMailSubject != null).ToList();
+
+    /// <summary>The ids of mails received since <paramref name="since"/> (all when null) that look like a shop's receipt mails (subject and attachments).</summary>
     private async Task<List<string>> ListInvoiceMailsAsync(string userId, DateTime? since, CancellationToken ct)
     {
         var filter = (since is { } from ? $"receivedDateTime ge {from.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)} and " : "")
-            + $"hasAttachments eq true and (startswith(subject,'{ReweInvoice.SubjectPrefix}') or startswith(subject,'{ReweEbon.SubjectPrefix}'))";
+            + "hasAttachments eq true and (" + string.Join(" or ", MailProfiles.Select(p => $"startswith(subject,'{p.MailSubjectPrefix}')")) + ")";
         string? url = $"{_graph.GraphBase}/me/messages?$filter={Uri.EscapeDataString(filter)}&$select=id,subject,receivedDateTime&$top={PageSize}";
         var ids = new List<string>();
         while (url != null && ids.Count < _options.MaxMessages)
@@ -248,7 +252,7 @@ public sealed class MailReceiptSync : BackgroundService
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             if (doc.RootElement.TryGetProperty("value", out var values))
                 foreach (var m in values.EnumerateArray())
-                    if (Str(m, "id") is { } id && (ReweInvoice.IsInvoiceSubject(Str(m, "subject")) || ReweEbon.IsEbonSubject(Str(m, "subject")))) ids.Add(id);
+                    if (Str(m, "id") is { } id && MailProfiles.Any(p => p.IsMailSubject!(Str(m, "subject")))) ids.Add(id);
             url = doc.RootElement.TryGetProperty("@odata.nextLink", out var next) ? next.GetString() : null;
         }
         return ids;

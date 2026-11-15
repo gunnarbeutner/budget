@@ -158,18 +158,23 @@ public sealed class ReceiptStore
         var bookings = new List<ReceiptBooking>();
         if (dated.Count > 0)
         {
-            var min = new DateTimeOffset(dated.Min(i => (i.DeliveryDate ?? i.OrderDate)!.Value).AddDays(-ReceiptMatcher.MaxDaysBefore - 1), TimeSpan.Zero).ToUnixTimeSeconds();
-            var max = new DateTimeOffset(dated.Max(i => (i.DeliveryDate ?? i.OrderDate)!.Value).AddDays(ReceiptMatcher.MaxDaysAfter + 2), TimeSpan.Zero).ToUnixTimeSeconds();
+            var (min, max) = ReceiptSourceProfiles.Default.QueryRange(
+                DateOnly.FromDateTime(dated.Min(i => (i.DeliveryDate ?? i.OrderDate)!.Value)), DateOnly.FromDateTime(dated.Max(i => (i.DeliveryDate ?? i.OrderDate)!.Value)));
             var rows = await db.Transactions.AsNoTracking()
                 .Where(t => (t.OwnerUserId == ownerUserId || (t.AccountId != null && sharedMapped.Contains(t.AccountId.Value)))
-                    && t.Timestamp >= min && t.Timestamp <= max && t.Splitted != SplitState.Child)
+                    && t.Timestamp >= min && t.Timestamp < max && t.Splitted != SplitState.Child)
                 .Select(t => new { t.Id, t.AccountId, t.Timestamp, t.Amount, t.SplitOriginalAmount, t.Name, t.Purpose, t.Booked })
                 .ToListAsync(ct);
-            var shops = invoices.Select(i => i.Shop).Where(s => s != ReceiptShops.Amazon).Distinct(StringComparer.Ordinal).ToList();
-            var amazonAccounts = accounts.Values.ToHashSet();
-            bool OnSourceAccount(string shop, long? account) =>
-                !sourceAccounts.TryGetValue(ReceiptSources.Of(shop), out var mapped) || (account is { } x && mapped.Contains(x));
-            bookings = rows.Where(r => shops.Any(s => ReceiptMatcher.IsShop(s, r.Name, r.Purpose) && OnSourceAccount(s, r.AccountId)) || (r.AccountId is { } a && amazonAccounts.Contains(a)))
+            // Per shop with receipts: which bookings may fit any of them (on its mapped accounts, naming it when it must).
+            var shops = invoices.GroupBy(i => i.Shop, StringComparer.Ordinal)
+                .Select(g => (Profile: ReceiptSourceProfiles.Default.For(g.Key), Source: sourceAccounts.GetValueOrDefault(ReceiptSources.Of(g.Key)),
+                    Bound: g.Where(i => accounts.ContainsKey(i.Id)).Select(i => accounts[i.Id]).ToHashSet()))
+                .Where(s => s.Profile != null).ToList();
+            bool Fits(long? account, string? name, string? purpose) => shops.Any(s =>
+                (s.Source == null || (account is { } x && s.Source.Contains(x)))
+                && (!s.Profile!.RequiresAccount || (account is { } y && s.Bound.Contains(y)))
+                && (!s.Profile.RequirePayeeMatch || s.Profile.Names(name, purpose)));
+            bookings = rows.Where(r => Fits(r.AccountId, r.Name, r.Purpose))
                 .Select(r => new ReceiptBooking(r.Id, DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime),
                     r.SplitOriginalAmount ?? r.Amount, r.Name, r.Purpose, r.AccountId, Pending: !r.Booked)).ToList();
         }
@@ -209,7 +214,7 @@ public sealed class ReceiptStore
             }
             if (i.State == ReceiptMatchState.Instalments) i.State = ReceiptMatchState.Unmatched;
             var account = accounts.TryGetValue(i.Id, out var mapped) ? mapped : (long?)null;
-            if (i.Shop == ReceiptShops.Amazon && account == null)
+            if (ReceiptSourceProfiles.Default.For(i.Shop)?.RequiresAccount == true && account == null)
             {
                 if (i.TransactionId is { } was) lost.Add(was);
                 i.TransactionId = null;
@@ -229,7 +234,8 @@ public sealed class ReceiptStore
             i.State = ReceiptMatchState.Unmatched;
         }
         var open = invoices.Where(i => i.State == ReceiptMatchState.Unmatched)
-            .Select(i => new ReceiptToMatch(i.Id, i.PaymentCents, Day(i.OrderDate), Day(i.DeliveryDate), i.Shop, accounts.TryGetValue(i.Id, out var a) ? a : null, i.OrderNumber)).ToList();
+            .Select(i => new ReceiptToMatch(i.Id, i.PaymentCents, Day(i.OrderDate), Day(i.DeliveryDate), i.Shop, accounts.TryGetValue(i.Id, out var a) ? a : null, i.OrderNumber,
+                sourceAccounts.GetValueOrDefault(ReceiptSources.Of(i.Shop)))).ToList();
         // Bookings linked to another owner's receipts are taken.
         var candidateIds = bookings.Select(b => b.Id).ToList();
         var takenByOthers = candidateIds.Count == 0 ? [] : await db.ReceiptInvoices.AsNoTracking()

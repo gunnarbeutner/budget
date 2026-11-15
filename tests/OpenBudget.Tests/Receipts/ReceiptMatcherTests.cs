@@ -83,4 +83,64 @@ public sealed class ReceiptMatcherTests
         Assert.Empty(outcome.Matches);
         Assert.Equal([1L, 2L], outcome.Ambiguous.Order());
     }
+
+    /// <summary>A made-up bakery chain: paid by card, booked up to 3 days later, its bookings name "Kornblume" or its card processor.</summary>
+    private static readonly ReceiptSourceProfile Bakery = new()
+    {
+        Shop = "kornblume",
+        DaysBefore = 1,
+        DaysAfter = 3,
+        PayeeWords = ["kornblume", "brotpay"],
+        PreferredPurposeToken = r => r.OrderNumber,
+        DisplayName = (store, _, _) => "Kornblume " + store,
+    };
+
+    private static readonly ReceiptSourceProfiles WithBakery = new(ReceiptSourceProfiles.Default.All.Append(Bakery));
+
+    [Fact]
+    public void A_shop_is_added_by_registering_its_profile()
+    {
+        var bun = new ReceiptToMatch(1, 420, Delivered, Delivered, "kornblume");
+        ReceiptBooking Card(long id, int days, string name = "BROTPAY*Filiale 12", long cents = -420) => new(id, Delivered.AddDays(days), cents, name, null);
+
+        Assert.Equal(10, ReceiptMatcher.Match([bun], [Card(10, 3)], profiles: WithBakery).Matches[1]);
+        Assert.Equal(10, ReceiptMatcher.Match([bun], [Card(10, -1)], profiles: WithBakery).Matches[1]);
+        Assert.Empty(ReceiptMatcher.Match([bun], [Card(10, 4)], profiles: WithBakery).Matches);
+        Assert.Empty(ReceiptMatcher.Match([bun], [Card(10, -2)], profiles: WithBakery).Matches);
+        Assert.Empty(ReceiptMatcher.Match([bun], [Card(10, 1, "REWE Markt GmbH")], profiles: WithBakery).Matches);
+        Assert.Empty(ReceiptMatcher.Match([bun], [Card(10, 1, cents: 420)], profiles: WithBakery).Matches);
+    }
+
+    [Fact]
+    public void A_registered_shop_prefers_its_purpose_token_and_keeps_to_mapped_accounts()
+    {
+        var bun = new ReceiptToMatch(1, 420, Delivered, Delivered, "kornblume", OrderNumber: "K-77", Accounts: [5]);
+        var outcome = ReceiptMatcher.Match([bun], [
+            new ReceiptBooking(10, Delivered, -420, "Kornblume", "Beleg K-12", 5),
+            new ReceiptBooking(11, Delivered, -420, "Kornblume", "Beleg K-77", 5),
+            new ReceiptBooking(12, Delivered, -420, "Kornblume", "Beleg K-77", 6),
+        ], profiles: WithBakery);
+        Assert.Equal(11, outcome.Matches[1]);
+    }
+
+    [Fact]
+    public void A_shop_without_a_profile_has_no_bookings()
+    {
+        var bun = new ReceiptToMatch(1, 420, Delivered, Delivered, "kornblume");
+        var booking = new ReceiptBooking(10, Delivered, -420, "Kornblume", null);
+        Assert.Empty(ReceiptMatcher.Candidates(bun, [booking]));
+        Assert.Single(ReceiptMatcher.Candidates(bun, [booking], WithBakery));
+    }
+
+    [Fact]
+    public void Query_range_covers_every_profile()
+    {
+        Assert.Equal(1, new ReceiptSourceProfiles([Bakery]).MaxDaysBefore);
+        Assert.Equal(3, new ReceiptSourceProfiles([Bakery]).MaxDaysAfter);
+        Assert.Equal(7, WithBakery.MaxDaysBefore);
+        Assert.Equal(16, WithBakery.MaxDaysAfter);
+        var (from, to) = new ReceiptSourceProfiles([Bakery]).QueryRange(Delivered, Delivered);
+        Assert.Equal(new DateTimeOffset(2026, 10, 26, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds(), from);
+        Assert.Equal(new DateTimeOffset(2026, 10, 31, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds(), to);
+    }
 }

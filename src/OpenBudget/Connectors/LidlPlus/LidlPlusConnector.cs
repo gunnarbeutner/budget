@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using OpenBudget.Connectors.Receipts;
 using OpenBudget.Models;
 
 namespace OpenBudget.Connectors.LidlPlus;
@@ -55,6 +56,18 @@ public sealed class LidlPlusOptions
 /// </summary>
 public sealed class LidlPlusConnector : IBankConnector, IReceiptSource, IBackgroundRunInfo
 {
+    /// <summary>
+    /// A Lidl receipt is paid by card or Lidl Pay on its day; card bookings lag up to 16 days. The booking names Lidl or
+    /// Lidl's payment companies.
+    /// </summary>
+    public static readonly ReceiptSourceProfile MatchProfile = new()
+    {
+        Shop = ReceiptShops.Lidl,
+        DaysAfter = 16,
+        PayeeWords = ["lidl", "s. payment solutions", "s.payment solutions", "s. digits", "s.digits"],
+        DisplayName = (store, _, _) => store is { Length: > 0 } s ? (s.StartsWith("Lidl", StringComparison.OrdinalIgnoreCase) ? s : "Lidl " + s) : "Lidl",
+    };
+
     public const string TypeName = "lidlplus";
     internal const string WebLoginReference = "lidlplus-web-login";
     internal const string RefreshTokenKey = "refresh_token";

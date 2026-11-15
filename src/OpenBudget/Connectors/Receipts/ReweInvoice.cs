@@ -64,6 +64,21 @@ public static partial class ReweInvoice
 
     public static bool IsInvoiceSubject(string? subject) => subject != null && SubjectPattern().IsMatch(subject.Trim());
 
+    /// <summary>
+    /// A REWE direct debit names REWE and is booked from the delivery day up to 10 days later; one whose purpose carries
+    /// the order day as yyMMdd is preferred.
+    /// </summary>
+    public static readonly ReceiptSourceProfile MatchProfile = new()
+    {
+        Shop = ReceiptShops.Rewe,
+        DaysAfter = 10,
+        PayeeWords = ["rewe"],
+        PreferredPurposeToken = r => r.OrderDate?.ToString("yyMMdd", CultureInfo.InvariantCulture),
+        DisplayName = (_, orderNumber, _) => ("REWE " + orderNumber).Trim(),
+        MailSubjectPrefix = SubjectPrefix,
+        IsMailSubject = IsInvoiceSubject,
+    };
+
     public static bool IsInvoiceAttachment(string? name) => name != null && AttachmentPattern().IsMatch(name.Trim());
 
     /// <summary>Parses the PDF; throws <see cref="InvalidDataException"/> when it is not a REWE invoice whose lines add up.</summary>

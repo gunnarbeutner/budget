@@ -30,6 +30,24 @@ public sealed record InstalmentPlan(ReceiptInvoice Full, int Count, IReadOnlyLis
 /// </summary>
 public static class AmazonReceiptStore
 {
+    /// <summary>
+    /// A charge (or refund) is booked on the account its payment method is mapped to, with the same signed amount, from 7
+    /// days before to 9 days after the date Amazon lists (pending: 14), as card accounts differ; bookings naming Amazon
+    /// are preferred.
+    /// </summary>
+    public static readonly ReceiptSourceProfile MatchProfile = new()
+    {
+        Shop = ReceiptShops.Amazon,
+        DaysBefore = 7,
+        DaysAfter = 9,
+        PendingDaysAfter = 14,
+        PayeeWords = ["amazon", "amzn"],
+        RequirePayeeMatch = false,
+        RequiresAccount = true,
+        SignedAmounts = true,
+        DisplayName = (_, orderNumber, others) => ("Amazon " + string.Join(", ", ReceiptInvoice.OrderNumbersOf(orderNumber, others))).Trim(),
+    };
+
     /// <summary>Where an Amazon receipt's credit lines start (after the order's items, which keep their place in the order).</summary>
     private const int CreditPosition = 10000;
 
