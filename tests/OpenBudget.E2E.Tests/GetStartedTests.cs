@@ -254,7 +254,8 @@ public sealed class GetStartedTests : EndToEndTestBase
         await Expect(Page.Locator("#mm-password")).ToHaveCountAsync(0);
         await Page.Locator("#mm-zip").SetInputFilesAsync(zip);
         await Page.GetByTestId("mm-upload").ClickAsync();
-        await Expect(Page.GetByTestId("mm-job-error")).ToContainTextAsync("has a password");
+        // The import runs as a background job (unzip, try to open the database): slower than a page update under load.
+        await Expect(Page.GetByTestId("mm-job-error")).ToContainTextAsync("has a password", new() { Timeout = 30_000 });
 
         // A wrong password: a clear error, nothing imported.
         await Page.Locator("#mm-zip").SetInputFilesAsync(zip);
