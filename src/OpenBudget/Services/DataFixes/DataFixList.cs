@@ -52,6 +52,10 @@ public static class DataFixList
             c => UserDefaultProject.EnsureAllAsync(c.Services.GetRequiredService<SystemDbContextFactory>(), c.CancellationToken),
             Transactional: false),   // works through its own contexts
 
+        new("2026-11-recurring-series-keys",
+            "Subscription marks (not a subscription, cancelled) follow their series to the PayeeKey-based series key",
+            c => RecurringPaymentService.RekeyMarksAsync(c.Db, c.CancellationToken)),
+
         // Last: it waits for configured secrets, and holds back the fixes after it until then.
         new("2026-11-background-defaults",
             "Logins added before background syncs defaulted on get that default once",

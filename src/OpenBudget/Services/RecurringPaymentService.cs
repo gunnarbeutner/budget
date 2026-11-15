@@ -177,6 +177,42 @@ public class RecurringPaymentService
         _notifier?.Publish(new DataChange(DataArea.ImportedData, UserId: userId), _origin?.Id);
     }
 
+    /// <summary>
+    /// Re-derives the key of every stored mark from its series' first booking with the current
+    /// <see cref="RecurringPaymentDetector.SeriesKey(long, string?, string?, long)"/>, so marks follow when the payee
+    /// normalisation changes. A mark whose booking is gone stays as it is; of two marks that end on one key, the
+    /// cancellation wins over a dismissal. Expects an unscoped context.
+    /// </summary>
+    public static async Task RekeyMarksAsync(BudgetDbContext db, CancellationToken ct)
+    {
+        var rows = await db.RecurringDismissals.IgnoreQueryFilters().ToListAsync(ct);
+        var parsed = rows.Select(r => (Row: r, Colon: r.SeriesKey.IndexOf(':', StringComparison.Ordinal), Last: r.SeriesKey.LastIndexOf(':', StringComparison.Ordinal)))
+            .Where(x => x.Colon > 0 && x.Last > x.Colon && long.TryParse(x.Row.SeriesKey.AsSpan(x.Last + 1), System.Globalization.CultureInfo.InvariantCulture, out _))
+            .Select(x => (x.Row, Account: x.Row.SeriesKey[..x.Colon], BookingId: long.Parse(x.Row.SeriesKey.AsSpan(x.Last + 1), System.Globalization.CultureInfo.InvariantCulture)))
+            .ToList();
+        var ids = parsed.Select(x => x.BookingId).Distinct().ToList();
+        var bookings = await db.Transactions.IgnoreQueryFilters().AsNoTracking().Where(t => ids.Contains(t.Id))
+            .Select(t => new { t.Id, t.Name, t.Purpose }).ToDictionaryAsync(t => t.Id, ct);
+        var kept = rows.ToDictionary(r => (r.OwnerUserId, r.SeriesKey));
+        foreach (var (row, account, bookingId) in parsed)
+        {
+            if (!bookings.TryGetValue(bookingId, out var b)) continue;
+            var key = RecurringPaymentDetector.SeriesKey(account, b.Name, b.Purpose, bookingId);
+            if (key == row.SeriesKey) continue;
+            db.RecurringDismissals.Remove(row);
+            kept.Remove((row.OwnerUserId, row.SeriesKey));
+            if (kept.TryGetValue((row.OwnerUserId, key), out var existing))
+            {
+                existing.CancelledOn ??= row.CancelledOn;
+                continue;
+            }
+            var moved = new RecurringDismissal { OwnerUserId = row.OwnerUserId, SeriesKey = key, CreatedAt = row.CreatedAt, CancelledOn = row.CancelledOn };
+            db.RecurringDismissals.Add(moved);
+            kept[(row.OwnerUserId, key)] = moved;
+        }
+        await db.SaveChangesAsync(ct);
+    }
+
     /// <summary>The user's marked series: key → the cancellation day, null for a dismissal.</summary>
     private static async Task<Dictionary<string, DateOnly?>> MarksAsync(BudgetDbContext db, CancellationToken ct) =>
         (await db.RecurringDismissals.AsNoTracking().Select(d => new { d.SeriesKey, d.CancelledOn }).ToListAsync(ct))
@@ -225,7 +261,7 @@ public class RecurringPaymentService
                 .Select(p => new StandingOrderKey(p.AccountId, p.Amount, p.CounterpartyName, p.CounterpartyIban)).ToListAsync(ct);
             // Money moved between the household's accounts is no subscription.
             var ownIbans = (await db.Accounts.AsNoTracking().Where(a => a.Iban != null).Select(a => a.Iban!).ToListAsync(ct))
-                .Select(RecurringPaymentDetector.NormalizeIban).ToHashSet(StringComparer.Ordinal);
+                .Select(Iban.Normalize).ToHashSet(StringComparer.Ordinal);
             result = RecurringPaymentDetector.Detect(bookings, standing, ownIbans, today);
         }
         _cache?.Set(key, result);

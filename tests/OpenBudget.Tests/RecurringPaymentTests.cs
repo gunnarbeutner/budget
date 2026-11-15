@@ -49,7 +49,8 @@ public sealed class RecurringPaymentTests
     [InlineData("Apple.com/bill", "apple com bill")]
     [InlineData("Amzn Mktp DE*XYZ123", "amzn mktp de")]
     [InlineData("PayPal Arenanetllc 1049283", "paypal arenanetllc")]
-    [InlineData("Straßenbahn Ünterwegs 2026-10", "straßenbahn unterwegs")]
+    [InlineData("Straßenbahn Ünterwegs 2026-10", "strassenbahn uenterwegs")]
+    [InlineData("PAYPAL *STREAMIO", "streamio")]
     public void Payees_are_normalised(string raw, string expected) =>
         Assert.Equal(expected, RecurringPaymentDetector.NormalizePayee(raw));
 

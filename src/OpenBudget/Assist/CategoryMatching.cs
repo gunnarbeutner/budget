@@ -43,8 +43,6 @@ public sealed partial class CategoryMatching
     public const double IbanDominance = 0.9;
 
     /// <summary>Relative amount difference that still counts as "the same amount".</summary>
-    public const double AmountTolerance = 0.01;
-
     /// <summary>How far back the same payee and amount are looked for.</summary>
     public const int RecurrenceMonths = 18;
 
@@ -74,29 +72,16 @@ public sealed partial class CategoryMatching
         list.Add(h);
     }
 
-    /// <summary>Upper-case payee without digits, punctuation and legal-form words ("REWE MARKT").</summary>
-    public static string PayeeKey(string? payee)
-    {
-        if (string.IsNullOrWhiteSpace(payee)) return "";
-        var words = Words(payee).Where(w => !MerchantNoise.Contains(w)).ToList();
-        return string.Join(' ', words);
-    }
+    /// <summary>Upper-case merchant of a payee (<see cref="Services.PayeeKey.Merchant"/>): "REWE MARKT".</summary>
+    public static string PayeeKey(string? payee) =>
+        string.IsNullOrWhiteSpace(payee) ? "" : Services.PayeeKey.Merchant(payee, null, TextCase.Upper);
 
-    /// <summary>The distinct words (three letters or more, no digits, no filler words) of payee and purpose.</summary>
+    /// <summary>The distinct words (three letters or more, no digits, no stop words) of payee and purpose.</summary>
     public static HashSet<string> Tokens(string? payee, string? purpose) =>
-        Words(payee + " " + purpose).Where(w => w.Length >= 3 && !MerchantNoise.Contains(w)).ToHashSet(StringComparer.Ordinal);
-
-    private static string[] Words(string text) =>
-        NonLetters().Replace(RuleExpression.Fold(text), " ").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        Services.PayeeKey.Words(payee + " " + purpose, TextCase.Upper).Where(w => w.Length >= 3 && !Services.PayeeKey.IsStopWord(w)).ToHashSet(StringComparer.Ordinal);
 
     /// <summary>Normalised IBAN (no spaces, upper case), or null.</summary>
-    public static string? IbanKey(string? iban)
-    {
-        if (string.IsNullOrWhiteSpace(iban)) return null;
-        var sb = new StringBuilder(iban.Length);
-        foreach (var ch in iban) if (!char.IsWhiteSpace(ch)) sb.Append(char.ToUpperInvariant(ch));
-        return sb.Length >= 12 ? sb.ToString() : null;
-    }
+    public static string? IbanKey(string? iban) => Iban.Normalize(iban) is { Length: >= 12 } key ? key : null;
 
     /// <summary>Normalised SEPA key (mandate reference, creditor id): no spaces, upper case; null when empty.</summary>
     public static string? SepaKey(string? value)
@@ -107,9 +92,8 @@ public sealed partial class CategoryMatching
         return sb.Length >= 3 ? sb.ToString() : null;
     }
 
-    /// <summary>Whether two signed amounts are the same within <see cref="AmountTolerance"/> (and of the same sign).</summary>
-    public static bool SameAmount(long a, long b) =>
-        a != 0 && Math.Sign(a) == Math.Sign(b) && Math.Abs(a - b) <= Math.Max(1, Math.Abs(a) * AmountTolerance);
+    /// <summary>Whether two signed amounts are the same (<see cref="AmountSimilarity.Booking"/>).</summary>
+    public static bool SameAmount(long a, long b) => AmountSimilarity.Booking.Same(a, b);
 
     /// <summary>
     /// The category of the earlier bookings with the same mandate reference (and, when both have one, the same creditor
@@ -140,7 +124,7 @@ public sealed partial class CategoryMatching
     }
 
     /// <summary>
-    /// The earlier bookings of the same payee with the same amount (± <see cref="AmountTolerance"/>) in the
+    /// The earlier bookings of the same payee with the same amount (<see cref="AmountSimilarity.Booking"/>) in the
     /// <see cref="RecurrenceMonths"/> before the booking: a recurring charge (a subscription) when there are at least
     /// two and at least <see cref="IbanDominance"/> of them share a category.
     /// </summary>
@@ -307,6 +291,4 @@ public sealed partial class CategoryMatching
         return new Vote(top.Id, Math.Round(confidence, 3), "knn", $"{top.Count} of {neighbours.Count} similar bookings");
     }
 
-    [GeneratedRegex(@"[^A-Z]+", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
-    private static partial Regex NonLetters();
 }

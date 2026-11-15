@@ -111,44 +111,30 @@ public static class RecurringPaymentDetector
     public const int MinOccurrences = 3;
     public const int MinWeeklyOccurrences = 4;
 
-    private static readonly HashSet<string> Generic = new(StringComparer.Ordinal)
-    {
-        "paypal", "europe", "sarl", "sub", "subscription", "abo", "bill", "billing", "com", "www", "http", "https", "gmbh", "ltd", "llc", "inc",
-        "lastschrift", "sepa", "kartenzahlung", "karte", "card", "visa", "mastercard", "debit", "online", "payment", "zahlung", "und", "the",
-        "de", "eu", "uk", "us", "net", "org", "mktp", "co", "ag", "kg", "se",
-    };
+    /// <summary>The payee a booking groups by: <see cref="PayeeKey.Of"/> in lower case ("amzn mktp de").</summary>
+    public static string NormalizePayee(string? name, string? purpose = null) => PayeeKey.Of(name, purpose);
 
     /// <summary>
-    /// The payee a booking groups by: lower case without accents, the part before a "*" (a card descriptor's reference),
-    /// with punctuation as spaces and words containing digits (references, ids, dates) dropped. "PayPal " stays a word.
+    /// The key of a series (<see cref="RecurringSeries.Key"/>, stored by dismissals and cancellations): its account,
+    /// the payee of its first booking and that booking's id.
     /// </summary>
-    public static string NormalizePayee(string? name, string? purpose = null)
-    {
-        var text = string.IsNullOrWhiteSpace(name) ? purpose ?? string.Empty : name;
-        var star = text.IndexOf('*', StringComparison.Ordinal);
-        if (star > 0) text = text[..star];
-        var folded = new StringBuilder(text.Length);
-        foreach (var c in text.Normalize(NormalizationForm.FormD))
-        {
-            var cat = CharUnicodeInfo.GetUnicodeCategory(c);
-            if (cat == UnicodeCategory.NonSpacingMark) continue;
-            folded.Append(char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : ' ');
-        }
-        var words = folded.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => !w.Any(char.IsDigit));
-        return string.Join(' ', words);
-    }
+    public static string SeriesKey(long accountId, string? name, string? purpose, long firstBookingId) =>
+        SeriesKey(accountId.ToString(CultureInfo.InvariantCulture), name, purpose, firstBookingId);
+
+    internal static string SeriesKey(string accountPart, string? name, string? purpose, long firstBookingId) =>
+        string.Create(CultureInfo.InvariantCulture, $"{accountPart}:{NormalizePayee(name, purpose)}:{firstBookingId}");
 
     private static IEnumerable<string> Distinctive(string payee) =>
-        payee.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 4 && !Generic.Contains(w));
+        payee.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 4 && !PayeeKey.IsStopWord(w));
 
-    public static bool SameAmount(long a, long b) => Math.Abs(a - b) <= Math.Max(10, Math.Max(Math.Abs(a), Math.Abs(b)) * 5 / 100);
+    public static bool SameAmount(long a, long b) => AmountSimilarity.Recurring.Same(a, b);
 
     public static List<RecurringSeries> Detect(IEnumerable<RecurringBooking> bookings, IReadOnlyCollection<StandingOrderKey> standing,
         IReadOnlySet<string> ownIbans, DateOnly today)
     {
         var result = new List<RecurringSeries>();
         var outgoing = bookings.Where(b => b.Cents < 0 && b.Date <= today
-            && (b.CounterpartyIban == null || !ownIbans.Contains(NormalizeIban(b.CounterpartyIban)))).ToList();
+            && (b.CounterpartyIban == null || !ownIbans.Contains(Iban.Normalize(b.CounterpartyIban)))).ToList();
         foreach (var account in outgoing.GroupBy(b => b.AccountId))
         {
             foreach (var group in GroupByPayee(account))
@@ -169,8 +155,6 @@ public static class RecurringPaymentDetector
         }
         return result.OrderBy(s => s.MonthlyCents).ThenBy(s => s.Payee, StringComparer.Ordinal).ToList();
     }
-
-    public static string NormalizeIban(string iban) => iban.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 
     /// <summary>The account's bookings per payee, payees sharing a distinctive word merged.</summary>
     private static List<List<RecurringBooking>> GroupByPayee(IEnumerable<RecurringBooking> bookings)
@@ -282,17 +266,17 @@ public static class RecurringPaymentDetector
         }
 
         var payee = (last.Name ?? last.Purpose ?? string.Empty).Trim();
-        var key = string.Create(CultureInfo.InvariantCulture, $"{last.AccountId}:{NormalizePayee(bookings[0].Name, bookings[0].Purpose)}:{bookings[0].Id}");
+        var key = SeriesKey(last.AccountId, bookings[0].Name, bookings[0].Purpose, bookings[0].Id);
         var category = bookings.LastOrDefault(b => b.CategoryId != null)?.CategoryId;
         return new RecurringSeries(key, last.AccountId, payee, r, last.Cents, last.Date, next, status, category, previous, changedOn, bookings);
     }
 
     private static bool CoveredByStandingOrder(RecurringSeries series, IReadOnlyCollection<StandingOrderKey> standing)
     {
-        var ibans = series.Bookings.Where(b => b.CounterpartyIban != null).Select(b => NormalizeIban(b.CounterpartyIban!)).ToHashSet(StringComparer.Ordinal);
+        var ibans = series.Bookings.Where(b => b.CounterpartyIban != null).Select(b => Iban.Normalize(b.CounterpartyIban!)).ToHashSet(StringComparer.Ordinal);
         var words = series.Bookings.SelectMany(b => Distinctive(NormalizePayee(b.Name, b.Purpose))).ToHashSet(StringComparer.Ordinal);
         return standing.Any(o => o.AccountId == series.AccountId
-            && ((o.CounterpartyIban != null && ibans.Contains(NormalizeIban(o.CounterpartyIban)))
+            && ((o.CounterpartyIban != null && ibans.Contains(Iban.Normalize(o.CounterpartyIban)))
                 || (SameAmount(o.Cents, series.Cents) && Distinctive(NormalizePayee(o.CounterpartyName)).Any(words.Contains))));
     }
 }
