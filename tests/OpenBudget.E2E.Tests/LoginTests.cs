@@ -101,14 +101,19 @@ public sealed class LoginTests : EndToEndTestBase
         await Page.GetByRole(AriaRole.Button, new() { Name = "Sign in", Exact = true }).ClickAsync();
         await Expect(Page.GetByTestId("user-menu").Locator("summary")).ToHaveAttributeAsync("title", E2ESeed.UserName);   // the avatar in the top bar
         await Page.GotoAsync(origin + "/Account");
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Add passkey" }).ClickAsync();
+        // The ceremony (options request, authenticator, form post) takes as long as it takes: wait for the post's answer.
+        await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Button, new() { Name = "Add passkey" }).ClickAsync(),
+            r => r.Request.Method == "POST" && r.Url.Contains("handler=AddPasskey", StringComparison.Ordinal));
         await Expect(Page.GetByText("could not be registered")).Not.ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Remove" })).ToBeVisibleAsync();
 
         // Sign out, then sign back in with the passkey alone.
         await Page.Context.ClearCookiesAsync();
         await Page.GotoAsync(origin + "/Account/Login");
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" }).ClickAsync();
+        await Page.RunAndWaitForResponseAsync(
+            () => Page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" }).ClickAsync(),
+            r => r.Request.Method == "POST" && r.Url.Contains("handler=PasskeyLogin", StringComparison.Ordinal));
         await Expect(Page.GetByTestId("user-menu").Locator("summary")).ToHaveAttributeAsync("title", E2ESeed.UserName);   // the avatar in the top bar
     }
 }
