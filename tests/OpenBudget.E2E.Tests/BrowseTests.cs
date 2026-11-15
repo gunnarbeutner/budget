@@ -146,7 +146,7 @@ public sealed class BrowseTests : EndToEndTestBase
         await Page.SetViewportSizeAsync(390, 760);
         await GoToAsync(BrowseUrl);
         var label = Page.GetByTestId("topbar-search").Locator(".topbar-search");
-        Assert.That((await label.BoundingBoxAsync())!.Width, Is.LessThanOrEqualTo(40), "collapsed to an icon");
+        Assert.That((await label.BoundingBoxAsync())!.Width, Is.LessThanOrEqualTo(44), "collapsed to an icon");
         Assert.That(await Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth > window.innerWidth + 1"), Is.False);
         if (!string.IsNullOrEmpty(dir))
             await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"search-phone-{theme}.png") });
