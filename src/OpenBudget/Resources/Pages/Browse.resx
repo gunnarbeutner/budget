@@ -409,4 +409,5 @@
   <data name="Filter_OutsideTitle" xml:space="preserve">
     <value>Only bookings whose category is not one of this project’s</value>
   </data>
+  <data name="Picker_Transfers" xml:space="preserve"><value>Transfers</value></data>
 </root>

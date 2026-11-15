@@ -58,6 +58,10 @@ public static class SidebarMenus
         };
         var off = reason != null;
         ContextMenuItem Item(string key, string label, string icon, bool danger = false) => new(key, label, icon, off, reason, Danger: danger);
+        // The transfer flag survives imports, so only other users' categories block the settings.
+        ContextMenuItem SettingsItem() => block == Services.StructureBlock.NotOwner
+            ? Item(Settings, l["Ctx_CategorySettings"], "bi-gear")
+            : new ContextMenuItem(Settings, l["Ctx_CategorySettings"], "bi-gear");
 
         items.Add(Item(Rename, l["Ctx_Rename"], "bi-input-cursor-text"));
         switch (node.Kind)
@@ -65,11 +69,13 @@ public static class SidebarMenus
             case SidebarNodeKind.Category:
                 items.Add(Item(Color, l["Ctx_Color"], "bi-palette"));
                 items.Add(Item(NewCategory, l["Ctx_NewSubcategory"], "bi-plus-lg"));
+                items.Add(SettingsItem());
                 break;
             case SidebarNodeKind.CategoryGroup:
                 items.Add(Item(Color, l["Ctx_Color"], "bi-palette"));
                 items.Add(Item(NewCategory, l["Ctx_NewCategory"], "bi-plus-lg"));
                 items.Add(Item(NewGroup, l["Ctx_NewGroup"], "bi-folder-plus"));
+                items.Add(SettingsItem());
                 break;
             case SidebarNodeKind.Account:
                 // Always open: the statement settings work on MoneyMoney's accounts too (the name field shows the reason).

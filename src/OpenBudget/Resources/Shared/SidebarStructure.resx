@@ -73,6 +73,9 @@
   <data name="Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="Save" xml:space="preserve"><value>Save</value></data>
   <data name="Settings_Title" xml:space="preserve"><value>Account settings</value></data>
+  <data name="CategorySettings_Transfer" xml:space="preserve"><value>Transfer</value></data>
+  <data name="CategorySettings_Transfer_Hint" xml:space="preserve"><value>Moves money between your own accounts; not counted as spending in subscriptions.</value></data>
+  <data name="CategorySettings_Transfer_Inherited" xml:space="preserve"><value>Counts as a transfer through its group.</value></data>
   <data name="GroupSettings_Title" xml:space="preserve"><value>Settings of “{0}”</value></data>
   <data name="Settings_Name" xml:space="preserve"><value>Name</value></data>
   <data name="Settings_Bank" xml:space="preserve"><value>Connection</value></data>

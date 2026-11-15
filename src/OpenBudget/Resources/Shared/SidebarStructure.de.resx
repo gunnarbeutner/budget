@@ -73,6 +73,9 @@
   <data name="Cancel" xml:space="preserve"><value>Abbrechen</value></data>
   <data name="Save" xml:space="preserve"><value>Speichern</value></data>
   <data name="Settings_Title" xml:space="preserve"><value>Kontoeinstellungen</value></data>
+  <data name="CategorySettings_Transfer" xml:space="preserve"><value>Umbuchung</value></data>
+  <data name="CategorySettings_Transfer_Hint" xml:space="preserve"><value>Bewegt Geld zwischen deinen eigenen Konten; zählt bei Abos nicht als Ausgabe.</value></data>
+  <data name="CategorySettings_Transfer_Inherited" xml:space="preserve"><value>Zählt über ihre Gruppe als Umbuchung.</value></data>
   <data name="GroupSettings_Title" xml:space="preserve"><value>Einstellungen von „{0}“</value></data>
   <data name="Settings_Name" xml:space="preserve"><value>Name</value></data>
   <data name="Settings_Bank" xml:space="preserve"><value>Verbindung</value></data>

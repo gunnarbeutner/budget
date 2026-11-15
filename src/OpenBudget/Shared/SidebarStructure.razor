@@ -1,6 +1,7 @@
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject StructureService Structure
+@inject CategoryHierarchyService CategoryTree
 @inject CategoryColorService CategoryColorEdits
 @inject DocumentService Documents
 @inject ProjectService Projects
@@ -283,6 +284,27 @@
     </Footer>
 </Modal>
 
+<Modal Show="_categorySettings != null" Title="@L["GroupSettings_Title", _categorySettings?.Name ?? ""]" OnClose="() => _categorySettings = null" SizeClass="modal-sm">
+    <ChildContent>
+        <div data-testid="category-settings">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="category-settings-transfer" data-testid="category-settings-transfer"
+                       checked="@_categoryTransfer" @onchange="e => _categoryTransfer = e.Value is true" />
+                <label class="form-check-label" for="category-settings-transfer">@L["CategorySettings_Transfer"]</label>
+            </div>
+            <div class="form-text">@L["CategorySettings_Transfer_Hint"]</div>
+            @if (_categoryTransferInherited && !_categoryTransfer)
+            {
+                <div class="form-text" data-testid="category-settings-transfer-inherited">@L["CategorySettings_Transfer_Inherited"]</div>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => _categorySettings = null">@L["Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="category-settings-save" @onclick="SaveCategorySettingsAsync">@L["Save"]</button>
+    </Footer>
+</Modal>
+
 @code {
     [Parameter, EditorRequired] public int ProjectId { get; set; }
     // The project's owner (whose category tree it shows), looked up once per project.
@@ -322,6 +344,27 @@
     private string? _groupIcon;
     private string? _groupColor;
     private SettingsState? _settings;
+    private SidebarNode? _categorySettings;
+    private bool _categoryTransfer;
+    private bool _categoryTransferInherited;
+
+    private async Task OpenCategorySettingsAsync(SidebarNode node)
+    {
+        var kind = KindOf(node);
+        _categoryTransfer = await Structure.IsTransferAsync(kind, node.Id);
+        _categoryTransferInherited = kind == StructureItemKind.Category && !_categoryTransfer
+            && (await CategoryTree.GetTransferCategoryIdsAsync(OwnerUserId)).Contains(node.Id);
+        _categorySettings = node;
+    }
+
+    private async Task SaveCategorySettingsAsync()
+    {
+        var node = _categorySettings;
+        _categorySettings = null;
+        if (node == null) return;
+        var transfer = _categoryTransfer;
+        await RunAsync(() => Structure.SetTransferAsync(KindOf(node), node.Id, transfer));
+    }
     private AccountSwitchState? _switchState;
 
 
@@ -443,6 +486,9 @@
                 _groupIcon = AccountIcons.IsValid(_groupInfo?.Icon) ? _groupInfo!.Icon : null;
                 _groupColor = CategoryColors.ToCss(_groupInfo?.Color);
                 _groupSettings = node;
+                return true;
+            case SidebarMenus.Settings when node.Kind is SidebarNodeKind.Category or SidebarNodeKind.CategoryGroup:
+                await OpenCategorySettingsAsync(node);
                 return true;
             case SidebarMenus.Settings:
                 await OpenSettingsAsync(node);

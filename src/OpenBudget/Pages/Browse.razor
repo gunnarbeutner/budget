@@ -728,7 +728,7 @@
 
     /// <summary>
     /// The owner's categories narrowed to the ones in this project (the picker offers only those); the others are kept as
-    /// outside categories, named after the other project they belong to.
+    /// outside categories, named after the other project they belong to. The owner's transfer categories are offered too.
     /// </summary>
     private async Task<CategoryPickerData> LoadPickerDataAsync(Project p)
     {
@@ -750,7 +750,9 @@
             .Select(o => (o.Name, (IReadOnlySet<long>)CategoryHierarchyService.BuildItemToLeafCategoryIds(o.Tracked, hier)
                 .Values.SelectMany(v => v).ToHashSet()))
             .ToList();
-        return CategoryPickerLogic.ForProject(all, ids, others);
+        // Transfers are offered in every project, also one that does not track their group.
+        var transfers = await Hierarchy.GetTransferCategoryIdsAsync(p.OwnerUserId);
+        return CategoryPickerLogic.ForProject(all, ids, others, transfers, L["Picker_Transfers"]);
     }
 
     /// <summary>

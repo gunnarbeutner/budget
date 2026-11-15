@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261115091319_DataFixes";
+    public override string LastMigrationId => "20261115093808_CategoryTransferFlag";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -764,6 +764,10 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("INTEGER")
                     .HasColumnName("group_key");
 
+                b.Property<bool>("IsTransfer")
+                    .HasColumnType("INTEGER")
+                    .HasColumnName("is_transfer");
+
                 b.Property<string>("Name")
                     .HasColumnType("TEXT")
                     .HasColumnName("name");
@@ -811,6 +815,10 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.Property<string>("Color")
                     .HasColumnType("TEXT")
                     .HasColumnName("color");
+
+                b.Property<bool>("IsTransfer")
+                    .HasColumnType("INTEGER")
+                    .HasColumnName("is_transfer");
 
                 b.Property<string>("Name")
                     .HasColumnType("TEXT")

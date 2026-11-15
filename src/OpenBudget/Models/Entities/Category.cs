@@ -51,6 +51,13 @@ public class Category
     [Column("restrict_account_group_id")]
     public long? RestrictAccountGroupId { get; set; }
 
+    /// <summary>
+    /// Moves money between the user's own accounts (also when <see cref="CategoryGroup.IsTransfer"/> is set on an ancestor
+    /// group): bookings in it are not spending, so subscription detection skips them.
+    /// </summary>
+    [Column("is_transfer")]
+    public bool IsTransfer { get; set; }
+
     // Navigation properties
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
 

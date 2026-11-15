@@ -74,6 +74,33 @@ public sealed class CategoryPickerTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task A_transfer_category_the_project_does_not_track_is_offered_in_its_own_section()
+    {
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using (var seed = await factory.CreateDbContextAsync())
+        {
+            seed.CategoryGroups.Add(new CategoryGroup { Id = 120, OwnerUserId = E2ESeed.OwnerUserId, Name = "Moves", IsTransfer = true });
+            seed.Categories.Add(new Category { Id = 220, OwnerUserId = E2ESeed.OwnerUserId, Name = "Own transfer", GroupId = 120, Type = 1 });
+            await seed.SaveChangesAsync();
+        }
+
+        await OpenPickerAsync();
+        await Expect(Picker.GetByTestId("category-picker-group").Last).ToHaveTextAsync("Transfers");
+        var option = Picker.GetByTestId("category-picker-option").Filter(new() { HasText = "Own transfer" });
+        await Expect(option).ToContainTextAsync("Moves › Own transfer");
+        await option.ClickAsync();
+        await Expect(Picker).ToHaveCountAsync(0);
+
+        await using var db = await factory.CreateDbContextAsync();
+        Assert.That((await db.Transactions.AsNoTracking().SingleAsync(t => t.Id == 101)).CategoryId, Is.EqualTo(220));
+        // On the booking it is a normal pill, not one of a category outside the project.
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.BankAccountId}");
+        var pill = Page.GetByTestId("tx-row").Filter(new() { HasText = "−25,00" }).GetByTestId("tx-category");
+        await Expect(pill).ToContainTextAsync("Own transfer");
+        await Expect(pill).Not.ToHaveAttributeAsync("data-outside", "true");
+    }
+
+    [Test]
     public async Task Search_keeps_the_ancestor_headers_and_enter_picks_the_hit()
     {
         await OpenPickerAsync();

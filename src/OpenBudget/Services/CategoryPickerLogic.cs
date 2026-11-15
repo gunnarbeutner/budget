@@ -124,22 +124,35 @@ public static class CategoryPickerLogic
     /// <summary>
     /// A project's picker data: the owner's categories narrowed to <paramref name="projectCategoryIds"/>, every other
     /// category of the owner kept as <see cref="CategoryPickerData.Outside"/> with the first of
-    /// <paramref name="otherProjects"/> it belongs to.
+    /// <paramref name="otherProjects"/> it belongs to. The owner's transfer categories (<paramref name="transferCategoryIds"/>)
+    /// that are not the project's own are offered in every project: in a section of their own at the end, under
+    /// <paramref name="transferTitle"/>, with their full path as name.
     /// </summary>
     public static CategoryPickerData ForProject(CategoryPickerData all, IReadOnlySet<long> projectCategoryIds,
-        IEnumerable<(string Name, IReadOnlySet<long> CategoryIds)> otherProjects)
+        IEnumerable<(string Name, IReadOnlySet<long> CategoryIds)> otherProjects,
+        IReadOnlySet<long>? transferCategoryIds = null, string transferTitle = "Transfers")
     {
         var others = otherProjects.ToList();
+        var transfers = all.Options.Where(o => transferCategoryIds?.Contains(o.Id) == true && !projectCategoryIds.Contains(o.Id))
+            .GroupBy(o => o.Id).Select(g => g.First()).ToList();
+        var transferIds = transfers.Select(o => o.Id).ToHashSet();
         var outside = new Dictionary<long, OutsideCategory>();
         foreach (var o in all.Options)
         {
-            if (projectCategoryIds.Contains(o.Id) || outside.ContainsKey(o.Id)) continue;
+            if (projectCategoryIds.Contains(o.Id) || transferIds.Contains(o.Id) || outside.ContainsKey(o.Id)) continue;
             var owner = others.FirstOrDefault(p => p.CategoryIds.Contains(o.Id)).Name;
             outside[o.Id] = new OutsideCategory(o.Path, owner);
         }
         var only = all.Only(projectCategoryIds);
-        return new CategoryPickerData { Options = only.Options, Tree = only.Tree, Outside = outside };
+        if (transfers.Count == 0) return new CategoryPickerData { Options = only.Options, Tree = only.Tree, Outside = outside };
+        var tree = only.Tree.ToList();
+        tree.Add(new CategoryPickerRow(true, 0, TransferSectionId, transferTitle, transferTitle));
+        tree.AddRange(transfers.Select(o => new CategoryPickerRow(false, 1, o.Id, o.Path, o.Path, o.Color)));
+        return new CategoryPickerData { Options = [.. only.Options, .. transfers], Tree = tree, Outside = outside };
     }
+
+    /// <summary>The id of the transfer section's header row (not a group of the owner).</summary>
+    public const long TransferSectionId = -1;
 
     /// <summary>
     /// For each category with namesakes, the shortest path suffix (in whole parts) that no namesake shares, e.g.

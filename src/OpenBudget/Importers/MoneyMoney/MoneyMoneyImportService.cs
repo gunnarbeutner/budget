@@ -233,6 +233,7 @@ public class MoneyMoneyImportService
             int accountCount = await CopyAccountsAsync(src, db, ownerId, idSpace, ct);
             int groupCount = await CopyCategoryGroupsAsync(src, db, ownerId, idSpace, ct);
             int categoryCount = await CopyCategoriesAsync(src, db, ownerId, idSpace, ct);
+            await MarkTransferGroupAsync(db, ownerId, idSpace, ct);
             var (restrictedCount, unknownRestrictions) = await CopyCategoryRestrictionsAsync(src, db, ownerId, idSpace, ct);
             // Column names only (no data): which MoneyMoney fields this upload offers for the detail mapping.
             _logger.LogInformation("MoneyMoney transactions columns: {Columns}",
@@ -529,8 +530,8 @@ public class MoneyMoneyImportService
     {
         const string select = "SELECT rowid, name, group_key, sort, color FROM category_groups";
         const string insert = """
-            INSERT INTO category_groups (Id, OwnerUserId, name, group_key, sort, color)
-            VALUES ($id, $sid, $name, $group_key, $sort, $color)
+            INSERT INTO category_groups (Id, OwnerUserId, name, group_key, sort, color, is_transfer)
+            VALUES ($id, $sid, $name, $group_key, $sort, $color, 0)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
@@ -546,12 +547,27 @@ public class MoneyMoneyImportService
         }, CategoryGroupInsertParameters, ct);
     }
 
+    /// <summary>
+    /// MoneyMoney keeps transfers between accounts in the "Umbuchungen" group under its hidden root group: flags that
+    /// group and its categories as transfers.
+    /// </summary>
+    internal static async Task MarkTransferGroupAsync(BudgetDbContext db, string ownerId, int idSpace, CancellationToken ct)
+    {
+        var root = RowIds.SentinelRoot(idSpace);
+        var groups = await db.CategoryGroups.Where(g => g.OwnerUserId == ownerId && g.ParentGroupId == root && g.Name == "Umbuchungen")
+            .Select(g => g.Id).ToListAsync(ct);
+        if (groups.Count == 0) return;
+        await db.CategoryGroups.Where(g => groups.Contains(g.Id)).ExecuteUpdateAsync(u => u.SetProperty(g => g.IsTransfer, true), ct);
+        await db.Categories.Where(c => c.GroupId != null && groups.Contains(c.GroupId.Value))
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.IsTransfer, true), ct);
+    }
+
     private static async Task<int> CopyCategoriesAsync(SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, CancellationToken ct)
     {
         const string select = "SELECT rowid, name, type, color, rules, group_key, sort FROM categories";
         const string insert = """
-            INSERT INTO categories (Id, OwnerUserId, name, type, color, rules, group_key, sort)
-            VALUES ($id, $sid, $name, $type, $color, $rules, $group_key, $sort)
+            INSERT INTO categories (Id, OwnerUserId, name, type, color, rules, group_key, sort, is_transfer)
+            VALUES ($id, $sid, $name, $type, $color, $rules, $group_key, $sort, 0)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {

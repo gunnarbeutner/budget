@@ -30,6 +30,10 @@ public class CategoryGroup
     [Column("color")]
     public string? Color { get; set; }
 
+    /// <summary>The group's categories and sub-groups are transfers (see <see cref="Category.IsTransfer"/>).</summary>
+    [Column("is_transfer")]
+    public bool IsTransfer { get; set; }
+
     // Navigation properties
     public CategoryGroup? ParentGroup { get; set; }
     public ICollection<CategoryGroup> SubGroups { get; set; } = new List<CategoryGroup>();

@@ -167,4 +167,42 @@ public sealed class CategoryHierarchyService : IDisposable
         }
         return map;
     }
+    /// <summary>The ids of <paramref name="ownerId"/>'s transfer categories (see <see cref="TransferCategoryIds"/>).</summary>
+    public async Task<HashSet<long>> GetTransferCategoryIdsAsync(string ownerId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await TransferCategoryIdsAsync(db, ownerId, ct);
+    }
+
+    /// <summary>
+    /// The transfer categories <paramref name="db"/> can read, of <paramref name="ownerId"/> or (null) of every owner it sees.
+    /// </summary>
+    public static async Task<HashSet<long>> TransferCategoryIdsAsync(BudgetDbContext db, string? ownerId, CancellationToken ct = default)
+    {
+        var groups = await db.CategoryGroups.AsNoTracking().Where(g => ownerId == null || g.OwnerUserId == ownerId)
+            .Select(g => new { g.Id, g.ParentGroupId, g.IsTransfer }).ToListAsync(ct);
+        var categories = await db.Categories.AsNoTracking().Where(c => ownerId == null || c.OwnerUserId == ownerId)
+            .Select(c => new { c.Id, c.GroupId, c.IsTransfer }).ToListAsync(ct);
+        return TransferCategoryIds(groups.Select(g => (g.Id, g.ParentGroupId, g.IsTransfer)), categories.Select(c => (c.Id, c.GroupId, c.IsTransfer)));
+    }
+
+    /// <summary>
+    /// The categories that count as transfers: flagged themselves, or with a flagged group among their ancestors.
+    /// </summary>
+    public static HashSet<long> TransferCategoryIds(
+        IEnumerable<(long Id, long? ParentId, bool IsTransfer)> groups, IEnumerable<(long Id, long? GroupId, bool IsTransfer)> categories)
+    {
+        var byId = new Dictionary<long, (long? ParentId, bool IsTransfer)>();
+        foreach (var g in groups) byId[g.Id] = (g.ParentId, g.IsTransfer);
+        var memo = new Dictionary<long, bool>();
+        bool GroupIsTransfer(long id)
+        {
+            if (memo.TryGetValue(id, out var known)) return known;
+            memo.Add(id, false);   // guards against cycles in the parent chain
+            var result = byId.TryGetValue(id, out var g) && (g.IsTransfer || (g.ParentId is { } p && p != id && GroupIsTransfer(p)));
+            if (result) memo[id] = true;
+            return result;
+        }
+        return categories.Where(c => c.IsTransfer || (c.GroupId is { } gid && GroupIsTransfer(gid))).Select(c => c.Id).ToHashSet();
+    }
 }

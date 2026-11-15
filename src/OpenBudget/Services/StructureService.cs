@@ -187,6 +187,40 @@ public sealed class StructureService
         Changed(ownerId);
     }
 
+    // ---- Transfer flag ----
+
+    /// <summary>Whether a category or category group is flagged as a transfer itself (not counting its ancestors).</summary>
+    public async Task<bool> IsTransferAsync(StructureItemKind kind, long id, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return kind switch
+        {
+            StructureItemKind.Category => await db.Categories.Where(x => x.Id == id).Select(x => x.IsTransfer).FirstOrDefaultAsync(ct),
+            StructureItemKind.CategoryGroup => await db.CategoryGroups.Where(x => x.Id == id).Select(x => x.IsTransfer).FirstOrDefaultAsync(ct),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
+    }
+
+    /// <summary>
+    /// Flags a category or category group as a transfer (money moved between the user's own accounts). Only the owner
+    /// may; like the appearance this also works while an import owns the structure.
+    /// </summary>
+    public async Task SetTransferAsync(StructureItemKind kind, long id, bool transfer, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var (ownerId, _) = await LocateAsync(db, kind, id, ct);
+        if (await BlockAsync(db, ownerId, ct) == StructureBlock.NotOwner)
+            throw new AccessDeniedException("Only the source's owner can change its structure.");
+        await (kind switch
+        {
+            StructureItemKind.Category => db.Categories.Where(x => x.Id == id).ForEachAsync(x => x.IsTransfer = transfer, ct),
+            StructureItemKind.CategoryGroup => db.CategoryGroups.Where(x => x.Id == id).ForEachAsync(x => x.IsTransfer = transfer, ct),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        });
+        await db.SaveChangesAsync(ct);
+        Changed(ownerId);
+    }
+
     private static KeyNotFoundException NotFound() => new("Not found.");
 
     // ---- Create ----

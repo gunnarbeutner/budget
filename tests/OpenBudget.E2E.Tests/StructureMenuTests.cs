@@ -46,6 +46,33 @@ public sealed class StructureMenuTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task A_category_is_marked_as_a_transfer_in_its_settings()
+    {
+        await GoToAsync(BrowseUrl);
+        await OpenMenuAsync(Category("Groceries"));
+        await Page.GetByTestId("ctx-settings").ClickAsync();
+        var box = Page.GetByTestId("category-settings-transfer");
+        await Expect(box).Not.ToBeCheckedAsync();
+        await Expect(Page.GetByTestId("category-settings")).ToContainTextAsync("not counted as spending in subscriptions");
+        await box.CheckAsync();
+        await Page.GetByTestId("category-settings-save").ClickAsync();
+        await Expect(Page.GetByTestId("category-settings")).ToHaveCountAsync(0);
+
+        var saved = false;
+        for (var i = 0; i < 50 && !saved; i++)
+        {
+            await using var db = await Db.CreateDbContextAsync();
+            saved = (await db.Categories.AsNoTracking().SingleAsync(c => c.Id == 200)).IsTransfer;
+            if (!saved) await Task.Delay(100);
+        }
+        Assert.That(saved, Is.True);
+
+        await OpenMenuAsync(Category("Groceries"));
+        await Page.GetByTestId("ctx-settings").ClickAsync();
+        await Expect(Page.GetByTestId("category-settings-transfer")).ToBeCheckedAsync();
+    }
+
+    [Test]
     public async Task A_category_is_renamed_inline_and_recoloured_from_its_menu()
     {
         await GoToAsync(BrowseUrl);
