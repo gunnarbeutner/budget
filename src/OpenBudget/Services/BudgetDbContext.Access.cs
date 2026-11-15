@@ -81,6 +81,7 @@ public partial class BudgetDbContext
         modelBuilder.Entity<ReceiptSettings>().HasQueryFilter(s => ScopeUnrestricted || s.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<ProjectReceiptCategory>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<ProjectReceiptSource>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<ReceiptSourceAccount>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
         // Read marks and the order of the project list are personal.
         modelBuilder.Entity<UserProjectOrder>().HasQueryFilter(o => ScopeUnrestricted || o.UserId == ScopeUserId);
         modelBuilder.Entity<StatementRead>().HasQueryFilter(r => ScopeUnrestricted || r.UserId == ScopeUserId);
@@ -234,6 +235,11 @@ public partial class BudgetDbContext
                     break;
                 case BankLoginAccount remote:
                     loginAccountLogins.Add(remote.BankLoginId);
+                    break;
+                case ReceiptSourceAccount mapping:
+                    // The source's owner maps it to an account whose bookings they may edit (removing always works).
+                    if (!scope.IsAuthenticated || mapping.OwnerUserId != scope.UserId)
+                        throw new AccessDeniedException("A receipt source belongs to its user.");
                     break;
                 case CancelledReservation reservation:
                     // Dismissing is reviewing: whoever may edit the account's bookings.

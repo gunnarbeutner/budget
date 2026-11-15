@@ -373,4 +373,22 @@
   <data name="Warning_HistoryIncomplete" xml:space="preserve">
     <value>Payment history incomplete; the next sync continues.</value>
   </data>
+  <data name="SourceMethod_lidl" xml:space="preserve">
+    <value>Lidl purchases</value>
+  </data>
+  <data name="SourceMethod_mail" xml:space="preserve">
+    <value>REWE purchases</value>
+  </data>
+  <data name="SourceMethod_Any" xml:space="preserve">
+    <value>Matched with bookings on any of your accounts</value>
+  </data>
+  <data name="SourceMethod_Only" xml:space="preserve">
+    <value>Matched only with bookings on these accounts; receipts without a booking show in their projects</value>
+  </data>
+  <data name="SourceMethod_Add" xml:space="preserve">
+    <value>Add account…</value>
+  </data>
+  <data name="SourceMethod_Remove" xml:space="preserve">
+    <value>Remove account</value>
+  </data>
 </root>

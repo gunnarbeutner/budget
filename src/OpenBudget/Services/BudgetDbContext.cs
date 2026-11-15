@@ -88,6 +88,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<ReceiptSettings> ReceiptSettings => Set<ReceiptSettings>();
     public DbSet<ProjectReceiptCategory> ProjectReceiptCategories => Set<ProjectReceiptCategory>();
     public DbSet<ProjectReceiptSource> ProjectReceiptSources => Set<ProjectReceiptSource>();
+    public DbSet<ReceiptSourceAccount> ReceiptSourceAccounts => Set<ReceiptSourceAccount>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -378,6 +379,9 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<ProjectReceiptCategory>().HasIndex(c => new { c.ProjectId, c.CategoryId }).IsUnique();
         modelBuilder.Entity<ProjectReceiptSource>().HasOne<Project>().WithMany().HasForeignKey(c => c.ProjectId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<ProjectReceiptSource>().HasIndex(c => new { c.ProjectId, c.Source }).IsUnique();
+        // A source's mapping goes with the account.
+        modelBuilder.Entity<ReceiptSourceAccount>().HasOne<Account>().WithMany().HasForeignKey(c => c.AccountId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ReceiptSourceAccount>().HasIndex(c => new { c.OwnerUserId, c.Source, c.AccountId }).IsUnique();
 
         ConfigureAccessFilters(modelBuilder);
     }

@@ -74,7 +74,7 @@
                         <td class="receipts-col-title">
                             <button type="button" class="btn btn-link btn-sm p-0 text-start text-truncate d-block mw-100 receipts-title" data-testid="receipt-open"
                                     @onclick="() => Open(r)" @onclick:stopPropagation="true">@r.Title</button>
-                            <span class="d-block small text-body-secondary text-truncate"><span class="d-sm-none">@r.Date?.ToString("dd.MM.yy", CultureInfo.InvariantCulture) · </span>@L["Source_" + r.Source]<span class="d-none d-sm-inline d-md-none"> · @L["Items_Count", r.Items]</span></span>
+                            <span class="d-block small text-body-secondary text-truncate"><span class="d-sm-none">@r.Date?.ToString("dd.MM.yy", CultureInfo.InvariantCulture) · </span>@L["Source_" + r.Source]@if (r.OwnerName is { } owner) {<span data-testid="receipt-owner"> · @L["OwnerReceipt", owner]</span>}<span class="d-none d-sm-inline d-md-none"> · @L["Items_Count", r.Items]</span></span>
                         </td>
                         <td class="d-none d-md-table-cell text-end receipts-col-items">@r.Items</td>
                         <td class="text-end text-nowrap receipts-col-amount">@Formatting.FormatMoneyDe(-r.PaymentCents / 100m)</td>

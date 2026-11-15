@@ -362,3 +362,27 @@ public class ProjectReceiptSource
     [MaxLength(2000)]
     public string CategoryIds { get; set; } = string.Empty;
 }
+
+/// <summary>
+/// The account a receipt source's purchases (Lidl Plus, the mailbox's REWE invoices and eBons) are paid from, as the
+/// source's owner mapped it; a source may be mapped to several accounts (paid with different cards). A mapped source's
+/// receipts match only bookings on its accounts, and its receipts without a booking show in every project with one of
+/// them. Without a row the source matches any of the owner's bookings and shows where its bookings land.
+/// </summary>
+[Table("receipt_source_accounts")]
+public class ReceiptSourceAccount
+{
+    [Key]
+    public long Id { get; set; }
+
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
+
+    /// <summary>See <see cref="ReceiptSources"/> (not Amazon: its payment methods are mapped one by one).</summary>
+    [Required]
+    [MaxLength(20)]
+    public string Source { get; set; } = string.Empty;
+
+    public long AccountId { get; set; }
+}

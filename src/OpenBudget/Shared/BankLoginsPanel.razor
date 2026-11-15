@@ -241,6 +241,10 @@ else
                 else if (login.ReceiptShop != null)
                 {
                     <ReceiptSourceSection LoginId="login.Id" Shop="@(login.ReceiptShop ?? string.Empty)" Version="loadCount" />
+                    @if (OpenBudget.Connectors.Receipts.ReceiptService.MappedSources.Contains(ReceiptSources.Of(login.ReceiptShop ?? string.Empty), StringComparer.Ordinal))
+                    {
+                        <ReceiptSourceAccounts Source="@ReceiptSources.Of(login.ReceiptShop ?? string.Empty)" />
+                    }
                     <ReceiptSourceProjects Source="@ReceiptSources.Of(login.ReceiptShop ?? string.Empty)" Version="loadCount" />
                 }
                 else

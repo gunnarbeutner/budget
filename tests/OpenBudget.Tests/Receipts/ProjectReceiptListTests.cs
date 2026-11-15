@@ -79,14 +79,16 @@ public sealed class ProjectReceiptListTests
     }
 
     [Fact]
-    public async Task The_account_owner_sees_another_users_receipt_on_her_booking_but_not_his_open_receipts()
+    public async Task The_account_owner_sees_another_users_receipt_on_her_booking_and_his_open_receipts_read_only()
     {
         var (t, _, matched, open) = await WorldAsync();
         await using var _t = t;
         var rows = await Receipts(t, AccessWorld.Alice).ListProjectAsync(AccessWorld.Shared);
-        var row = Assert.Single(rows);
-        Assert.Equal((matched, false, Booking), (row.Id, row.IsOwn, row.TransactionId!.Value));
-        Assert.DoesNotContain(rows, r => r.Id == open);
+        Assert.Equal(new[] { matched, open }.Order(), rows.Select(r => r.Id).Order());
+        var row = rows.Single(r => r.Id == matched);
+        Assert.Equal((false, Booking), (row.IsOwn, row.TransactionId!.Value));
+        // his card is mapped to her account: his open charge shows, but is not hers to assign
+        Assert.False(rows.Single(r => r.Id == open).IsOwn);
         Assert.Equal(0, await Receipts(t, AccessWorld.Alice).CountProjectReviewAsync(AccessWorld.Shared));
     }
 

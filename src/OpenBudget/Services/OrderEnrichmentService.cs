@@ -71,10 +71,23 @@ public sealed partial class OrderEnrichmentService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var instrument = await db.BankLoginAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == instrumentId, ct);
         if (instrument == null) return [];
+        return await CandidatesAsync(db, scope, instrument.Name, ct);
+    }
+
+    /// <summary>The candidate accounts of <see cref="GetCandidatesAsync"/> for a payment method of a receipt source (no digits to suggest by).</summary>
+    public async Task<List<InstrumentCandidate>> GetAccountCandidatesAsync(CancellationToken ct = default)
+    {
+        var scope = await _access.GetAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await CandidatesAsync(db, scope, "", ct);
+    }
+
+    private static async Task<List<InstrumentCandidate>> CandidatesAsync(BudgetDbContext db, AccessScope scope, string name, CancellationToken ct)
+    {
         var accounts = await db.Accounts.AsNoTracking()
             .Where(a => a.Type != 7 && a.Portfolio != 1).OrderBy(a => a.Name).ToListAsync(ct);
         accounts = accounts.Where(a => scope.CanEditTransactionsOf(a.OwnerUserId, a.Id)).ToList();
-        var digits = LastDigits().Match(instrument.Name) is { Success: true } m ? m.Groups["d"].Value : null;
+        var digits = LastDigits().Match(name) is { Success: true } m ? m.Groups["d"].Value : null;
         bool Suggested(Account a) => digits != null
             && ((a.Iban != null && BankLoginService.NormalizeIban(a.Iban).EndsWith(digits, StringComparison.Ordinal))
                 || (a.Name != null && LastDigits().Match(a.Name) is { Success: true } n && n.Groups["d"].Value.EndsWith(digits, StringComparison.Ordinal)));

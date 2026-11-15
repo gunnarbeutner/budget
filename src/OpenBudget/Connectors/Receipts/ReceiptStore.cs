@@ -151,7 +151,9 @@ public sealed class ReceiptStore
         var shared = await SharedAccountsAsync(db, ownerUserId, ct);
         var sharedList = shared.ToList();
         var accounts = await AmazonAccountsAsync(db, ownerUserId, shared, invoices, ct);
-        var sharedMapped = accounts.Values.Where(shared.Contains).Distinct().ToList();
+        // A mapped source (Lidl Plus, the mailbox) is looked for only on the accounts it is mapped to.
+        var sourceAccounts = await SourceAccountsAsync(db, ownerUserId, shared, ct);
+        var sharedMapped = accounts.Values.Concat(sourceAccounts.Values.SelectMany(a => a)).Where(shared.Contains).Distinct().ToList();
         var dated = invoices.Where(i => (i.DeliveryDate ?? i.OrderDate) != null).ToList();
         var bookings = new List<ReceiptBooking>();
         if (dated.Count > 0)
@@ -165,7 +167,9 @@ public sealed class ReceiptStore
                 .ToListAsync(ct);
             var shops = invoices.Select(i => i.Shop).Where(s => s != ReceiptShops.Amazon).Distinct(StringComparer.Ordinal).ToList();
             var amazonAccounts = accounts.Values.ToHashSet();
-            bookings = rows.Where(r => shops.Any(s => ReceiptMatcher.IsShop(s, r.Name, r.Purpose)) || (r.AccountId is { } a && amazonAccounts.Contains(a)))
+            bool OnSourceAccount(string shop, long? account) =>
+                !sourceAccounts.TryGetValue(ReceiptSources.Of(shop), out var mapped) || (account is { } x && mapped.Contains(x));
+            bookings = rows.Where(r => shops.Any(s => ReceiptMatcher.IsShop(s, r.Name, r.Purpose) && OnSourceAccount(s, r.AccountId)) || (r.AccountId is { } a && amazonAccounts.Contains(a)))
                 .Select(r => new ReceiptBooking(r.Id, DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime),
                     r.SplitOriginalAmount ?? r.Amount, r.Name, r.Purpose, r.AccountId, Pending: !r.Booked)).ToList();
         }
@@ -213,7 +217,8 @@ public sealed class ReceiptStore
                 i.State = ReceiptMatchState.Skipped;
                 continue;
             }
-            if (i.TransactionId is { } t && StillFits(t, i.PaymentCents, account) && kept.Add(t))
+            if (i.TransactionId is { } t && StillFits(t, i.PaymentCents, account)
+                && (!sourceAccounts.TryGetValue(ReceiptSources.Of(i.Shop), out var onlyOn) || (current[t].AccountId is { } at && onlyOn.Contains(at))) && kept.Add(t))
             {
                 i.State = ReceiptMatchState.Matched;
                 continue;
@@ -253,6 +258,18 @@ public sealed class ReceiptStore
                 .ExecuteUpdateAsync(u => u.SetProperty(t => t.OrderItems, (string?)null), ct);
 
         await ApplyAllAsync(db, ownerUserId, shared, invoices.Where(i => i.TransactionId != null).ToList(), force: false, ct, progress);
+    }
+
+    /// <summary>
+    /// Per mapped receipt source of the owner (see <see cref="ReceiptSourceAccount"/>): its accounts that are the owner's
+    /// or in <paramref name="shared"/>; sources without such an account are absent.
+    /// </summary>
+    private static async Task<Dictionary<string, HashSet<long>>> SourceAccountsAsync(BudgetDbContext db, string ownerUserId, HashSet<long> shared, CancellationToken ct)
+    {
+        var rows = await db.ReceiptSourceAccounts.AsNoTracking().Where(m => m.OwnerUserId == ownerUserId)
+            .Select(m => new { m.Source, m.AccountId, Owned = db.Accounts.Any(a => a.Id == m.AccountId && a.OwnerUserId == ownerUserId) }).ToListAsync(ct);
+        return rows.Where(r => r.Owned || shared.Contains(r.AccountId)).GroupBy(r => r.Source, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.AccountId).ToHashSet(), StringComparer.Ordinal);
     }
 
     /// <summary>

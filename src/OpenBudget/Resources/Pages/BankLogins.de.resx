@@ -373,4 +373,22 @@
   <data name="Warning_HistoryIncomplete" xml:space="preserve">
     <value>Zahlungsverlauf unvollständig; die nächste Synchronisierung macht weiter.</value>
   </data>
+  <data name="SourceMethod_lidl" xml:space="preserve">
+    <value>Lidl-Einkäufe</value>
+  </data>
+  <data name="SourceMethod_mail" xml:space="preserve">
+    <value>REWE-Einkäufe</value>
+  </data>
+  <data name="SourceMethod_Any" xml:space="preserve">
+    <value>Abgeglichen mit Buchungen auf allen deinen Konten</value>
+  </data>
+  <data name="SourceMethod_Only" xml:space="preserve">
+    <value>Nur mit Buchungen auf diesen Konten abgeglichen; Belege ohne Buchung erscheinen in deren Projekten</value>
+  </data>
+  <data name="SourceMethod_Add" xml:space="preserve">
+    <value>Konto hinzufügen …</value>
+  </data>
+  <data name="SourceMethod_Remove" xml:space="preserve">
+    <value>Konto entfernen</value>
+  </data>
 </root>

@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261115052623_AddBankLoginOrderHistoryReadBackTo";
+    public override string LastMigrationId => "20261115070609_ReceiptSourceAccounts";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -1914,6 +1914,35 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.ToTable("receipt_settings");
             });
 
+        modelBuilder.Entity("OpenBudget.Models.ReceiptSourceAccount", b =>
+            {
+                b.Property<long>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER");
+
+                b.Property<long>("AccountId")
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("OwnerUserId")
+                    .IsRequired()
+                    .HasMaxLength(450)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Source")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Id");
+
+                b.HasIndex("AccountId");
+
+                b.HasIndex("OwnerUserId", "Source", "AccountId")
+                    .IsUnique();
+
+                b.ToTable("receipt_source_accounts");
+            });
+
         modelBuilder.Entity("OpenBudget.Models.RemovedImportItem", b =>
             {
                 b.Property<int>("Id")
@@ -2636,6 +2665,15 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .IsRequired();
 
                 b.Navigation("Invoice");
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.ReceiptSourceAccount", b =>
+            {
+                b.HasOne("OpenBudget.Models.Account", null)
+                    .WithMany()
+                    .HasForeignKey("AccountId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
             });
 
         modelBuilder.Entity("OpenBudget.Models.ScheduledPayment", b =>

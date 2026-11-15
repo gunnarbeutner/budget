@@ -90,7 +90,7 @@ public enum ReceiptReviewGroup { Review, Waiting, Done, NoBooking }
 /// <summary>A receipt of any source as the receipts list shows it; <see cref="IsOwn"/>: the signed-in user's own (theirs to assign).</summary>
 public sealed record ReceiptReviewRow(
     long Id, string Source, string Shop, string Title, DateTime? Date, long PaymentCents, int Items, ReceiptReviewState State,
-    long? TransactionId, DateTime? BookingDate, bool IsOwn = true, InstalmentProgress? Instalments = null);
+    long? TransactionId, DateTime? BookingDate, bool IsOwn = true, InstalmentProgress? Instalments = null, string? OwnerName = null);
 
 /// <summary>A booking that may be a receipt's: id, date, signed amount, payee and purpose.</summary>
 public sealed record ReceiptCandidate(long TransactionId, DateTime Date, long AmountCents, string? Name, string? Purpose);
@@ -287,14 +287,15 @@ public sealed class ReceiptService
     }
 
     /// <summary>
-    /// The accounts a receipt source's bookings land on: the accounts of the user's matched bookings of the source (for
-    /// Amazon also the accounts its payment methods are mapped to).
+    /// The accounts a receipt source's bookings land on: the accounts of the user's matched bookings of the source and the
+    /// accounts the source is mapped to (for Amazon its payment methods').
     /// </summary>
     private static async Task<HashSet<long>> SourceAccountsAsync(BudgetDbContext db, string user, string source, CancellationToken ct)
     {
         var shops = ReceiptShops.All.Where(s => ReceiptSources.Of(s) == source).ToList();
         var bookings = db.ReceiptInvoices.Where(r => r.OwnerUserId == user && shops.Contains(r.Shop) && r.TransactionId != null).Select(r => r.TransactionId);
         var accounts = (await db.Transactions.AsNoTracking().Where(t => bookings.Contains(t.Id) && t.AccountId != null).Select(t => t.AccountId!.Value).Distinct().ToListAsync(ct)).ToHashSet();
+        accounts.UnionWith(await db.ReceiptSourceAccounts.AsNoTracking().Where(m => m.OwnerUserId == user && m.Source == source).Select(m => m.AccountId).ToListAsync(ct));
         if (source == ReceiptSources.Amazon)
         {
             var logins = db.BankLogins.Where(l => l.OwnerUserId == user && l.ConnectorType == ReceiptShops.Amazon).Select(l => l.Id);
@@ -302,6 +303,72 @@ public sealed class ReceiptService
                 .Select(a => a.EnrichAccountId!.Value).ToListAsync(ct));
         }
         return accounts;
+    }
+
+    // ---- the account a source's purchases are paid from ----
+
+    /// <summary>Sources mapped as a whole (Amazon maps each payment method instead).</summary>
+    public static readonly IReadOnlyList<string> MappedSources = [ReceiptSources.Lidl, ReceiptSources.Mail];
+
+    /// <summary>The accounts the signed-in user mapped a receipt source to (see <see cref="ReceiptSourceAccount"/>).</summary>
+    public async Task<List<long>> GetSourceAccountsAsync(string source, CancellationToken ct = default)
+    {
+        var user = await UserAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await db.ReceiptSourceAccounts.AsNoTracking().Where(m => m.OwnerUserId == user && m.Source == source).OrderBy(m => m.Id).Select(m => m.AccountId).ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Maps a receipt source to one more account whose bookings the user may edit (<paramref name="add"/>), or removes one,
+    /// then matches the user's receipts again.
+    /// </summary>
+    public async Task SetSourceAccountAsync(string source, long accountId, bool add, CancellationToken ct = default)
+    {
+        if (!MappedSources.Contains(source, StringComparer.Ordinal)) throw new InvalidOperationException("Unknown receipt source.");
+        var scope = await _access.GetAsync();
+        var user = scope.UserId ?? throw new AccessDeniedException("Not signed in.");
+        await using (var db = await _dbFactory.CreateDbContextAsync(ct))
+        {
+            var row = await db.ReceiptSourceAccounts.FirstOrDefaultAsync(m => m.OwnerUserId == user && m.Source == source && m.AccountId == accountId, ct);
+            if (add && row == null)
+            {
+                var account = await db.Accounts.AsNoTracking().Where(a => a.Id == accountId).Select(a => new { a.OwnerUserId }).FirstOrDefaultAsync(ct);
+                if (account == null || !scope.CanEditTransactionsOf(account.OwnerUserId, accountId)) throw new AccessDeniedException("Account not found.");
+                db.ReceiptSourceAccounts.Add(new ReceiptSourceAccount { OwnerUserId = user, Source = source, AccountId = accountId });
+            }
+            else if (!add && row != null) db.ReceiptSourceAccounts.Remove(row);
+            else return;
+            await db.SaveChangesAsync(ct);
+        }
+        await using (var sys = await _system.CreateDbContextAsync(ct))
+            await _store.MatchAsync(sys, user, ct);
+        _notifier.Publish(new DataChange(DataArea.BankSync), _origin.Id);
+        _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: user), _origin.Id);
+    }
+
+    /// <summary>
+    /// The accounts each open receipt (no booking) is paid from, as its owner mapped it: an Amazon charge's payment method's
+    /// account, or the accounts of a mapped source. Receipts of an unmapped source are absent.
+    /// </summary>
+    private static async Task<Dictionary<long, HashSet<long>>> MappedAccountsAsync(BudgetDbContext sys, IReadOnlyList<InvoiceRow> receipts, CancellationToken ct)
+    {
+        var result = new Dictionary<long, HashSet<long>>();
+        var owners = receipts.Select(r => r.OwnerUserId).Distinct(StringComparer.Ordinal).ToList();
+        var sources = (await sys.ReceiptSourceAccounts.AsNoTracking().Where(m => owners.Contains(m.OwnerUserId)).ToListAsync(ct))
+            .GroupBy(m => (m.OwnerUserId, m.Source)).ToDictionary(g => g.Key, g => g.Select(m => m.AccountId).ToHashSet());
+        var logins = receipts.Where(r => r.BankLoginId != null).Select(r => r.BankLoginId!.Value).Distinct().ToList();
+        var instruments = (await sys.BankLoginAccounts.AsNoTracking().Where(a => logins.Contains(a.BankLoginId) && a.EnrichAccountId != null)
+                .Select(a => new { a.BankLoginId, a.RemoteId, Account = a.EnrichAccountId!.Value }).ToListAsync(ct))
+            .GroupBy(a => (a.BankLoginId, a.RemoteId)).ToDictionary(g => g.Key, g => g.First().Account);
+        foreach (var r in receipts)
+        {
+            if (r.Shop == ReceiptShops.Amazon)
+            {
+                if (r.BankLoginId is { } l && instruments.TryGetValue((l, r.PaymentMethodId ?? ""), out var a)) result[r.Id] = [a];
+            }
+            else if (sources.TryGetValue((r.OwnerUserId, ReceiptSources.Of(r.Shop)), out var mapped)) result[r.Id] = mapped;
+        }
+        return result;
     }
 
     private async Task<int> ProjectOfRowAsync(long id, CancellationToken ct)
@@ -389,7 +456,10 @@ public sealed class ReceiptService
         return invoice == null ? null : await ViewAsync(sys, invoice, ct);
     }
 
-    /// <summary>A receipt by its id, or null; for the receipt's owner and for whoever sees its booking.</summary>
+    /// <summary>
+    /// A receipt by its id, or null; for the receipt's owner, for whoever sees its booking, and (without a booking) for
+    /// whoever sees an account it is mapped to.
+    /// </summary>
     public async Task<BookingReceiptView?> GetReceiptAsync(long receiptId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
@@ -397,8 +467,13 @@ public sealed class ReceiptService
         if (invoice != null) return await ViewAsync(db, invoice, ct);
         await using var sys = await _system.CreateDbContextAsync(ct);
         invoice = await sys.ReceiptInvoices.AsNoTracking().Include(r => r.Items).FirstOrDefaultAsync(r => r.Id == receiptId, ct);
-        if (invoice?.TransactionId is not { } t || !await db.Transactions.AnyAsync(x => x.Id == t, ct)) return null;
-        return await ViewAsync(sys, invoice, ct);
+        if (invoice == null) return null;
+        if (invoice.TransactionId is { } t) return await db.Transactions.AnyAsync(x => x.Id == t, ct) ? await ViewAsync(sys, invoice, ct) : null;
+        // Without a booking: for whoever sees an account its payment method or source is mapped to.
+        var row = await Project(sys.ReceiptInvoices.AsNoTracking().Where(r => r.Id == receiptId)).FirstAsync(ct);
+        if (!(await MappedAccountsAsync(sys, [row], ct)).TryGetValue(receiptId, out var mapped)) return null;
+        var ids = mapped.ToList();
+        return await db.Accounts.AnyAsync(a => ids.Contains(a.Id), ct) ? await ViewAsync(sys, invoice, ct) : null;
     }
 
     private static async Task<BookingReceiptView> ViewAsync(BudgetDbContext db, ReceiptInvoice invoice, CancellationToken ct)
@@ -464,9 +539,11 @@ public sealed class ReceiptService
 
     /// <summary>
     /// A project's receipts, newest first: receipts linked to bookings on the project's accounts that the user may see (their
-    /// own receipts, and other users' receipts on bookings visible to the user), plus the user's own receipts still without a
-    /// booking (waiting, ambiguous, unmatched, instalment plans still running) from sources whose bookings land on the project's accounts (see
-    /// <see cref="SourceAccountsAsync"/>). Requires view access to the project.
+    /// own receipts, and other users' receipts on bookings visible to the user), plus receipts still without a booking
+    /// (waiting, ambiguous, unmatched, instalment plans still running): of any owner when their payment method (Amazon) or
+    /// their source (see <see cref="ReceiptSourceAccount"/>) is mapped to one of the project's accounts, and the user's own
+    /// of unmapped sources whose bookings land on the project's accounts (see <see cref="SourceAccountsAsync"/>). Other
+    /// users' receipts are read-only (<see cref="ReceiptReviewRow.IsOwn"/>). Requires view access to the project.
     /// </summary>
     public async Task<List<ReceiptReviewRow>> ListProjectAsync(int projectId, string? source = null, int take = 5000, CancellationToken ct = default)
     {
@@ -484,34 +561,35 @@ public sealed class ReceiptService
         var visibleTx = (await db.Transactions.AsNoTracking().Where(t => foreignTx.Contains(t.Id)).Select(t => t.Id).ToListAsync(ct)).ToHashSet();
         var invoices = linked.Where(r => r.OwnerUserId == user || visibleTx.Contains(r.TransactionId!.Value)).ToList();
 
-        var sources = new List<string>();
-        foreach (var s in ReceiptSources.All)
-            if ((await SourceAccountsAsync(db, user, s, ct)).Overlaps(accounts)) sources.Add(s);
-        if (sources.Count > 0)
-        {
-            var shops = ReceiptShops.All.Where(s => sources.Contains(ReceiptSources.Of(s))).ToList();
-            var open = await Project(db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == user && r.TransactionId == null && shops.Contains(r.Shop))).ToListAsync(ct);
-            invoices.AddRange(open);
-        }
+        // Open receipts of any owner whose payment method or source is mapped to one of the project's accounts; the
+        // user's own open receipts of unmapped sources where the source's bookings land.
+        var openAll = await Project(sys.ReceiptInvoices.AsNoTracking().Where(r => r.TransactionId == null)).ToListAsync(ct);
+        var mappedAccounts = await MappedAccountsAsync(sys, openAll, ct);
+        var unmappedSources = new List<string>();
+        foreach (var s in ReceiptSources.All.Where(s => s != ReceiptSources.Amazon))
+            if ((await SourceAccountsAsync(db, user, s, ct)).Overlaps(accounts)) unmappedSources.Add(s);
+        invoices.AddRange(openAll.Where(r => mappedAccounts.TryGetValue(r.Id, out var mapped)
+            ? mapped.Overlaps(accounts)
+            : r.OwnerUserId == user && r.Shop != ReceiptShops.Amazon && unmappedSources.Contains(ReceiptSources.Of(r.Shop))));
         var rows = await RowsAsync(sys, user, invoices, source, null, int.MaxValue, ct);
         return rows.Where(r => r.TransactionId != null || r.State is ReceiptReviewState.Waiting or ReceiptReviewState.InstalmentsPending
             or ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched).Take(take).ToList();
     }
 
-    /// <summary>How many of a project's receipts (see <see cref="ListProjectAsync"/>) need review; 0 without access.</summary>
+    /// <summary>How many of the user's own receipts in a project (see <see cref="ListProjectAsync"/>) need review; 0 without access.</summary>
     public async Task<int> CountProjectReviewAsync(int projectId, CancellationToken ct = default)
     {
         var scope = await _access.GetAsync();
         if (scope.UserId == null || !scope.CanView(projectId)) return 0;
-        return (await ListProjectAsync(projectId, ct: ct)).Count(NeedsReview);
+        return (await ListProjectAsync(projectId, ct: ct)).Count(r => r.IsOwn && NeedsReview(r));
     }
 
     private sealed record InvoiceRow(long Id, string OwnerUserId, string Shop, string? Store, string? OrderNumber, string? OtherOrderNumbers, DateTime? OrderDate,
-        DateTime? DeliveryDate, long PaymentCents, int Items, ReceiptMatchState State, long? TransactionId, string? SplitSignature, int? BankLoginId);
+        DateTime? DeliveryDate, long PaymentCents, int Items, ReceiptMatchState State, long? TransactionId, string? SplitSignature, int? BankLoginId, string? PaymentMethodId);
 
     private static IQueryable<InvoiceRow> Project(IQueryable<ReceiptInvoice> q) =>
         q.Select(r => new InvoiceRow(r.Id, r.OwnerUserId, r.Shop, r.Store, r.OrderNumber, r.OtherOrderNumbers, r.OrderDate, r.DeliveryDate, r.PaymentCents,
-            r.Items.Count, r.State, r.TransactionId, r.SplitSignature, r.BankLoginId));
+            r.Items.Count, r.State, r.TransactionId, r.SplitSignature, r.BankLoginId, r.PaymentMethodId));
 
     private DateOnly Today() => DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
 
@@ -587,6 +665,13 @@ public sealed class ReceiptService
                 : reversals.Contains(r.Id) ? r with { State = ReceiptReviewState.InstalmentsCancelled } : r).ToList();
         if (state is { } only) rows = rows.Where(r => r.State == only).ToList();
         rows = rows.OrderByDescending(r => r.Date).ThenByDescending(r => r.Id).Take(take).ToList();
+        var others = invoices.Where(r => r.OwnerUserId != user).Select(r => r.OwnerUserId).Distinct(StringComparer.Ordinal).ToList();
+        if (others.Count > 0)
+        {
+            var names = await db.Users.AsNoTracking().Where(u => others.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayName ?? u.UserName ?? "?", ct);
+            var owners = invoices.ToDictionary(r => r.Id, r => r.OwnerUserId);
+            rows = rows.Select(r => r.IsOwn ? r : r with { OwnerName = names.GetValueOrDefault(owners[r.Id]) }).ToList();
+        }
         var txIds = rows.Where(r => r.TransactionId != null).Select(r => r.TransactionId!.Value).Distinct().ToList();
         var dates = await db.Transactions.AsNoTracking().Where(t => txIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Timestamp, ct);
         return rows.Select(r => r.TransactionId is { } t && dates.TryGetValue(t, out var ts)

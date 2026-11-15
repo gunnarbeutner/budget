@@ -256,4 +256,7 @@
   <data name="Instalments_Next" xml:space="preserve">
     <value>nächste ~{0}</value>
   </data>
+  <data name="OwnerReceipt" xml:space="preserve">
+    <value>Beleg von {0}</value>
+  </data>
 </root>

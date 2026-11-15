@@ -1,0 +1,89 @@
+@using OpenBudget.Connectors.Receipts
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject ReceiptService Receipts
+@inject OrderEnrichmentService Orders
+@inject IStringLocalizer<OpenBudget.Pages.BankLogins> L
+
+@* A receipt source's payment method (Lidl purchases, REWE purchases) with the accounts it is paid from, like an Amazon
+   payment method: a mapped source matches bookings only on those accounts, and its receipts without a booking show in
+   the projects of those accounts. Several accounts can be added (paid with different cards). *@
+
+<div data-testid="source-accounts" data-source="@Source">
+    <h6 class="bank-accounts-heading">@L["Orders_Instruments"]</h6>
+    @if (mapped == null)
+    {
+        <div class="skeleton skeleton-line mb-2" style="width: 40%;"></div>
+    }
+    else
+    {
+        <table class="table table-sm align-middle mb-2 bank-accounts-table">
+            <tbody>
+                <tr>
+                    <td>
+                        <strong>@L["SourceMethod_" + Source]</strong>
+                        <div class="small text-body-secondary">@(mapped.Count == 0 ? L["SourceMethod_Any"] : L["SourceMethod_Only"])</div>
+                    </td>
+                    <td>
+                        <div class="d-flex flex-wrap gap-1 mb-1">
+                            @foreach (var id in mapped)
+                            {
+                                var account = id;
+                                <span class="badge rounded-pill text-bg-light border d-inline-flex align-items-center gap-1" data-testid="source-account">
+                                    @(options.FirstOrDefault(o => o.Id == account)?.Name ?? "?")
+                                    <button type="button" class="btn-close btn-close-sm" style="font-size: .55rem;" aria-label="@L["SourceMethod_Remove"]"
+                                            data-testid="source-account-remove" @onclick="() => SetAsync(account, false)"></button>
+                                </span>
+                            }
+                        </div>
+                        <AccountPicker data-testid="source-account-add" AriaLabel="@L["SourceMethod_Add"]" NoneLabel="@L["SourceMethod_Add"]"
+                                       Options="@options.Where(o => !mapped.Contains(o.Id)).ToList()" Groups="@groups" SelectedId="null"
+                                       OnPick="id => id is { } a ? SetAsync(a, true) : Task.CompletedTask" />
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    }
+    @if (error != null)
+    {
+        <div class="text-danger small" role="alert">@error</div>
+    }
+</div>
+
+@code {
+    /// <summary>See <see cref="ReceiptService.MappedSources"/>.</summary>
+    [Parameter, EditorRequired] public string Source { get; set; } = "";
+
+    private List<long>? mapped;
+    private List<AccountPicker.Option> options = [];
+    private List<AccountGroupInfo> groups = [];
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (mapped != null) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        options = (await Orders.GetAccountCandidatesAsync())
+            .Select(c => new AccountPicker.Option(c.AccountId, c.Name, c.GroupId, c.Sort, c.Icon, c.Suggested, c.Closed, c.Shared)).ToList();
+        groups = await Orders.GetAccountGroupsAsync();
+        mapped = await Receipts.GetSourceAccountsAsync(Source);
+    }
+
+    private async Task SetAsync(long accountId, bool add)
+    {
+        error = null;
+        try
+        {
+            await Receipts.SetSourceAccountAsync(Source, accountId, add);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException)
+        {
+            error = ex.Message;
+        }
+        await LoadAsync();
+    }
+}
