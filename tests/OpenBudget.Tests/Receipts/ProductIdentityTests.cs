@@ -30,7 +30,26 @@ public sealed class ProductIdentityTests
     // ---- grouping and unit prices ----
 
     [Fact]
-    public void Different_pack_sizes_of_one_product_compare_per_litre()
+    public void Similar_pack_sizes_of_one_product_compare_per_litre()
+    {
+        var litre = Id("Testcola", null, 1m, ProductSizeUnit.Litre);
+        var large = Id("Testcola", null, 1.5m, ProductSizeUnit.Litre);
+        var lines = new[]
+        {
+            Line("Testcola 1,5l", Today.AddDays(-40), 219, large, receipt: 1),
+            Line("Testcola 1l", Today.AddDays(-20), 159, litre, receipt: 2),
+            Line("Testcola 1l", Today.AddDays(-5), 159, litre, receipt: 3),
+        };
+        var p = Assert.Single(PriceAnalysis.Products(lines));
+        Assert.Equal("Testcola", p.Name);
+        Assert.Equal(PriceUnit.Litre, p.Unit);
+        Assert.False(p.HasPackPrice);
+        Assert.Equal([146L, 159L, 159L], p.Purchases.Select(x => x.Price));
+        Assert.Null(p.Size);
+    }
+
+    [Fact]
+    public void A_bottle_and_a_crate_of_cola_are_separate_products()
     {
         var crate = Id("Testcola", 12, 0.5m, ProductSizeUnit.Litre);
         var bottle = Id("Testcola", null, 1m, ProductSizeUnit.Litre);
@@ -38,14 +57,45 @@ public sealed class ProductIdentityTests
         {
             Line("TESTCOLA 12X0,5L", Today.AddDays(-40), 1548, crate, receipt: 1),
             Line("Testcola 1l", Today.AddDays(-20), 159, bottle, receipt: 2),
-            Line("Testcola 1l", Today.AddDays(-5), 159, bottle, receipt: 3),
+            Line("TESTCOLA 12X0,5L", Today.AddDays(-10), 1548, crate, receipt: 3),
+            Line("Testcola 1l", Today.AddDays(-5), 159, bottle, receipt: 4),
         };
-        var p = Assert.Single(PriceAnalysis.Products(lines));
-        Assert.Equal("Testcola", p.Name);
-        Assert.Equal(PriceUnit.Litre, p.Unit);
-        Assert.False(p.HasPackPrice);
-        Assert.Equal([258L, 159L, 159L], p.Purchases.Select(x => x.Price));
-        Assert.Null(p.Size);
+        var products = PriceAnalysis.Products(lines).OrderBy(p => p.Key, StringComparer.Ordinal).ToList();
+        Assert.Equal(["testcola#l-1", "testcola#l-6"], products.Select(p => p.Key));
+        Assert.Equal(new ItemSize(1, 1m, ProductSizeUnit.Litre), products[0].Size);
+        Assert.Equal(new ItemSize(12, 0.5m, ProductSizeUnit.Litre), products[1].Size);
+        Assert.Equal([159L, 159L], products[0].Purchases.Select(x => x.Price));
+        Assert.Equal([258L, 258L], products[1].Purchases.Select(x => x.Price));
+        Assert.All(products, p => Assert.Equal(PriceUnit.Litre, p.Unit));
+        Assert.Equal("lidl|testcola", PriceAnalysis.WithoutKind(products[1].Id));
+    }
+
+    [Theory]
+    [InlineData(new[] { 1000, 1500, 6000 }, new[] { 2, 1 }, ProductSizeUnit.Millilitre)]  // 1 l and 1.5 l together, 6 l apart
+    [InlineData(new[] { 500, 5000 }, new[] { 1, 1 }, ProductSizeUnit.Gram)]                // 500 g and 5 kg apart
+    [InlineData(new[] { 750, 750, 750 }, new[] { 3 }, ProductSizeUnit.Gram)]               // equal sizes together
+    [InlineData(new[] { 250, 500, 600, 1000 }, new[] { 2, 2 }, ProductSizeUnit.Gram)]      // a group starts above its smallest × 2
+    public void Pack_sizes_group_by_the_comparable_pack_factor(int[] sizes, int[] groups, ProductSizeUnit unit)
+    {
+        var lines = sizes.Select((size, i) => Line($"Testware {size}", Today.AddDays(-10 * (i + 1)), 100 + i,
+            Id("Testware", null, size, unit), receipt: i + 1));
+        var products = PriceAnalysis.Products(lines).OrderBy(p => p.Purchases.Min(x => x.Size!.Base)).ToList();
+        Assert.Equal(groups, products.Select(p => p.Purchases.Count));
+        if (groups.Length > 1) Assert.All(products, p => Assert.NotNull(p.Size));
+    }
+
+    [Fact]
+    public void Pack_sizes_from_names_split_without_identities()
+    {
+        var lines = new[]
+        {
+            Line("Testwasser 1l", Today.AddDays(-30), 59, receipt: 1),
+            Line("Testwasser 6x1l", Today.AddDays(-20), 329, receipt: 2),
+            Line("Testwasser 1,5l", Today.AddDays(-10), 79, receipt: 3),
+        };
+        var products = PriceAnalysis.Products(lines).OrderBy(p => p.Key, StringComparer.Ordinal).ToList();
+        Assert.Equal(["testwasser#l-1", "testwasser#l-6"], products.Select(p => p.Key));
+        Assert.Equal(2, products[0].Purchases.Count);
     }
 
     [Fact]

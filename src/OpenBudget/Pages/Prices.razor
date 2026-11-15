@@ -180,7 +180,10 @@
                                     </span>
                                     @Spark(r, s)
                                     <span class="prices-row-price">@Price(r.Detail.Now, r.Product.Unit)</span>
-                                    <span class="prices-row-change @ChangeClass(r.Detail.Change ?? 0)" data-testid="price-row-change">@(r.Detail.Change is { } c ? Percent(c) : "–")</span>
+                                    <span class="prices-row-change @ChangeClass(r.Detail.Change ?? 0)" data-testid="price-row-change" title="@ChangeTitle(r.Detail, r.Product.Unit)">@(r.Detail.Change is { } c ? Percent(c) : "–")@if (r.Detail is { Change: not null, BeforeDate: { } since })
+                                        {
+                                            <span class="prices-row-since" data-testid="price-row-since">@L["Change_Since", since.ToAppMonth()]</span>
+                                        }</span>
                                 </a>
                             </li>
                         </Virtualize>
@@ -288,7 +291,14 @@
 
                         <dl class="prices-facts" data-testid="price-facts">
                             <div><dt>@L["Fact_Now"]</dt><dd data-testid="price-now">@Price(d.Now, unit)</dd></div>
-                            <div><dt>@L["Fact_Then_" + PeriodValue(period)]</dt><dd data-testid="price-then">@(d.Before is { } before ? Price(before, unit) : "–")</dd></div>
+                            <div><dt>@L["Fact_Then_" + PeriodValue(period)]</dt><dd data-testid="price-then">@(d.Before is { } before ? Price(before, unit) : "–")</dd>
+                                @if (d.BeforeDate is { } beforeDate)
+                                {
+                                    <dd class="prices-fact-sub" data-testid="price-then-date">@Date(beforeDate)@if (d.Change is { } dc)
+                                        {
+                                            <span class="@ChangeClass(dc)"> · @L["Change_SinceShort", Percent(dc)]</span>
+                                        }</dd>
+                                }</div>
                             <div><dt>@L["Fact_Cheapest"]</dt><dd>@Price(d.Cheapest.Price, unit)</dd>
                                 <dd class="prices-fact-sub">@(d.Cheapest.Offer ? L["Fact_Offer", Date(d.Cheapest.Date)].Value : Date(d.Cheapest.Date))</dd></div>
                             <div><dt>@L["Fact_Spend"]</dt><dd>@Money(d.MonthlyCents)</dd><dd class="prices-fact-sub">@L["Fact_PerMonth"]</dd></div>
@@ -503,7 +513,7 @@
         var rows = PriceAnalysis.Listed(s.Rows, showOnce).Where(r => SearchText.Matches(PriceAnalysis.SearchKey(r.Product), search));
         return (sort switch
         {
-            SortOrder.Bought => rows.OrderByDescending(r => r.Times).ThenByDescending(r => r.Spend),
+            SortOrder.Bought => rows.OrderByDescending(r => r.TotalTimes).ThenByDescending(r => r.Times).ThenByDescending(r => r.Spend),
             SortOrder.Spent => rows.OrderByDescending(r => r.Spend),
             _ => rows.OrderByDescending(r => r.Detail.Change is { } c ? Math.Abs(c) : -1m).ThenByDescending(r => r.Spend),
         }).ToList();
@@ -611,9 +621,14 @@
         var parts = new List<string> { ShopName(r.Product.Shop) };
         if (r.Product.PerBase) parts.Add(L["Meta_Per" + r.Product.BaseUnit].Value);
         if (r.IntervalDays is { } d) parts.Add(Every(d));
-        else parts.Add(L["Meta_Times", r.Times].Value);
+        parts.Add(r.Times == r.TotalTimes ? L["Meta_Times", r.TotalTimes].Value : L["Meta_TimesInPeriod", r.TotalTimes, r.Times].Value);
         return string.Join(" · ", parts);
     }
+
+    /// <summary>What the change compares: the base price and its date, and the latest usual price.</summary>
+    private string? ChangeTitle(ProductDetail d, PriceUnit unit) => d is { Change: not null, Before: { } before, BeforeDate: { } on }
+        ? L["Change_Title", Price(before, unit), Date(on), Price(d.Now, unit)].Value
+        : null;
 
     private static string LineClass(int i) => i switch
     {

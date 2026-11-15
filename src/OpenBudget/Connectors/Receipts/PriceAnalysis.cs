@@ -141,15 +141,22 @@ public sealed record PriceRise(DateOnly From, DateOnly To, long Before, long Aft
 /// <summary>
 /// A product within a period: all its purchases (<see cref="All"/>) and those in the period (<see cref="Points"/>), the
 /// usual price at the period's start (<see cref="Base"/>: the last usual price before it, or the first in it; the chart
-/// starts there), the last usual price before the period (<see cref="Before"/>, null without one) and now, the change
+/// starts there), the last usual price before the period (<see cref="Before"/> on <see cref="BeforeDate"/>, null
+/// without one; the base of <see cref="Change"/>) and now, the change
 /// between the last usual prices before and in the period (null without both), the price rises, the cheapest usual
 /// purchase in the period, the average usual price and the spend per month.
 /// </summary>
 public sealed record ProductDetail(IReadOnlyList<PricePoint> All, IReadOnlyList<PricePoint> Points, IReadOnlyList<PriceRise> Rises, long Base, long? Before,
-    long Now, decimal? Change, PricePoint Cheapest, long Average, long MonthlyCents);
+    long Now, decimal? Change, PricePoint Cheapest, long Average, long MonthlyCents, DateOnly? BeforeDate = null);
 
-/// <summary>A product's row on the prices page for a period.</summary>
-public sealed record ProductRow(ProductHistory Product, ProductDetail Detail, double? IntervalDays, int Times, long Spend);
+/// <summary>
+/// A product's row on the prices page for a period: <see cref="Times"/> counts the purchases in the period,
+/// <see cref="TotalTimes"/> all of them (as the list filter <see cref="PriceAnalysis.Listed"/> does).
+/// </summary>
+public sealed record ProductRow(ProductHistory Product, ProductDetail Detail, double? IntervalDays, int Times, long Spend)
+{
+    public int TotalTimes => Product.TimesBought;
+}
 
 /// <summary>One point of the basket index: 100 is the basket's price at the period's start.</summary>
 public sealed record IndexPoint(DateOnly Date, decimal Value);
@@ -289,7 +296,9 @@ public static partial class PriceAnalysis
     /// transitively). A product shows its latest name. Its purchases compare by size when all of them have one of the
     /// same kind (weight, volume or items), whatever the pack, and per piece when they are one pack size and lines
     /// without a size; otherwise each kind, and the purchases without a size, form a product of their own (id
-    /// "shop|key#kind"), shown with its pack size when all its purchases share one.
+    /// "shop|key#kind"). Within a kind, packs whose contents differ by more than <see cref="ComparablePackFactor"/> form
+    /// products of their own as well (<see cref="PackGroups"/>, id "shop|key#kind-size"). A product split off is shown
+    /// with its pack size (its latest when its purchases differ).
     /// </summary>
     public static List<ProductHistory> Products(IEnumerable<PriceLine> lines, IReadOnlyDictionary<string, string>? merges = null)
     {
@@ -314,14 +323,48 @@ public static partial class PriceAnalysis
             // One pack size and lines without a size: the same pack, compared per piece.
             if (kinds.Count > 1 && ordered.All(x => !x.P.Weighed) && ordered.Select(x => x.P.Size).Where(s => s != null).Distinct().Count() == 1)
                 kinds = ordered.GroupBy(_ => (PriceUnit?)null).ToList();
-            return kinds.Select(k =>
+            var parts = kinds.SelectMany(k => (k.Key == null ? [(KindCode(null), k.ToList())] : PackGroups(k.ToList()))
+                .Select(c => (Kind: k.Key, c.Code, c.Items))).ToList();
+            return parts.Select(part =>
             {
-                var purchases = k.Select(x => x.P with { PerBase = k.Key != null }).ToList();
+                var purchases = part.Items.Select(x => x.P with { PerBase = part.Kind != null }).ToList();
                 var sizes = purchases.Select(x => x.Size).Distinct().ToList();
-                var key = kinds.Count == 1 ? g.Key : g.Key + "#" + KindCode(k.Key);
-                return new ProductHistory(key, g.Shop, k.Last().Name, purchases, keys) { Size = kinds.Count > 1 && sizes.Count == 1 ? sizes[0] : null };
+                var key = parts.Count == 1 ? g.Key : g.Key + "#" + part.Code;
+                var size = parts.Count == 1 ? null : sizes.Count == 1 ? sizes[0] : purchases[^1].Size;
+                return new ProductHistory(key, g.Shop, part.Items[^1].Name, purchases, keys) { Size = size };
             });
         }).OrderByDescending(p => p.Last.Date).ThenBy(p => p.Name, StringComparer.CurrentCulture).ToList();
+    }
+
+    /// <summary>
+    /// Purchases of one product compare by size only when their pack contents (pack count × unit size) differ by at
+    /// most this factor; a 1 l bottle and a 12 × 0.5 l crate are different products, since their price per litre
+    /// differs by the pack format as much as by the price.
+    /// </summary>
+    public const decimal ComparablePackFactor = 2m;
+
+    /// <summary>
+    /// Groups the purchases of one kind (by kg, litre or item) by pack content: sorted by content, a new group starts
+    /// when a pack exceeds the group's smallest × <see cref="ComparablePackFactor"/>. Weighed purchases and those
+    /// without a size stay with the only group, or form one of their own beside several. Codes: the kind, and with
+    /// several groups the smallest content of each ("l-6").
+    /// </summary>
+    private static List<(string Code, List<(Purchase P, string Name)> Items)> PackGroups(List<(Purchase P, string Name)> items)
+    {
+        var kind = KindCode(items[0].P.BaseCents != null ? items[0].P.BaseUnit : null);
+        var sized = items.Where(x => x.P.Size != null).OrderBy(x => x.P.Size!.Base).ToList();
+        var groups = new List<(decimal Smallest, List<(Purchase P, string Name)> Items)>();
+        foreach (var x in sized)
+        {
+            if (groups.Count == 0 || x.P.Size!.Base > groups[^1].Smallest * ComparablePackFactor) groups.Add((x.P.Size!.Base, []));
+            groups[^1].Items.Add(x);
+        }
+        var loose = items.Where(x => x.P.Size == null).ToList();
+        if (groups.Count <= 1) return [(kind, items)];
+        var result = groups.Select(c => (kind + "-" + c.Smallest.ToString("0.###", CultureInfo.InvariantCulture),
+            c.Items.OrderBy(x => x.P.Date).ThenBy(x => x.P.ReceiptId).ToList())).ToList();
+        if (loose.Count > 0) result.Add((kind, loose));
+        return result;
     }
 
     private static string KindCode(PriceUnit? unit) => unit switch
@@ -463,7 +506,7 @@ public static partial class PriceAnalysis
         var cheapest = normal.OrderBy(x => x.Price).ThenByDescending(x => x.Date).First();
         var average = (long)Math.Round(normal.Average(x => (decimal)x.Price));
         var monthly = (long)Math.Round(points.Sum(x => x.Purchase.TotalCents) / Months(points[0].Date, today));
-        return new ProductDetail(all, points, rises, baseline.Price, before?.Price, now.Price, change, cheapest, average, monthly);
+        return new ProductDetail(all, points, rises, baseline.Price, before?.Price, now.Price, change, cheapest, average, monthly, before?.Date);
     }
 
     /// <summary>Products bought at least this often in each half of the period take part in the index.</summary>

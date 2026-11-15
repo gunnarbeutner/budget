@@ -79,6 +79,27 @@ public sealed class PriceHistoryTests
         Assert.Null(PriceAnalysis.ToPurchase(Line("Pfandrückgabe", Today, -25)));
     }
 
+    [Fact]
+    public void The_change_exposes_its_base_and_the_row_counts_all_purchases()
+    {
+        var lines = new[]
+        {
+            Line("Testsaft", Today.AddMonths(-20), 159, receipt: 1),
+            Line("Testsaft", Today.AddMonths(-18), 159, receipt: 2),
+            Line("Testsaft", Today.AddDays(-30), 258, receipt: 3),
+        };
+        var products = PriceAnalysis.Products(lines);
+        var s = PriceAnalysis.Summarise(products, [], PricePeriod.TwelveMonths, Today);
+        var row = Assert.Single(s.Rows);
+        Assert.Equal(Today.AddMonths(-18), row.Detail.BeforeDate);
+        Assert.Equal(159, row.Detail.Before);
+        Assert.Equal(258m / 159m - 1m, row.Detail.Change);
+        Assert.Equal(1, row.Times);
+        Assert.Equal(3, row.TotalTimes);
+        // The list filter counts the same purchases as the row shows.
+        Assert.Single(PriceAnalysis.Listed(s.Rows, oneTime: false));
+    }
+
     private static IEnumerable<PriceLine> Repeated(string name, DateOnly from, int count, int everyDays, long cents, long receiptBase = 0) =>
         Enumerable.Range(0, count).Select(i => Line(name, from.AddDays(i * everyDays), cents, receipt: receiptBase + i));
 

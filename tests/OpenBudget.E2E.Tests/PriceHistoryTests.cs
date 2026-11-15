@@ -11,7 +11,7 @@ namespace OpenBudget.E2E.Tests;
 /// <summary>
 /// A project's Prices view with made-up Lidl receipts: the sidebar link opens it, the period switch changes the URL
 /// and the figures, a product opens its detail with chart and all purchases (each opens the receipt panel), one-time
-/// purchases hide until asked for, pack sizes with stored identities compare per litre with an odd purchase marked,
+/// purchases hide until asked for, pack formats with stored identities split into products with an odd purchase marked,
 /// the receipts settings page has no Prices tab, and a phone shows the page without horizontal scrolling.
 /// </summary>
 [TestFixture]
@@ -86,6 +86,11 @@ public sealed class PriceHistoryTests : EndToEndTestBase
         await GoToAsync($"/projects/{Pid}/prices");
         var butter = Page.GetByTestId("price-row").Filter(new() { HasText = "Testbutter Mild 250g" });
         await Expect(butter.GetByTestId("price-row-change")).ToContainTextAsync("+15");
+        // The change compares with the last usual price before the period; the row counts all purchases.
+        var start = DateOnly.FromDateTime(DateTime.UtcNow.Date).AddMonths(-12);
+        var before = Enumerable.Range(0, 52).Select(i => DateOnly.FromDateTime(DateTime.UtcNow.Date.AddDays(-14 * i))).Where(d => d < start).Max();
+        await Expect(butter.GetByTestId("price-row-since")).ToHaveTextAsync("since " + before.ToAppMonth());
+        await Expect(butter).ToContainTextAsync("52×");
 
         await Page.GetByTestId("price-row").Filter(new() { HasText = "Testbananen" }).ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex("product=lidl"));
@@ -152,25 +157,30 @@ public sealed class PriceHistoryTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task One_time_purchases_hide_by_default_and_pack_sizes_compare_per_litre()
+    public async Task One_time_purchases_hide_by_default_and_pack_formats_split()
     {
         await SeedIdentitiesAsync();
         await GoToAsync($"/projects/{Pid}/prices");
-        var cola = Page.GetByTestId("price-row").Filter(new() { HasText = "Testcola" });
-        await Expect(cola).ToHaveCountAsync(1);
+        // The 1 l bottles and the 12 × 0.5 l crates differ too much in size to compare per litre.
+        await Expect(Page.GetByTestId("price-row").Filter(new() { HasText = "Testcola" })).ToHaveCountAsync(2);
         await Expect(Page.GetByTestId("price-row").Filter(new() { HasText = "Testhemd" })).ToHaveCountAsync(0);
 
         await Page.GetByTestId("prices-once").CheckAsync();
         await Expect(Page).ToHaveURLAsync(new Regex("once=1"));
         await Expect(Page.GetByTestId("price-row").Filter(new() { HasText = "Testhemd" })).ToHaveCountAsync(1);
 
-        await cola.ClickAsync();
-        await Expect(Page.GetByTestId("price-detail-name")).ToHaveTextAsync("Testcola");
-        // 1.59 € for a litre bottle; the crate is 15.48 € for 6 l (2.58 €/l); the 5.99 € bottle is unusual.
+        var bottle = Page.Locator("[data-testid=price-row][data-product='lidl|testcola#l-1']");
+        await Expect(bottle).ToContainTextAsync("8×");
+        await bottle.ClickAsync();
+        await Expect(Page.GetByTestId("price-detail-name")).ToHaveTextAsync(new Regex("^Testcola · 1 "));
+        // 1.59 € for a litre bottle; the 5.99 € bottle is unusual.
         await Expect(Page.GetByTestId("price-now")).ToHaveTextAsync(new Regex(@"1,59.*/l"));
         await Expect(Page.GetByTestId("price-unusual")).ToHaveCountAsync(1);
-        await Expect(Page.GetByTestId("price-purchases")).ToContainTextAsync("2,58");
         await Expect(Page.GetByTestId("price-purchase-date").First).ToHaveTextAsync(new Regex(@"^\d{2}\.\d{2}\.\d{4}$"));
+
+        await Page.Locator("[data-testid=price-row][data-product='lidl|testcola#l-6']").ClickAsync();
+        // 15.48 € for a 6 l crate.
+        await Expect(Page.GetByTestId("price-purchases")).ToContainTextAsync("2,58");
     }
 
     [Test]
