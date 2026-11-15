@@ -31,8 +31,7 @@ public static class DepotHistoryStore
         if (total == null) return;
 
         var ts = BankTransactionStore.ToTimestamp(today) + 43200;  // noon UTC
-        await BankTransactionStore.Gate.WaitAsync(ct);
-        try
+        await BankTransactionStore.WriteExclusiveAsync(async () =>
         {
             await db.PortfolioChartPoints.Where(p => p.AccountId == account.Id && p.Timestamp >= ts - 43200 && p.Timestamp < ts + 43200)
                 .ExecuteDeleteAsync(ct);
@@ -45,11 +44,7 @@ public static class DepotHistoryStore
                 db.PortfolioChartPoints.Add(Point(++next, account, currency, ts, h.Amount!.Value, h.Id));
             db.PortfolioChartPoints.Add(Point(next + 1, account, currency, ts, total.Value, null));
             await db.SaveChangesAsync(ct);
-        }
-        finally
-        {
-            BankTransactionStore.Gate.Release();
-        }
+        }, ct);
     }
 
     private static PortfolioChartPoint Point(long id, Account account, string currency, long ts, double value, long? securityId) => new()

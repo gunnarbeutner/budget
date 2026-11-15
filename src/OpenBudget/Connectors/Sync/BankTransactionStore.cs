@@ -41,8 +41,24 @@ public sealed class BankTransactionStore
     public const long ConnectorRowBase = 1L << 39;
 
     // One writer at a time: id allocation reads the current maximum.
-    // Also taken by SplitService, which allocates split-part ids from the same range.
-    internal static readonly SemaphoreSlim Gate = new(1, 1);
+    private static readonly SemaphoreSlim Gate = new(1, 1);
+
+    /// <summary>
+    /// Runs <paramref name="write"/> while no other connector write runs, for writers that allocate ids from the connector
+    /// range (<see cref="ConnectorRowBase"/>) by reading the current maximum.
+    /// </summary>
+    internal static async Task WriteExclusiveAsync(Func<Task> write, CancellationToken ct)
+    {
+        await Gate.WaitAsync(ct);
+        try
+        {
+            await write();
+        }
+        finally
+        {
+            Gate.Release();
+        }
+    }
 
     /// <summary>Applies a connector's report to the account (see the class remarks).</summary>
     /// <param name="markNew">

@@ -39,7 +39,7 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Test");
-        // Bank connectors need a secrets key (the fake bank is always on in the Test environment).
+        // Bank connectors need a secrets key.
         builder.UseSetting("OPENBUDGET_SECRETS_KEY", Convert.ToBase64String(new byte[32].Select((_, i) => (byte)(i + 1)).ToArray()));
         builder.UseSetting(OpenBudget.Connectors.BankConnectorsRegistration.BrowserHeadlessVariable, "true");
         // Every app start clears the MoneyMoney upload staging, so each host has its own: a shared one would lose the
@@ -70,6 +70,7 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
             // Same wiring as production: user-scoped factory for the app, unrestricted
             // SystemDbContextFactory for seeding.
             services.AddOpenBudgetDatabase(_dbPath);
+            OpenBudget.Connectors.BankConnectorsRegistration.AddFakeBank(services);
         });
     }
 

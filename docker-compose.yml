@@ -31,7 +31,6 @@ services:
     environment:
       # Required for bank logins (see README, "Bank connectors"): `openssl rand -base64 32`. Not stored in ./data.
       OPENBUDGET_SECRETS_KEY: ${OPENBUDGET_SECRETS_KEY:-}
-      # OPENBUDGET_ENABLE_FAKE_BANK: "true"   # offers a made-up bank for trying the connector flow
       # Optional: pin the passkey relying-party id (defaults to the request host).
       # OPENBUDGET_RP_ID: budget.example.org
       # Optional AI suggestions (see README, "Suggestions"); each user still opts in. Not stored in ./data.

@@ -16,10 +16,13 @@ namespace OpenBudget.Connectors;
 
 public static class BankConnectorsRegistration
 {
-    public const string EnableFakeBankVariable = "OPENBUDGET_ENABLE_FAKE_BANK";
     public const string StatementsDirVariable = "OPENBUDGET_STATEMENTS_DIR";
     /// <summary>"true" runs the web-login browser headless (automated tests; no windows).</summary>
     public const string BrowserHeadlessVariable = "OPENBUDGET_BROWSER_HEADLESS";
+
+    /// <summary>Offers the made-up <see cref="FakeBankConnector"/> (Development runs, test hosts).</summary>
+    public static IServiceCollection AddFakeBank(this IServiceCollection services) =>
+        services.AddSingleton(FakeBankConnector.Registration);
 
     /// <summary>Registers the connector framework: secrets, registry, sync engine and the per-user service.</summary>
     public static IServiceCollection AddBankConnectors(this IServiceCollection services, IHostEnvironment env, string contentRoot)
@@ -27,11 +30,10 @@ public static class BankConnectorsRegistration
         // Everything is resolved lazily from the final configuration (environment variables, test overrides).
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton(sp => new SecretsProtector(sp.GetRequiredService<IConfiguration>()[SecretsProtector.KeyVariable]));
+        if (env.IsDevelopment()) services.AddFakeBank();
         services.AddSingleton(sp =>
         {
             var configuration = sp.GetRequiredService<IConfiguration>();
-            var fakeEnabled = env.IsEnvironment("Test")
-                || string.Equals(configuration[EnableFakeBankVariable], "true", StringComparison.OrdinalIgnoreCase);
             // FinTS banks are always offered; without the product registration (OPENBUDGET_FINTS_PRODUCT_ID) a sync says so.
             var fints = FinTsOptions.FromConfiguration(configuration);
             List<ConnectorRegistration> registrations =
@@ -46,7 +48,8 @@ public static class BankConnectorsRegistration
                 BaaderConnector.Registration(fints),
                 .. FinTsBanks.Registrations(fints),
             ];
-            if (fakeEnabled) registrations.Add(FakeBankConnector.Registration);
+            // Further connectors registered as services: the made-up bank of Development runs and test hosts.
+            registrations.AddRange(sp.GetServices<ConnectorRegistration>());
             return new ConnectorRegistry(registrations);
         });
         services.AddSingleton(sp => new BankStorageOptions(

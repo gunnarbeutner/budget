@@ -5,8 +5,8 @@ namespace OpenBudget.Connectors.FakeBank;
 /// <summary>
 /// A bank that exists only in this process: deterministic, obviously made-up data (DE00 IBANs,
 /// "Example ..." names) and switchable behaviours (see <see cref="FakeBankSettings"/>) so every
-/// part of the connector framework can be exercised without touching a real bank. Enabled in
-/// tests, and in a running app only with OPENBUDGET_ENABLE_FAKE_BANK=true.
+/// part of the connector framework can be exercised without touching a real bank. Offered in
+/// Development runs and by the test hosts (<see cref="BankConnectorsRegistration.AddFakeBank"/>), never in production.
 /// </summary>
 public sealed class FakeBankConnector : IBankConnector
 {

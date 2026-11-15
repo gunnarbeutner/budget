@@ -160,8 +160,7 @@ public sealed class PortfolioAccountSync
             depotAccount.Provider = AccountProviders.PortfolioPerformance;
             ledgerAccount.Provider = AccountProviders.PortfolioPerformance;
 
-            await BankTransactionStore.Gate.WaitAsync(ct);
-            try
+            await BankTransactionStore.WriteExclusiveAsync(async () =>
             {
                 await using var tx = await db.Database.BeginTransactionAsync(ct);
                 await WriteDepotAsync(db, depotAccount, portfolio, valuation.BaseCurrency, setting.TakenOver, quoted, ct);
@@ -173,11 +172,7 @@ public sealed class PortfolioAccountSync
                 ledgerAccount.Error = null;
                 await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
-            }
-            finally
-            {
-                BankTransactionStore.Gate.Release();
-            }
+            }, ct);
             touched = true;
         }
 

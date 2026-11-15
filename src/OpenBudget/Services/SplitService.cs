@@ -180,8 +180,7 @@ public sealed class SplitService
     /// </summary>
     internal static async Task WritePartsAsync(BudgetDbContext db, Transaction parent, IReadOnlyList<SplitPartWrite> parts, CancellationToken ct)
     {
-        await BankTransactionStore.Gate.WaitAsync(ct);
-        try
+        await BankTransactionStore.WriteExclusiveAsync(async () =>
         {
             // A part whose category stays keeps its row (and with it its id, check mark and the open details on a
             // page); the others are replaced.
@@ -242,11 +241,7 @@ public sealed class SplitService
             parent.IsNew = false;
             parent.SplitCheck = false;
             await db.SaveChangesAsync(ct);
-        }
-        finally
-        {
-            BankTransactionStore.Gate.Release();
-        }
+        }, ct);
     }
 
     // ---- helpers ----

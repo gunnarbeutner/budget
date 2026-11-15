@@ -52,6 +52,7 @@ internal sealed partial class AppTestHost : IDisposable
                     .ToList();
                 foreach (var d in toRemove) services.Remove(d);
                 services.AddOpenBudgetDatabase(_dbPath);
+                OpenBudget.Connectors.BankConnectorsRegistration.AddFakeBank(services);
             });
         });
 #pragma warning restore CA2000

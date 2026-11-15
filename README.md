@@ -58,7 +58,6 @@ dotnet run --project src/OpenBudget
 | `OPENBUDGET_RP_ID` | Pins the passkey relying-party id (default: the request host). Changing it invalidates registered passkeys. |
 | `CHROME_PATH` | Chromium for web logins outside Docker (the image ships one). |
 | `OPENBUDGET_ONEDRIVE_CLIENT_ID`, `_SECRET`, `_TENANT` | Entra ID app registration for reading PortfolioPerformance files from OneDrive and receipts from Microsoft 365 mail; the features are hidden without them. Delegated Microsoft Graph permissions: `Files.Read.All`, `offline_access`, `openid`, `profile`, and `Mail.Read` for receipts. |
-| `OPENBUDGET_ENABLE_FAKE_BANK` | `true` offers a made-up bank for trying out connectors. |
 | `OPENBUDGET_OPENAI_API_KEY` | Turns on AI suggestions (see below); without it the AI settings are hidden. Not stored in the data volume. |
 | `OPENBUDGET_OPENAI_MODEL` | Model for AI suggestions (default `gpt-6.1-terra`). |
 | `OPENBUDGET_OPENAI_BASE_URL` | Another OpenAI-compatible endpoint (default `https://api.openai.com/v1`); `https://eu.api.openai.com/v1` processes requests in Europe (the project needs EU data residency or an eligible retention setting). |
