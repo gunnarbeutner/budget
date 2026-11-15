@@ -158,25 +158,3 @@ public sealed class BaaderConnector : FinTsConnector
     }
 }
 
-/// <summary>PSD Bank Nürnberg (Atruvia), FinTS including the electronic statements (HKEKA).</summary>
-public sealed class PsdNuernbergConnector : FinTsConnector
-{
-    public const string TypeName = "psd-nuernberg";
-
-    public static FinTsBankConfig Config { get; } = new(
-        TypeName,
-        "PSD Bank Nürnberg",
-        "PSD Bank Nürnberg over FinTS: accounts (balance, transactions) and electronic account statements as PDF.",
-        "76090900",
-        new Uri("https://fints2.atruvia.de/cgi-bin/hbciservlet"),
-        FallbackBic: "GENODEF1P17",
-        UpdInventory: true);
-
-    public PsdNuernbergConnector(ConnectorContext context, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null)
-        : base(context, Config, options, transportFactory)
-    {
-    }
-
-    public static ConnectorRegistration Registration(FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null) =>
-        CreateRegistration(Config, ctx => new PsdNuernbergConnector(ctx, options, transportFactory));
-}

@@ -148,11 +148,11 @@ public sealed class FinTsSyncTests
     public void The_real_registrations_are_offered_and_use_the_documented_bank_addresses()
     {
         var options = FinTsHarness.Options;
-        var registrations = new[] { IngConnector.Registration(options), BaaderConnector.Registration(options), PsdNuernbergConnector.Registration(options) };
+        ConnectorRegistration[] registrations = [IngConnector.Registration(options), BaaderConnector.Registration(options), .. FinTsBanks.Registrations(options)];
         Assert.Equal(["ing", "baader", "psd-nuernberg"], registrations.Select(r => r.ConnectorType));
         Assert.Equal(("50010517", "https://fints.ing.de/fints/"), (IngConnector.Config.Blz, IngConnector.Config.Url.ToString()));
         Assert.Equal(("70033100", "https://fints.baaderbank.de/"), (BaaderConnector.Config.Blz, BaaderConnector.Config.Url.ToString()));
-        Assert.Equal(("76090900", "https://fints2.atruvia.de/cgi-bin/hbciservlet"), (PsdNuernbergConnector.Config.Blz, PsdNuernbergConnector.Config.Url.ToString()));
-        Assert.True(PsdNuernbergConnector.Config.UpdInventory);
+        Assert.Equal(("76090900", "https://fints2.atruvia.de/cgi-bin/hbciservlet"), (FinTsBanks.PsdNuernberg.Blz, FinTsBanks.PsdNuernberg.Url.ToString()));
+        Assert.True(FinTsBanks.PsdNuernberg.UpdInventory);
     }
 }

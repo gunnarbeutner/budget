@@ -96,7 +96,7 @@ public sealed class FinTsRecordedDialogTests
         var fixture = FinTsFixture.Load("psd");
         var replay = new ReplayBank(fixture);
         using var server = new MockFinTsServer(replay.Respond);
-        var connector = new PsdNuernbergConnector(FinTsHarness.Context(server), FinTsHarness.Options);
+        var connector = FinTsConnector.Create(FinTsHarness.Context(server), FinTsBanks.PsdNuernberg, FinTsHarness.Options);
         var credentials = new ConnectorCredentials("9000015", "12345");
 
         // The recording was made with cached bank parameters (version 82); give the client the same.

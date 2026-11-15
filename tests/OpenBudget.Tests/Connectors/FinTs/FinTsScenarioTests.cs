@@ -182,7 +182,7 @@ public sealed class FinTsScenarioTests
         var (step, _) = await FinTsHarness.DriveAsync(a => connector.RefreshAsync(account, null, a, default), _ => null);
         Assert.Equal(StepStatus.Done, step.Status);
         await connector.LogoutAsync(default);
-        Assert.NotNull(PsdNuernbergConnector.Config.FallbackBic);
+        Assert.NotNull(FinTsBanks.PsdNuernberg.FallbackBic);
     }
 
     [Fact]

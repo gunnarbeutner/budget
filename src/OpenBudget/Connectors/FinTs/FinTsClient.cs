@@ -454,7 +454,7 @@ internal sealed partial class FinTsClient
     }
 
     public IReadOnlyList<RemoteAccount> ListAccounts() =>
-        _data.Accounts.Select(a => new RemoteAccount(a.RemoteId, AccountName(a), a.Kind, a.Iban, a.Currency)).ToList();
+        _data.Accounts.Select(a => new RemoteAccount(a.RemoteId, AccountName(a), a.KindFor(_config.SavingsProductWords), a.Iban, a.Currency)).ToList();
 
     private static string AccountName(FinTsAccountInfo a)
     {
@@ -466,7 +466,7 @@ internal sealed partial class FinTsClient
     public async Task<AccountRefresh> RefreshAsync(RemoteAccount account, DateOnly? since, IChallengeAsker ask, CancellationToken ct)
     {
         var info = InfoFor(account);
-        if (info.Kind == RemoteAccountType.Depot) return await RefreshDepotAsync(info, ask, ct);
+        if (info.KindFor(_config.SavingsProductWords) == RemoteAccountType.Depot) return await RefreshDepotAsync(info, ask, ct);
 
         var inventoryKey = InventoryKeyPrefix + info.RemoteId;
         if (_config.UpdInventory && info.Inventory != null && since != null

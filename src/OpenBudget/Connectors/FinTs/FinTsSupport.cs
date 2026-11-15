@@ -47,7 +47,10 @@ public sealed record FinTsBankConfig(
     string? FallbackBic = null,
     bool UpdInventory = false,
     bool Statements = true,
-    string? ProbeSecurityFunction = null);
+    string? ProbeSecurityFunction = null,
+    IReadOnlyList<string>? SavingsProductWords = null);
+// SavingsProductWords: words in the bank's product names that mark a savings account when the UPD names no account type
+// (in addition to the generic German terms, see FinTsAccountInfo.KindFor), e.g. ING's "Extra-Konto".
 // ProbeSecurityFunction: the security function signed with before the bank has named the user's methods (3920).
 // Null means the one-step placeholder 999; ING refuses 999 with "Ungültiger Signaturaufbau" (9010) and no 3920, so it gets 900.
 // Statements: false for banks whose documents are not reachable over FinTS (the connector then offers none).

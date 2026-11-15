@@ -1,5 +1,6 @@
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.FinTs;
+using OpenBudget.Connectors.Ing;
 using Xunit;
 
 namespace OpenBudget.Tests.Connectors.FinTs;
@@ -139,7 +140,7 @@ public sealed class FinTsParserTests
         var data = DataOf("ing");
         Assert.Equal(9, data.BpdVersion);
         Assert.Equal(3, data.Accounts.Count);
-        Assert.Equal([RemoteAccountType.Giro, RemoteAccountType.Savings, RemoteAccountType.Giro], data.Accounts.Select(a => a.Kind));
+        Assert.Equal([RemoteAccountType.Giro, RemoteAccountType.Savings, RemoteAccountType.Giro], data.Accounts.Select(a => a.KindFor(IngConnector.Config.SavingsProductWords)));
         Assert.Equal(5, data.BestVersion("HKSAL", [5, 6, 7]));
         Assert.Equal(1, data.BestVersion("HKCAZ", [1]));
         Assert.Equal(6, data.BestVersion("HKWPD", [5, 6]));
@@ -324,4 +325,20 @@ public sealed class FinTsParserTests
         // The identity key keeps joining the pieces with a space.
         Assert.Equal(string.Join(' ', pieces.Select(p => p.Trim())), t.KeyPurpose ?? t.Purpose);
     }
+
+    [Theory]
+    [InlineData("Tagesgeldkonto", true)]
+    [InlineData("Festgeld 12 Monate", true)]
+    [InlineData("SparCard", true)]
+    [InlineData("Extra-Konto", false)]
+    [InlineData("Girokonto", false)]
+    public void Savings_product_names_use_the_generic_terms(string product, bool savings) =>
+        Assert.Equal(savings, FinTsAccountInfo.LooksLikeSavings(product, null));
+
+    [Theory]
+    [InlineData("Extra-Konto", true)]
+    [InlineData("Tagesgeld", true)]
+    [InlineData("Girokonto", false)]
+    public void Savings_product_names_add_the_bank_words(string product, bool savings) =>
+        Assert.Equal(savings, FinTsAccountInfo.LooksLikeSavings(product, IngConnector.Config.SavingsProductWords));
 }

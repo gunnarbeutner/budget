@@ -34,7 +34,8 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements, IBackgrou
         new Uri("https://fints.ing.de/fints/"),
         FallbackBic: "INGDDEFFXXX",
         Statements: true,
-        ProbeSecurityFunction: "900");
+        ProbeSecurityFunction: "900",
+        SavingsProductWords: ["Extra"]);
 
     private readonly ConnectorContext _context;
     private readonly FinTsConnector _fints;

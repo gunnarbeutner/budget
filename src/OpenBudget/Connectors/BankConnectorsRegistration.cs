@@ -44,7 +44,7 @@ public static class BankConnectorsRegistration
                 KrakenConnector.CreateRegistration(new KrakenOptions()),
                 IngConnector.Registration(fints),
                 BaaderConnector.Registration(fints),
-                PsdNuernbergConnector.Registration(fints),
+                .. FinTsBanks.Registrations(fints),
             ];
             if (fakeEnabled) registrations.Add(FakeBankConnector.Registration);
             return new ConnectorRegistry(registrations);

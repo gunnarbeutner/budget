@@ -40,7 +40,14 @@ public sealed record FinTsAccountInfo(
 
     public bool Allows(string job) => AllowedJobs.Count == 0 || AllowedJobs.Contains(job);
 
-    public RemoteAccountType Kind => AccountType switch
+    /// <summary>The account's kind, read with no bank-specific savings product words.</summary>
+    public RemoteAccountType Kind => KindFor(null);
+
+    /// <summary>
+    /// The account's kind from its FinTS account type; without one, from the jobs it allows and its product name, where
+    /// <paramref name="savingsProductWords"/> (<see cref="FinTsBankConfig.SavingsProductWords"/>) add to the generic savings terms.
+    /// </summary>
+    public RemoteAccountType KindFor(IReadOnlyList<string>? savingsProductWords) => AccountType switch
     {
         >= 1 and <= 9 => RemoteAccountType.Giro,
         >= 10 and <= 29 => RemoteAccountType.Savings,
@@ -48,15 +55,15 @@ public sealed record FinTsAccountInfo(
         >= 50 and <= 59 => RemoteAccountType.CreditCard,
         >= 60 and <= 69 => RemoteAccountType.Depot,
         null when AllowedJobs.Contains("HKWPD") && !AllowedJobs.Contains("HKKAZ") && !AllowedJobs.Contains("HKCAZ") => RemoteAccountType.Depot,
-        null => LooksLikeSavings(Product) ? RemoteAccountType.Savings : RemoteAccountType.Giro,
+        null => LooksLikeSavings(Product, savingsProductWords) ? RemoteAccountType.Savings : RemoteAccountType.Giro,
         _ => RemoteAccountType.Other,
     };
 
-    private static bool LooksLikeSavings(string product) =>
-        product.Contains("Extra", StringComparison.OrdinalIgnoreCase)
-        || product.Contains("Spar", StringComparison.OrdinalIgnoreCase)
-        || product.Contains("Tagesgeld", StringComparison.OrdinalIgnoreCase)
-        || product.Contains("Festgeld", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Generic German product-name terms of savings accounts, used for every bank.</summary>
+    private static readonly string[] SavingsTerms = ["Spar", "Tagesgeld", "Festgeld"];
+
+    internal static bool LooksLikeSavings(string product, IReadOnlyList<string>? bankWords) =>
+        SavingsTerms.Concat(bankWords ?? []).Any(word => product.Contains(word, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>
