@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261115074047_ScheduledPaymentsFromWebBanking";
+    public override string LastMigrationId => "20261115082924_ReceiptProductMerges";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -1880,6 +1880,40 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.HasIndex("ReceiptInvoiceId");
 
                 b.ToTable("receipt_items");
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.ReceiptProductMerge", b =>
+            {
+                b.Property<long>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("FromKey")
+                    .IsRequired()
+                    .HasMaxLength(300)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("OwnerUserId")
+                    .IsRequired()
+                    .HasMaxLength(450)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Shop")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("ToKey")
+                    .IsRequired()
+                    .HasMaxLength(300)
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Id");
+
+                b.HasIndex("OwnerUserId", "Shop", "FromKey")
+                    .IsUnique();
+
+                b.ToTable("receipt_product_merges");
             });
 
         modelBuilder.Entity("OpenBudget.Models.ReceiptSettings", b =>

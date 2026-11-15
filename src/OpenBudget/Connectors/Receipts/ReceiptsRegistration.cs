@@ -20,6 +20,8 @@ public static class ReceiptsRegistration
         services.AddSingleton<MailReceiptSync>();
         services.AddHostedService(sp => sp.GetRequiredService<MailReceiptSync>());
         services.AddScoped<ReceiptService>();
+        services.AddSingleton<PriceHistoryCache>();
+        services.AddScoped<PriceHistoryService>();
         return services;
     }
 }

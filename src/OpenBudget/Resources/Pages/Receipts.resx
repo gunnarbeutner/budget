@@ -259,4 +259,7 @@
   <data name="OwnerReceipt" xml:space="preserve">
     <value>{0}’s receipt</value>
   </data>
+  <data name="Tab_Prices" xml:space="preserve">
+    <value>Prices</value>
+  </data>
 </root>

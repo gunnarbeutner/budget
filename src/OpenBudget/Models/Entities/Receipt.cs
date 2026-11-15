@@ -386,3 +386,31 @@ public class ReceiptSourceAccount
 
     public long AccountId { get; set; }
 }
+
+/// <summary>
+/// A user's merge of two receipt products of the same shop (see <c>PriceAnalysis.ProductKey</c>): the purchases of
+/// <see cref="FromKey"/> count as <see cref="ToKey"/>'s in the price history. Personal (owner-only query filter).
+/// </summary>
+[Table("receipt_product_merges")]
+public class ReceiptProductMerge
+{
+    [Key]
+    public long Id { get; set; }
+
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
+
+    /// <summary>See <see cref="ReceiptShops"/>.</summary>
+    [Required]
+    [MaxLength(20)]
+    public string Shop { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(300)]
+    public string FromKey { get; set; } = string.Empty;
+
+    [Required]
+    [MaxLength(300)]
+    public string ToKey { get; set; } = string.Empty;
+}

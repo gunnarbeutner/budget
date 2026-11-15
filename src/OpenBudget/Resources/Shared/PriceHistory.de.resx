@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Aria_Sections" xml:space="preserve">
+    <value>Preisbereiche</value>
+  </data>
+  <data name="Section_Products" xml:space="preserve">
+    <value>Produkte</value>
+  </data>
+  <data name="Section_Index" xml:space="preserve">
+    <value>Persönliche Inflation</value>
+  </data>
+  <data name="Section_Regulars" xml:space="preserve">
+    <value>Stammprodukte</value>
+  </data>
+  <data name="None" xml:space="preserve">
+    <value>Noch keine Kassenbons mit Positionen. Preise erscheinen, sobald Kassenbons mit Positionen gelesen sind.</value>
+  </data>
+  <data name="Back" xml:space="preserve">
+    <value>Alle Produkte</value>
+  </data>
+  <data name="Times" xml:space="preserve">
+    <value>{0}× gekauft</value>
+  </data>
+  <data name="LastPrice" xml:space="preserve">
+    <value>letzter Preis</value>
+  </data>
+  <data name="Change12M" xml:space="preserve">
+    <value>12 Monate:</value>
+  </data>
+  <data name="Col_Date" xml:space="preserve">
+    <value>Datum</value>
+  </data>
+  <data name="Col_Name" xml:space="preserve">
+    <value>Name auf dem Bon</value>
+  </data>
+  <data name="Col_Quantity" xml:space="preserve">
+    <value>Menge</value>
+  </data>
+  <data name="Col_Price" xml:space="preserve">
+    <value>Preis</value>
+  </data>
+  <data name="Col_PerBase" xml:space="preserve">
+    <value>Pro kg/l</value>
+  </data>
+  <data name="Col_Total" xml:space="preserve">
+    <value>Summe</value>
+  </data>
+  <data name="Col_Product" xml:space="preserve">
+    <value>Produkt</value>
+  </data>
+  <data name="Col_Shop" xml:space="preserve">
+    <value>Geschäft</value>
+  </data>
+  <data name="Col_Times" xml:space="preserve">
+    <value>Gekauft</value>
+  </data>
+  <data name="Col_LastBought" xml:space="preserve">
+    <value>Zuletzt gekauft</value>
+  </data>
+  <data name="Col_LastPrice" xml:space="preserve">
+    <value>Letzter Preis</value>
+  </data>
+  <data name="Col_FirstPrice" xml:space="preserve">
+    <value>Erster Preis</value>
+  </data>
+  <data name="Col_Change" xml:space="preserve">
+    <value>Änderung</value>
+  </data>
+  <data name="Col_Interval" xml:space="preserve">
+    <value>Üblich</value>
+  </data>
+  <data name="Col_Period" xml:space="preserve">
+    <value>Zeitraum</value>
+  </data>
+  <data name="Col_Products" xml:space="preserve">
+    <value>Produkte</value>
+  </data>
+  <data name="Col_Monthly" xml:space="preserve">
+    <value>Pro Monat</value>
+  </data>
+  <data name="OpenReceipt" xml:space="preserve">
+    <value>Kassenbon öffnen</value>
+  </data>
+  <data name="Merge_Heading" xml:space="preserve">
+    <value>Mit anderem Produkt zusammenführen</value>
+  </data>
+  <data name="Merge_Help" xml:space="preserve">
+    <value>Wenn das Geschäft ein Produkt umbenannt hat, führe es mit dem anderen Namen zusammen: Die Käufe bilden dann einen Preisverlauf. Nur du siehst deine Zusammenführungen.</value>
+  </data>
+  <data name="Merge_Search" xml:space="preserve">
+    <value>Produkt desselben Geschäfts suchen</value>
+  </data>
+  <data name="Merge_Into" xml:space="preserve">
+    <value>Hiermit zusammenführen</value>
+  </data>
+  <data name="Unmerge" xml:space="preserve">
+    <value>Trennen</value>
+  </data>
+  <data name="Filter_Shop" xml:space="preserve">
+    <value>Geschäft</value>
+  </data>
+  <data name="Filter_AllShops" xml:space="preserve">
+    <value>Alle Geschäfte</value>
+  </data>
+  <data name="AllShops" xml:space="preserve">
+    <value>Alle Geschäfte</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>Produkte suchen</value>
+  </data>
+  <data name="Shown" xml:space="preserve">
+    <value>{0} von {1} Produkten</value>
+  </data>
+  <data name="Every" xml:space="preserve">
+    <value>alle ~{0} Tage</value>
+  </data>
+  <data name="Index_Help" xml:space="preserve">
+    <value>Ein Warenkorb aus den Produkten, die du in beiden Zeiträumen mindestens {0}-mal gekauft hast, gewichtet nach deinen Ausgaben im früheren Zeitraum: wie viel mehr (oder weniger) derselbe Einkauf jetzt kostet.</value>
+  </data>
+  <data name="Index_None" xml:space="preserve">
+    <value>Noch nicht genug wiederholte Käufe in zwei Zeiträumen.</value>
+  </data>
+  <data name="Period_12M" xml:space="preserve">
+    <value>Letzte 12 Monate ggü. den 12 davor</value>
+  </data>
+  <data name="Period_Year" xml:space="preserve">
+    <value>{0} ggü. Vorjahr</value>
+  </data>
+  <data name="Increases" xml:space="preserve">
+    <value>Größte Preiserhöhungen (letzte 12 Monate)</value>
+  </data>
+  <data name="Decreases" xml:space="preserve">
+    <value>Größte Preissenkungen (letzte 12 Monate)</value>
+  </data>
+  <data name="Regulars_Help" xml:space="preserve">
+    <value>Produkte, die du etwa monatlich oder öfter kaufst (letzte 12 Monate), mit ihren Kosten pro Monat.</value>
+  </data>
+  <data name="Regulars_None" xml:space="preserve">
+    <value>Noch keine Produkte, die mindestens monatlich gekauft werden.</value>
+  </data>
+  <data name="Regulars_Total" xml:space="preserve">
+    <value>Zusammen</value>
+  </data>
+  <data name="Chart_Label" xml:space="preserve">
+    <value>Preis</value>
+  </data>
+  <data name="Per_Kg" xml:space="preserve">
+    <value>/kg</value>
+  </data>
+  <data name="Per_Litre" xml:space="preserve">
+    <value>/l</value>
+  </data>
+  <data name="Shop_rewe" xml:space="preserve">
+    <value>REWE Lieferservice</value>
+  </data>
+  <data name="Shop_rewe-ebon" xml:space="preserve">
+    <value>REWE</value>
+  </data>
+  <data name="Shop_lidl" xml:space="preserve">
+    <value>Lidl</value>
+  </data>
+  <data name="Shop_amazon" xml:space="preserve">
+    <value>Amazon</value>
+  </data>
+</root>

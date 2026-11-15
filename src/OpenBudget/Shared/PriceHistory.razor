@@ -1,0 +1,418 @@
+@inherits DataChangeAwareComponent
+@using System.Globalization
+@using OpenBudget.Connectors.Receipts
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject PriceHistoryService Service
+@inject IJSRuntime JS
+@inject IStringLocalizer<PriceHistory> L
+
+@* The receipts page's "Prices" tab (PriceHistoryService): the products of the receipts the user sees with their price
+   history, the personal price index and the regular purchases. A product opens its detail: a price chart, its
+   purchases (each opens the receipt panel) and merging it with another product of the same shop. *@
+
+@if (error != null)
+{
+    <div class="alert alert-warning py-2" role="alert">@error</div>
+}
+
+<div class="segmented segmented-sm mb-3" role="tablist" aria-label="@L["Aria_Sections"]" data-testid="prices-sections">
+    @foreach (var s in Enum.GetValues<Section>())
+    {
+        <button type="button" role="tab" class="btn @(section == s ? "active" : "")" aria-selected="@(section == s)"
+                data-testid="@($"prices-section-{s.ToString().ToLowerInvariant()}")" @onclick="() => Show(s)">@L["Section_" + s]</button>
+    }
+</div>
+
+@if (view == null)
+{
+    <div class="skeleton skeleton-line mt-3" style="width: 40%;"></div>
+}
+else if (view.Products.Count == 0)
+{
+    <p class="small text-body-secondary" data-testid="prices-none">@L["None"]</p>
+}
+else if (section == Section.Products && selected is { } p)
+{
+    <section data-testid="price-detail" data-product="@p.Id">
+        <button type="button" class="btn btn-sm btn-link px-0 mb-2" data-testid="price-detail-back" @onclick="Back"><i class="bi bi-arrow-left" aria-hidden="true"></i> @L["Back"]</button>
+        <h2 class="h5 mb-1 text-break" data-testid="price-detail-name">@p.Name</h2>
+        <p class="small text-body-secondary mb-2">@ShopName(p.Shop) · @L["Times", p.TimesBought] · @L["LastPrice"]: <b class="text-body">@Price(p.Last)</b>
+            @if (p.Change12M(view.Today) is { } c)
+            {
+                <span class="@ChangeClass(c)"> (@L["Change12M"] @Percent(c))</span>
+            }
+        </p>
+        @if (p.Purchases.Count > 1)
+        {
+            <div class="card mb-3"><div class="card-body" style="position:relative;height:220px;"><canvas id="@CanvasId" data-testid="price-chart"></canvas></div></div>
+        }
+        <table class="table table-sm align-middle" data-testid="price-purchases">
+            <thead>
+                <tr>
+                    <th>@L["Col_Date"]</th>
+                    <th>@L["Col_Name"]</th>
+                    <th class="text-end">@L["Col_Quantity"]</th>
+                    <th class="text-end">@L["Col_Price"]</th>
+                    <th class="text-end d-none d-sm-table-cell">@L["Col_PerBase"]</th>
+                    <th class="text-end">@L["Col_Total"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var x in p.Purchases.Reverse())
+                {
+                    <tr data-testid="price-purchase">
+                        <td class="text-nowrap"><button type="button" class="btn btn-link btn-sm p-0" data-testid="price-purchase-receipt" title="@L["OpenReceipt"]"
+                                                        @onclick="() => openReceipt = x.ReceiptId">@Date(x.Date)</button></td>
+                        <td class="text-break small">@x.Name</td>
+                        <td class="text-end text-nowrap">@Quantity(x)</td>
+                        <td class="text-end text-nowrap">@Price(x)</td>
+                        <td class="text-end text-nowrap d-none d-sm-table-cell">@(x.Weighed || x.BaseCents == null ? "" : Money(x.BaseCents.Value) + Per(x.BaseUnit))</td>
+                        <td class="text-end text-nowrap">@Money(x.TotalCents)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <details class="mb-3" data-testid="price-merge">
+            <summary class="small">@L["Merge_Heading"]</summary>
+            <div class="pt-2">
+                <p class="small text-body-secondary">@L["Merge_Help"]</p>
+                @if (p.MergedKeys.Count > 1)
+                {
+                    <ul class="list-unstyled small mb-2" data-testid="price-merged">
+                        @foreach (var k in p.MergedKeys.Where(k => k != p.Id))
+                        {
+                            <li class="d-flex align-items-center gap-2">
+                                <span class="text-break">@k[(p.Shop.Length + 1)..]</span>
+                                <button type="button" class="btn btn-sm btn-link p-0" data-testid="price-unmerge" @onclick="() => RunAsync(() => Service.UnmergeAsync(k))">@L["Unmerge"]</button>
+                            </li>
+                        }
+                    </ul>
+                }
+                <input type="search" class="form-control form-control-sm mb-2" style="max-width: 20rem;" placeholder="@L["Merge_Search"]" aria-label="@L["Merge_Search"]"
+                       data-testid="price-merge-search" @bind="mergeSearch" @bind:event="oninput" />
+                @if (!string.IsNullOrWhiteSpace(mergeSearch))
+                {
+                    <ul class="list-unstyled small">
+                        @foreach (var o in view.Products.Where(o => o.Shop == p.Shop && o.Id != p.Id && SearchText.Matches(PriceAnalysis.SearchKey(o), mergeSearch)).Take(8))
+                        {
+                            <li class="d-flex align-items-center gap-2 mb-1" data-testid="price-merge-candidate">
+                                <span class="text-break">@o.Name</span>
+                                <span class="text-body-secondary">(@o.TimesBought×)</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0" data-testid="price-merge-into" @onclick="() => MergeAsync(p, o)">@L["Merge_Into"]</button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </details>
+    </section>
+}
+else if (section == Section.Products)
+{
+    var list = view.Products.Where(x => (shop == null || x.Shop == shop) && SearchText.Matches(PriceAnalysis.SearchKey(x), search)).ToList();
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <select class="form-select form-select-sm w-auto" aria-label="@L["Filter_Shop"]" data-testid="prices-filter-shop"
+                value="@(shop ?? "")" @onchange="e => shop = e.Value?.ToString() is { Length: > 0 } v ? v : null">
+            <option value="">@L["Filter_AllShops"]</option>
+            @foreach (var s in view.Products.Select(x => x.Shop).Distinct().Order(StringComparer.Ordinal))
+            {
+                <option value="@s">@ShopName(s)</option>
+            }
+        </select>
+        <input type="search" class="form-control form-control-sm" style="max-width: 20rem;" placeholder="@L["Search"]" aria-label="@L["Search"]"
+               data-testid="prices-search" @bind="search" @bind:event="oninput" />
+        <span class="small text-body-secondary" data-testid="prices-shown">@L["Shown", Math.Min(list.Count, MaxRows), list.Count]</span>
+    </div>
+    <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle" data-testid="prices-table">
+        <thead>
+            <tr>
+                <th>@L["Col_Product"]</th>
+                <th class="d-none d-md-table-cell">@L["Col_Shop"]</th>
+                <th class="text-end">@L["Col_Times"]</th>
+                <th class="d-none d-md-table-cell">@L["Col_LastBought"]</th>
+                <th class="text-end">@L["Col_LastPrice"]</th>
+                <th class="text-end d-none d-lg-table-cell">@L["Col_FirstPrice"]</th>
+                <th class="text-end">@L["Col_Change"]</th>
+                <th class="d-none d-lg-table-cell">@L["Col_Interval"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var x in list.Take(MaxRows))
+            {
+                var change = x.Change12M(view.Today);
+                <tr role="button" data-testid="price-row" data-product="@x.Id" @onclick="() => Select(x)">
+                    <td class="text-break">@x.Name</td>
+                    <td class="d-none d-md-table-cell">@ShopName(x.Shop)</td>
+                    <td class="text-end">@x.TimesBought</td>
+                    <td class="d-none d-md-table-cell text-nowrap">@Date(x.Last.Date)</td>
+                    <td class="text-end text-nowrap">@Price(x.Last)</td>
+                    <td class="text-end text-nowrap d-none d-lg-table-cell">@Price(x.First)</td>
+                    <td class="text-end text-nowrap @(change is { } c ? ChangeClass(c) : "")" data-testid="price-row-change">@(change is { } c2 ? Percent(c2) : "–")</td>
+                    <td class="d-none d-lg-table-cell small text-body-secondary">@(x.TypicalIntervalDays() is { } d ? L["Every", Math.Round(d)].Value : "")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    </div>
+}
+else if (section == Section.Index)
+{
+    <p class="small text-body-secondary">@L["Index_Help", PriceAnalysis.IndexMinPurchases]</p>
+    @if (view.Index.Rows.Count == 0)
+    {
+        <p class="small text-body-secondary" data-testid="price-index-none">@L["Index_None"]</p>
+    }
+    else
+    {
+        <table class="table table-sm align-middle" style="max-width: 36rem;" data-testid="price-index">
+            <thead>
+                <tr><th>@L["Col_Period"]</th><th>@L["Col_Shop"]</th><th class="text-end">@L["Col_Change"]</th><th class="text-end">@L["Col_Products"]</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var r in view.Index.Rows)
+                {
+                    <tr data-testid="price-index-row" data-period="@r.Label" data-shop="@(r.Shop ?? "all")" class="@(r.Shop == null ? "fw-semibold" : "")">
+                        <td>@(r.Label == "12M" ? L["Period_12M"].Value : L["Period_Year", r.Label].Value)</td>
+                        <td>@(r.Shop == null ? L["AllShops"].Value : ShopName(r.Shop))</td>
+                        <td class="text-end @ChangeClass(r.Change)" data-testid="price-index-value">@Percent(r.Change)</td>
+                        <td class="text-end">@r.Products</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="row g-3">
+            @foreach (var (title, movers, id) in new[] { (L["Increases"].Value, view.Index.Increases, "up"), (L["Decreases"].Value, view.Index.Decreases, "down") })
+            {
+                <div class="col-12 col-lg-6" data-testid="@($"price-movers-{id}")">
+                    <h3 class="h6">@title</h3>
+                    @if (movers.Count == 0)
+                    {
+                        <p class="small text-body-secondary">–</p>
+                    }
+                    <ul class="list-unstyled small">
+                        @foreach (var m in movers)
+                        {
+                            <li class="d-flex gap-2 mb-1">
+                                <button type="button" class="btn btn-link btn-sm p-0 text-start text-break flex-grow-1" @onclick="() => SelectId(m.ProductId)">@m.Name</button>
+                                <span class="text-nowrap text-body-secondary">@Money(m.Before) → @Money(m.After)</span>
+                                <span class="text-nowrap @ChangeClass(m.Change)">@Percent(m.Change)</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+    }
+}
+else
+{
+    <p class="small text-body-secondary">@L["Regulars_Help"]</p>
+    @if (view.Regulars.Count == 0)
+    {
+        <p class="small text-body-secondary" data-testid="price-regulars-none">@L["Regulars_None"]</p>
+    }
+    else
+    {
+        <table class="table table-sm align-middle" data-testid="price-regulars">
+            <thead>
+                <tr><th>@L["Col_Product"]</th><th class="d-none d-md-table-cell">@L["Col_Shop"]</th><th>@L["Col_Interval"]</th><th class="text-end">@L["Col_Monthly"]</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var r in view.Regulars)
+                {
+                    <tr role="button" data-testid="price-regular" @onclick="() => SelectId(r.ProductId)">
+                        <td class="text-break">@r.Name</td>
+                        <td class="d-none d-md-table-cell">@ShopName(r.Shop)</td>
+                        <td class="small text-nowrap">@L["Every", Math.Round(r.IntervalDays)]</td>
+                        <td class="text-end text-nowrap">@Money(r.MonthlyCents)</td>
+                    </tr>
+                }
+                <tr class="fw-semibold"><td colspan="2" class="d-none d-md-table-cell">@L["Regulars_Total"]</td><td class="d-md-none">@L["Regulars_Total"]</td><td></td>
+                    <td class="text-end text-nowrap" data-testid="price-regulars-total">@Money(view.Regulars.Sum(r => r.MonthlyCents))</td></tr>
+            </tbody>
+        </table>
+    }
+}
+
+<ReceiptPanel ReceiptId="openReceipt" OnClose="_ => openReceipt = null" />
+
+@code {
+    private enum Section { Products, Index, Regulars }
+
+    private const int MaxRows = 300;
+    private const string CanvasId = "priceHistoryChart";
+
+    private Section section;
+    private PriceHistoryView? view;
+    private ProductHistory? selected;
+    private string? search;
+    private string? shop;
+    private string? mergeSearch;
+    private long? openReceipt;
+    private string? userId;
+    private string? error;
+    private bool chartPending;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override bool IsRelevantChange(DataChange change) =>
+        (change.Area == DataArea.CloudFiles && change.UserId == userId) || change.Area == DataArea.ImportedData;
+
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        userId = (await Access.GetAsync()).UserId;
+        if (userId == null) return;
+        view = await Service.GetAsync();
+        if (selected != null) SelectId(selected.Id, keepSection: true);
+    }
+
+    private void Show(Section s)
+    {
+        section = s;
+        if (s == Section.Products && selected != null) chartPending = true;
+    }
+
+    private void Select(ProductHistory p)
+    {
+        selected = p;
+        section = Section.Products;
+        mergeSearch = null;
+        chartPending = true;
+    }
+
+    private void SelectId(string id, bool keepSection = false)
+    {
+        var p = view?.Products.FirstOrDefault(x => x.Id == id || x.MergedKeys.Contains(id));
+        if (p == null)
+        {
+            selected = null;
+            return;
+        }
+        if (keepSection)
+        {
+            selected = p;
+            chartPending = true;
+        }
+        else Select(p);
+    }
+
+    private async Task Back()
+    {
+        selected = null;
+        await DestroyChartAsync();
+    }
+
+    private async Task MergeAsync(ProductHistory from, ProductHistory into)
+    {
+        await RunAsync(() => Service.MergeAsync(from.Id, into.Id));
+        if (error == null) SelectId(into.Id);
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        error = null;
+        try
+        {
+            await action();
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!chartPending) return;
+        chartPending = false;
+        if (section != Section.Products || selected is not { Purchases.Count: > 1 } p) return;
+        var points = p.Purchases.Select(x => new { x = x.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), y = x.Price / 100m }).ToArray();
+        var label = L["Chart_Label"].Value;
+        var chartData = new
+        {
+            type = "line",
+            data = new
+            {
+                labels = points.Select(x => Date(DateOnly.ParseExact(x.x, "yyyy-MM-dd", CultureInfo.InvariantCulture))).ToArray(),
+                datasets = new object[]
+                {
+                    new
+                    {
+                        label,
+                        data = points.Select(x => x.y).ToArray(),
+                        borderColor = ChartPalette.WithAlpha(ChartPalette.Templates(2)[1], 1),
+                        backgroundColor = ChartPalette.WithAlpha(ChartPalette.Templates(2)[1], 0.15),
+                        borderWidth = 2,
+                        stepped = true,
+                        pointRadius = 2,
+                        pointHoverRadius = 4,
+                    },
+                },
+            },
+            options = new
+            {
+                responsive = true,
+                maintainAspectRatio = false,
+                animation = false,
+                interaction = new { mode = "index", intersect = false },
+                plugins = new
+                {
+                    legend = new { display = false },
+                    tooltip = new { mode = "index", intersect = false, callbacks = new { label = new { kind = "localizedEuroLabel", label } } },
+                },
+                scales = new
+                {
+                    x = new { ticks = new { autoSkip = true, maxTicksLimit = 6, maxRotation = 0 }, grid = new { display = false } },
+                    y = new { ticks = new { callback = new { kind = "euroTicks", decimals = 2 } } },
+                },
+            },
+        };
+        try { await JS.InvokeVoidAsync("renderChart", CanvasId, chartData); }
+        catch (JSDisconnectedException) { /* circuit already gone */ }
+        catch (JSException) { /* render raced a teardown or charts.js not loaded yet */ }
+        catch (InvalidOperationException) { /* JS unreachable during prerender */ }
+    }
+
+    private async Task DestroyChartAsync()
+    {
+        try { await JS.InvokeVoidAsync("destroyChart", CanvasId); }
+        catch (JSDisconnectedException) { /* circuit already gone */ }
+        catch (JSException) { /* render raced a teardown or charts.js not loaded yet */ }
+        catch (InvalidOperationException) { /* JS unreachable during prerender */ }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _ = DestroyChartAsync();
+        base.Dispose(disposing);
+    }
+
+    private string ShopName(string s) => L["Shop_" + s] is { ResourceNotFound: false } n ? n.Value : s;
+
+    private static string Money(long cents) => Formatting.FormatMoneyDe(cents / 100m);
+
+    private string Per(PriceUnit unit) => unit switch
+    {
+        PriceUnit.Kg => L["Per_Kg"].Value,
+        PriceUnit.Litre => L["Per_Litre"].Value,
+        _ => "",
+    };
+
+    private string Price(Purchase x) => Money(x.Price) + (x.Weighed ? Per(PriceUnit.Kg) : "");
+
+    private static string Quantity(Purchase x) => x.Weighed
+        ? (x.Quantity * 1000m).ToString("0", CultureInfo.CurrentCulture) + " g"
+        : x.Quantity.ToString("0.###", CultureInfo.CurrentCulture);
+
+    private static string Date(DateOnly d) => d.ToString("d", CultureInfo.CurrentCulture);
+
+    private static string Percent(decimal f) => (f > 0 ? "+" : f < 0 ? "−" : "") + Math.Abs(f).ToString("P1", CultureInfo.CurrentCulture);
+
+    private static string ChangeClass(decimal f) => f > 0.005m ? "text-danger" : f < -0.005m ? "text-success" : "";
+}
