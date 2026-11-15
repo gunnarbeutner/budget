@@ -53,7 +53,6 @@ public static class AmazonReceiptStore
         IsUnbookablePaymentMethod = AmazonPages.IsPointsLabel,
         InstalmentFullPrices = ofOrder => InstalmentPlans(ofOrder).Select(p => p.Full),
         ItemsPerOrder = true,
-        ProductKeyLength = 50,
         DisplayName = (_, orderNumber, others) => ("Amazon " + string.Join(", ", ReceiptInvoice.OrderNumbersOf(orderNumber, others))).Trim(),
     };
 

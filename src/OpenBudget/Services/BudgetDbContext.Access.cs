@@ -82,8 +82,6 @@ public partial class BudgetDbContext
         modelBuilder.Entity<ProjectReceiptCategory>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<ProjectReceiptSource>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<ReceiptSourceAccount>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
-        modelBuilder.Entity<ReceiptProductMerge>().HasQueryFilter(m => ScopeUnrestricted || m.OwnerUserId == ScopeUserId);
-        modelBuilder.Entity<ReceiptProductIdentity>().HasQueryFilter(i => ScopeUnrestricted || i.OwnerUserId == ScopeUserId);
         // Read marks, dismissed recurring series and the order of the project list are personal.
         modelBuilder.Entity<UserProjectOrder>().HasQueryFilter(o => ScopeUnrestricted || o.UserId == ScopeUserId);
         modelBuilder.Entity<StatementRead>().HasQueryFilter(r => ScopeUnrestricted || r.UserId == ScopeUserId);

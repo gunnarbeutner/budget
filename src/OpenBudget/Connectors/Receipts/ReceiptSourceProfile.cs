@@ -68,12 +68,6 @@ public sealed record ReceiptSourceProfile
     /// <summary>Whether an order's items are listed with each of its charges' receipts (one purchase per order and position).</summary>
     public bool ItemsPerOrder { get; init; }
 
-    /// <summary>Product keys are cut to this many characters at a word (long, varying titles); null: not cut.</summary>
-    public int? ProductKeyLength { get; init; }
-
-    /// <summary>Whether the shop's receipts count as grocery shopping.</summary>
-    public bool Groceries { get; init; }
-
     /// <summary>A text of which a booking's purpose carrying it is preferred over other fitting bookings (null: none).</summary>
     public Func<ReceiptToMatch, string?> PreferredPurposeToken { get; init; } = _ => null;
 
@@ -114,7 +108,6 @@ public sealed class ReceiptSourceProfiles
         MaxDaysBefore = _byShop.Values.Select(p => p.DaysBefore).DefaultIfEmpty(0).Max();
         MaxDaysAfter = _byShop.Values.Select(p => p.MaxPendingDaysAfter).DefaultIfEmpty(0).Max();
         InstalmentShops = _byShop.Values.Where(p => p.HasInstalments).Select(p => p.Shop).ToList();
-        GroceryShops = _byShop.Values.Where(p => p.Groceries).Select(p => p.Shop).ToHashSet(StringComparer.Ordinal);
         MailShops = _byShop.Values.Where(p => p.MailSubjectPrefix != null).Select(p => p.Shop).ToList();
         MappedSources = _byShop.Values.Where(p => !p.PerPaymentMethod).Select(p => p.SourceKey).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
     }
@@ -144,9 +137,6 @@ public sealed class ReceiptSourceProfiles
 
     /// <summary>The shops whose orders may be paid in instalments.</summary>
     public IReadOnlyList<string> InstalmentShops { get; }
-
-    /// <summary>The shops whose receipts count as grocery shopping.</summary>
-    public IReadOnlySet<string> GroceryShops { get; }
 
     /// <summary>Whether the shop's receipts carry payment methods mapped one by one (see <see cref="ReceiptSourceProfile.PerPaymentMethod"/>).</summary>
     public bool PerPaymentMethod(string shop) => For(shop)?.PerPaymentMethod == true;

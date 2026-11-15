@@ -91,8 +91,6 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<ProjectReceiptCategory> ProjectReceiptCategories => Set<ProjectReceiptCategory>();
     public DbSet<ProjectReceiptSource> ProjectReceiptSources => Set<ProjectReceiptSource>();
     public DbSet<ReceiptSourceAccount> ReceiptSourceAccounts => Set<ReceiptSourceAccount>();
-    public DbSet<ReceiptProductMerge> ReceiptProductMerges => Set<ReceiptProductMerge>();
-    public DbSet<ReceiptProductIdentity> ReceiptProductIdentities => Set<ReceiptProductIdentity>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -390,11 +388,6 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         // A source's mapping goes with the account.
         modelBuilder.Entity<ReceiptSourceAccount>().HasOne<Account>().WithMany().HasForeignKey(c => c.AccountId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<ReceiptSourceAccount>().HasIndex(c => new { c.OwnerUserId, c.Source, c.AccountId }).IsUnique();
-        modelBuilder.Entity<ReceiptProductMerge>().HasIndex(m => new { m.OwnerUserId, m.Shop, m.FromKey }).IsUnique();
-        modelBuilder.Entity<ReceiptProductIdentity>().HasIndex(i => new { i.OwnerUserId, i.Shop, i.NameKey }).IsUnique();
-        modelBuilder.Entity<ReceiptProductIdentity>().Property(i => i.Unit).HasConversion<int?>();
-        modelBuilder.Entity<ReceiptProductIdentity>().Property(i => i.Kind).HasConversion<int>();
-        modelBuilder.Entity<ReceiptProductIdentity>().Property(i => i.Source).HasConversion<int>();
 
         ConfigureAccessFilters(modelBuilder);
     }

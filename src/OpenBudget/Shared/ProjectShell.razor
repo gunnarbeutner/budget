@@ -14,7 +14,7 @@
 @inject IStringLocalizer<ProjectShell> L
 @implements IDisposable
 
-@* The frame of every project view (Transactions, Budget, Cashflow, Scheduled, Portfolio, Documents, Receipts, Prices): the left
+@* The frame of every project view (Transactions, Budget, Cashflow, Scheduled, Portfolio, Documents, Receipts): the left
    sidebar — the project's views on top, then the Accounts and Categories trees — and the main column, which
    the page fills with its 48px toolbar and its content. The sidebar is the only project navigation: its width
    is the shared --ob-sidebar-w (drag handle .browse-resizer, see uiBehaviors.js); below md it becomes an
@@ -50,7 +50,6 @@
             @ViewLink(ProjectTab.Portfolio, $"/projects/{ProjectId}/portfolio", "bi-pie-chart", L["View_Portfolio"], null, "view-portfolio")
             @ViewLink(ProjectTab.Documents, DocumentsUrl, "bi-file-earmark-text", L["View_Documents"], unreadDocs > 0 ? L["Documents_New", unreadDocs].Value : null, "view-documents")
             @ViewLink(ProjectTab.Receipts, ReceiptsUrl, "bi-receipt", L["View_Receipts"], reviewReceipts > 0 ? L["Receipts_Review", reviewReceipts].Value : null, "view-receipts")
-            @ViewLink(ProjectTab.Prices, PricesUrl, "bi-tags", L["View_Prices"], null, "view-prices")
         </nav>
 
         @if (Rail != null)
@@ -107,7 +106,6 @@
     @BottomLink(ProjectTab.Budgets, BudgetUrl, "bi-calendar3", L["View_Budget"])
     @BottomLink(ProjectTab.Documents, DocumentsUrl, "bi-file-earmark-text", L["View_Documents"], unreadDocs)
     @BottomLink(ProjectTab.Receipts, ReceiptsUrl, "bi-receipt", L["View_Receipts"], reviewReceipts)
-    @BottomLink(ProjectTab.Prices, PricesUrl, "bi-tags", L["View_Prices"])
 </nav>
 
 @code {
@@ -146,7 +144,6 @@
     private string BudgetUrl => $"/projects/{ProjectId}/budgets?{PeriodQuery}";
     private string DocumentsUrl => $"/projects/{ProjectId}/documents";
     private string ReceiptsUrl => $"/projects/{ProjectId}/receipts";
-    private string PricesUrl => $"/projects/{ProjectId}/prices";
     private int unreadDocs;
     private int reviewReceipts;
 

@@ -37,13 +37,11 @@ public sealed record DatedReceiptLine(ReceiptLine Line, DateOnly Date, string Sh
 public sealed class ReceiptStore
 {
     private readonly IReceiptItemClassifier? _ai;
-    private readonly Action<string>? _matched;
 
-    /// <summary>A store with the optional AI for item categories, telling <paramref name="matched"/> the owner after each <see cref="MatchAsync"/>.</summary>
-    public ReceiptStore(IReceiptItemClassifier? ai = null, Action<string>? matched = null)
+    /// <summary>A store with the optional AI for item categories.</summary>
+    public ReceiptStore(IReceiptItemClassifier? ai = null)
     {
         _ai = ai;
-        _matched = matched;
     }
 
     /// <summary>Stores a parsed receipt for the owner; false when it is known already (same shop and invoice number).</summary>
@@ -121,7 +119,6 @@ public sealed class ReceiptStore
         {
             foreach (var gate in held) gate.Release();
         }
-        _matched?.Invoke(ownerUserId);
     }
 
     /// <summary>
