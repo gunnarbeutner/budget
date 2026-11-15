@@ -595,7 +595,7 @@
         ? (x.Quantity * 1000m).ToString("0", CultureInfo.CurrentCulture) + " g"
         : x.Quantity.ToString("0.###", CultureInfo.CurrentCulture);
 
-    private static string Date(DateOnly d) => d.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+    private static string Date(DateOnly d) => d.ToAppDate();
 
     private static string Month(DateOnly d) => d.ToString("MMM yyyy", CultureInfo.CurrentCulture);
 
