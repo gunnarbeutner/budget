@@ -7,7 +7,7 @@
 
 @* The Positions section's value chart: the total value of the project's depots over the selected period (their
    stored daily history carried forward, today their current value) with the change over that period. Hidden while
-   no depot has stored history. *@
+   no depot has stored history or every value is zero. *@
 
 @if (series is { Points.Count: > 1 } s)
 {
@@ -71,7 +71,9 @@
     private void Rebuild()
     {
         var today = DateTime.Today;
-        series = history.Count == 0 ? null
+        // Without any value ever (all stored history and the current total zero) there is nothing to chart.
+        var anyValue = CurrentTotal != 0m || history.Values.Any(h => h.Any(p => p.Value != 0m));
+        series = !anyValue ? null
             : PortfolioValueHistory.Build(history, CurrentTotal, today, PortfolioValueHistory.PeriodStart(period, today));
         renderPending = true;
     }

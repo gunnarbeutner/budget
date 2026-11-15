@@ -24,8 +24,39 @@ window.obMoney = function (v, decimals) {
     const d = typeof decimals === 'number' ? decimals : 2;
     const n = Number(v);
     const abs = Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
-    return (n < 0 ? '\u2212' : '') + abs + '\u00A0€';
+    // A value that rounds to zero carries no sign ("0 €", never "−0 €").
+    const negative = n < 0 && Math.abs(n) >= 0.5 * Math.pow(10, -d);
+    return (negative ? '\u2212' : '') + abs + '\u00A0€';
 };
+
+// Decimals a money axis needs so that ticks spaced `step` apart get distinct labels: at least
+// `min`, at most 2 (cents).
+window.obAxisDecimals = function (step, min) {
+    const base = typeof min === 'number' ? min : 0;
+    if (!(step > 0) || !isFinite(step)) return base;
+    const needed = Math.max(0, Math.ceil(-Math.log10(step) - 1e-9));
+    return Math.min(2, Math.max(base, needed));
+};
+
+// Shapes a money y axis: ticks step by whole units of its decimals (so no two ticks round to the
+// same label), and a series without range (all values equal) gets a padded range: 0 to 1 € when
+// everything is zero, otherwise the Chart.js default of ±5 % around the value.
+function fitMoneyAxis(chartData, decimals) {
+    const y = chartData.options.scales.y;
+    y.ticks.precision ??= decimals;
+    let lo = Infinity, hi = -Infinity;
+    for (const ds of chartData.data?.datasets || []) {
+        for (const v of ds.data || []) {
+            const n = typeof v === 'object' && v !== null ? v.y : v;
+            if (n === null || n === undefined || !isFinite(n)) continue;
+            lo = Math.min(lo, n); hi = Math.max(hi, n);
+        }
+    }
+    if (lo === hi && lo === 0 && y.min === undefined && y.max === undefined) {
+        y.suggestedMin ??= 0;
+        y.suggestedMax ??= 1;
+    }
+}
 
 // Date format used app-wide in both UI languages ("15.11.2026"), matching Formatting.ToAppDate on the server.
 window.obDate = function (dt) {
@@ -35,9 +66,13 @@ window.obDate = function (dt) {
 
 const chartCallbackFactories = {
     // y-axis tick / value formatter: German money with p.decimals places (default 0).
+    // More decimals are used when the ticks are closer together than that, so labels stay distinct.
     euroTicks: function (p) {
         const d = (p && typeof p.decimals === 'number') ? p.decimals : 0;
-        return function (value) { return window.obMoney(value, d); };
+        return function (value, index, ticks) {
+            const step = ticks && ticks.length > 1 ? Math.abs(ticks[1].value - ticks[0].value) : 0;
+            return window.obMoney(value, window.obAxisDecimals(step, d));
+        };
     },
     // tooltip label: "<dataset label>: <money>".
     datasetEuroLabel: function () {
@@ -103,7 +138,12 @@ function resolveChartCallbacks(chartData) {
     const tt = chartData.options?.plugins?.tooltip;
     if (tt && tt.filter) tt.filter = resolveChartCallback(tt.filter);
     const yticks = chartData.options?.scales?.y?.ticks;
-    if (yticks && yticks.callback) yticks.callback = resolveChartCallback(yticks.callback);
+    if (yticks && yticks.callback) {
+        if (yticks.callback.kind === 'euroTicks') {
+            fitMoneyAxis(chartData, typeof yticks.callback.decimals === 'number' ? yticks.callback.decimals : 0);
+        }
+        yticks.callback = resolveChartCallback(yticks.callback);
+    }
 }
 
 // Open the native picker on a date/month input that's visually hidden — used to make

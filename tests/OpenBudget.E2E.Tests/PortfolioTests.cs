@@ -164,4 +164,63 @@ public sealed class PortfolioTests : EndToEndTestBase
         await Expect(chart).ToHaveAttributeAsync("data-start", first.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
         await Expect(Page.GetByTestId("portfolio-period-max")).ToHaveAttributeAsync("aria-pressed", "true");
     }
+
+    [Test]
+    public async Task A_depot_without_positions_or_value_shows_the_empty_state_without_a_chart()
+    {
+        await using (var db = await Db.CreateDbContextAsync())
+        {
+            db.Accounts.Add(new Account { Id = DepotId, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Depot", Type = 7, Currency = "EUR" });
+            await db.SaveChangesAsync();
+            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = Pid, AccountId = DepotId });
+            var noon = new DateTimeOffset(DateTime.Today.AddMonths(-3).Year, DateTime.Today.AddMonths(-3).Month, 1, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+            db.PortfolioChartPoints.Add(new PortfolioChartPoint { OwnerUserId = E2ESeed.OwnerUserId, AccountId = DepotId, Timestamp = noon, Balance = 0 });
+            await db.SaveChangesAsync();
+        }
+
+        await GoToAsync($"/projects/{Pid}/portfolio");
+
+        await Expect(Page.GetByTestId("portfolio-empty")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("portfolio-value-chart")).ToHaveCountAsync(0);
+    }
+
+    [Test]
+    public async Task Money_axes_without_range_get_distinct_labels_and_no_negative_zero()
+    {
+        await GoToAsync($"/projects/{Pid}/portfolio");
+        await Page.WaitForFunctionAsync("() => typeof window.renderChart === 'function' && typeof Chart !== 'undefined'");
+
+        // Renders a line chart with a whole-euro money axis into a scratch canvas and returns its y tick labels.
+        const string labelsFor = """
+            (values) => {
+                const box = document.createElement('div');
+                box.style.cssText = 'position:relative;width:400px;height:220px';
+                const canvas = document.createElement('canvas');
+                canvas.id = 'axisProbe' + Math.random().toString(36).slice(2);
+                box.appendChild(canvas);
+                document.body.appendChild(box);
+                window.renderChart(canvas.id, {
+                    type: 'line',
+                    data: { labels: values.map((_, i) => String(i)), datasets: [{ label: 'x', data: values }] },
+                    options: { responsive: true, maintainAspectRatio: false, animation: false,
+                               scales: { y: { ticks: { callback: { kind: 'euroTicks', decimals: 0 } } } } }
+                });
+                const c = Chart.getChart(canvas.id);
+                const labels = c.scales.y.ticks.map(t => t.label);
+                window.destroyChart(canvas.id);
+                box.remove();
+                return labels;
+            }
+            """;
+        foreach (var values in new[] { new[] { 0.0, 0.0, 0.0 }, new[] { 0.3, 0.3 }, new[] { 0.0, 0.4, 0.2 }, new[] { -0.2, 0.0 }, new[] { 5.0, 5.0 } })
+        {
+            var labels = await Page.EvaluateAsync<string[]>(labelsFor, values);
+            Assert.That(labels, Has.Length.GreaterThan(1), string.Join(", ", values));
+            Assert.That(labels, Is.Unique, string.Join(" | ", labels));
+            Assert.That(labels, Has.None.StartsWith("\u22120"), string.Join(" | ", labels));
+        }
+        // All zero: a 0 € baseline with room above, nothing below.
+        var zero = await Page.EvaluateAsync<string[]>(labelsFor, new[] { 0.0, 0.0 });
+        Assert.That(zero, Has.None.StartsWith("\u2212"), string.Join(" | ", zero));
+    }
 }
