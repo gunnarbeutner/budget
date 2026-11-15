@@ -10,6 +10,7 @@ public enum ProjectTab
     Budgets,
     Cashflow,
     Scheduled,
+    Recurring,
     Portfolio,
     Documents,
     Receipts,

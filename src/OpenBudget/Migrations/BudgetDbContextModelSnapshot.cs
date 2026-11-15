@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261115082924_ReceiptProductMerges";
+    public override string LastMigrationId => "20261115082937_RecurringDismissals";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -1977,6 +1977,24 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.ToTable("receipt_source_accounts");
             });
 
+        modelBuilder.Entity("OpenBudget.Models.RecurringDismissal", b =>
+            {
+                b.Property<string>("OwnerUserId")
+                    .HasMaxLength(450)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("SeriesKey")
+                    .HasMaxLength(500)
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime>("CreatedAt")
+                    .HasColumnType("TEXT");
+
+                b.HasKey("OwnerUserId", "SeriesKey");
+
+                b.ToTable("recurring_dismissals");
+            });
+
         modelBuilder.Entity("OpenBudget.Models.RemovedImportItem", b =>
             {
                 b.Property<int>("Id")
@@ -2709,6 +2727,15 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.HasOne("OpenBudget.Models.Account", null)
                     .WithMany()
                     .HasForeignKey("AccountId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.RecurringDismissal", b =>
+            {
+                b.HasOne("OpenBudget.Models.AppUser", null)
+                    .WithMany()
+                    .HasForeignKey("OwnerUserId")
                     .OnDelete(DeleteBehavior.Cascade)
                     .IsRequired();
             });

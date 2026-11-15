@@ -12,8 +12,9 @@
 
 @* The Scheduled view of a project: the standing orders and future-dated transfers the banks reported for the
    project's accounts at the last sync, plus the expected instalments of running Amazon plans paid from them (an
-   estimated day, opening the order's receipt), soonest first, with filters in the URL
-   (?kind=standing|scheduled|instalment, ?account=<id>). Read-only: orders are managed at the bank. *@
+   estimated day, opening the order's receipt) and the next expected charge of each active recurring series (an
+   estimated day, see Recurring), soonest first, with filters in the URL
+   (?kind=standing|scheduled|instalment|recurring, ?account=<id>). Read-only: orders are managed at the bank. *@
 
 <PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
 
@@ -40,6 +41,7 @@
                 <option value="scheduled" selected="@(kind == "scheduled")">@L["Kind_Scheduled"]</option>
                 <option value="standing" selected="@(kind == "standing")">@L["Kind_Standing"]</option>
                 <option value="instalment" selected="@(kind == "instalment")">@L["Kind_Instalment"]</option>
+                <option value="recurring" selected="@(kind == "recurring")">@L["Kind_Recurring"]</option>
             </select>
             <select class="form-select form-select-sm docs-select docs-select-wide" aria-label="@L["Filter_Account"]" data-testid="scheduled-account"
                     @onchange="e => SetFilter(account: e.Value?.ToString())">
@@ -85,7 +87,7 @@
             {
                 <li class="sched-row" @key="item.Id" data-testid="scheduled-row" data-kind="@KindKey(item.Kind)">
                     <div class="sched-date">
-                        <div class="fw-semibold" data-testid="scheduled-date">@(item.Kind == ScheduledPaymentKind.Instalment ? "~" : "")@item.NextDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</div>
+                        <div class="fw-semibold" data-testid="scheduled-date">@(item.Kind is ScheduledPaymentKind.Instalment or ScheduledPaymentKind.Recurring ? "~" : "")@item.NextDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</div>
                         <div class="small text-body-secondary" data-testid="scheduled-in">@InDays(item.NextDate)</div>
                     </div>
                     <div class="sched-main min-w-0">
@@ -96,7 +98,7 @@
                         }
                         <div class="small text-body-secondary sched-meta">
                             <span class="sched-rhythm" data-testid="scheduled-rhythm">
-                                <i class="bi @(item.Kind switch { ScheduledPaymentKind.Standing => "bi-arrow-repeat", ScheduledPaymentKind.Instalment => "bi-receipt", _ => "bi-calendar-event" }) me-1" aria-hidden="true"></i>@Rhythm(item)
+                                <i class="bi @(item.Kind switch { ScheduledPaymentKind.Standing => "bi-arrow-repeat", ScheduledPaymentKind.Instalment => "bi-receipt", ScheduledPaymentKind.Recurring => "bi-arrow-clockwise", _ => "bi-calendar-event" }) me-1" aria-hidden="true"></i>@Rhythm(item)
                             </span>
                             @if (item.ReceiptId is { } receipt)
                             {
@@ -141,6 +143,7 @@
     {
         ScheduledPaymentKind.Standing => "standing",
         ScheduledPaymentKind.Instalment => "instalment",
+        ScheduledPaymentKind.Recurring => "recurring",
         _ => "scheduled",
     };
 
@@ -155,6 +158,7 @@
         if (kind == "standing") q = q.Where(i => i.Kind == ScheduledPaymentKind.Standing);
         else if (kind == "scheduled") q = q.Where(i => i.Kind == ScheduledPaymentKind.Scheduled);
         else if (kind == "instalment") q = q.Where(i => i.Kind == ScheduledPaymentKind.Instalment);
+        else if (kind == "recurring") q = q.Where(i => i.Kind == ScheduledPaymentKind.Recurring);
         if (long.TryParse(account, NumberStyles.None, CultureInfo.InvariantCulture, out var a)) q = q.Where(i => i.AccountId == a);
         return q.ToList();
     }
@@ -174,6 +178,7 @@
     private string Rhythm(ScheduledItem item)
     {
         if (item.Kind == ScheduledPaymentKind.Instalment) return L["Rhythm_Instalment", item.InstalmentNumber ?? 0, item.InstalmentCount ?? 0];
+        if (item.Kind == ScheduledPaymentKind.Recurring) return L["Rhythm_Recurring", RecurringRhythmText(item.IntervalUnit == ScheduleUnit.Week, item.IntervalCount ?? 1)];
         if (item.Kind != ScheduledPaymentKind.Standing) return L["Rhythm_Once"];
         var count = item.IntervalCount is > 0 ? item.IntervalCount.Value : 1;
         string every;
@@ -209,6 +214,18 @@
         return $"{every} · {until}";
     }
 
+    /// <summary>"Monthly", "Every 2 weeks", "Yearly".</summary>
+    private string RecurringRhythmText(bool weekly, int count) => weekly
+        ? (count == 1 ? L["Rhythm_Weekly"] : L["Rhythm_EveryWeeks", count])
+        : count switch
+        {
+            1 => L["Rhythm_Monthly"],
+            3 => L["Rhythm_Quarterly"],
+            6 => L["Rhythm_HalfYearly"],
+            12 => L["Rhythm_Yearly"],
+            _ => L["Rhythm_EveryMonths", count],
+        };
+
     /// <summary>"1." in German, "1st"/"2nd"/"3rd"/"11th" in English.</summary>
     private static string Ordinal(int n)
     {
@@ -234,7 +251,7 @@
     protected override async Task OnParametersSetAsync()
     {
         var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
-        kind = query.TryGetValue("kind", out var k) && k.ToString() is "standing" or "scheduled" or "instalment" ? k.ToString() : "all";
+        kind = query.TryGetValue("kind", out var k) && k.ToString() is "standing" or "scheduled" or "instalment" or "recurring" ? k.ToString() : "all";
         account = query.TryGetValue("account", out var ac) && ac.ToString() is { Length: > 0 } av ? av : "all";
         if (_loadedProjectId != ProjectId)
         {

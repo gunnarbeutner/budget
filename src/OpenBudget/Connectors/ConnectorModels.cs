@@ -86,6 +86,12 @@ public enum ScheduledPaymentKind
     /// reported by a bank; never stored.
     /// </summary>
     Instalment = 2,
+
+    /// <summary>
+    /// An expected charge of a recurring series detected in the booking history (a subscription), estimated rather than
+    /// reported by a bank; never stored.
+    /// </summary>
+    Recurring = 3,
 }
 
 /// <summary>The time unit of a standing order's rhythm.</summary>

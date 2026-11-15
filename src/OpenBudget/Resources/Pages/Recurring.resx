@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Recurring</value>
+  </data>
+  <data name="PageTitle_WithProject" xml:space="preserve">
+    <value>Recurring · {0}</value>
+  </data>
+  <data name="View_Title" xml:space="preserve">
+    <value>Recurring</value>
+  </data>
+  <data name="Totals" xml:space="preserve">
+    <value>{0} per month · {1} per year</value>
+  </data>
+  <data name="Filter_Show" xml:space="preserve">
+    <value>Show</value>
+  </data>
+  <data name="Show_Active" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Show_Ended" xml:space="preserve">
+    <value>Ended</value>
+  </data>
+  <data name="Show_Dismissed" xml:space="preserve">
+    <value>Not subscriptions</value>
+  </data>
+  <data name="Empty" xml:space="preserve">
+    <value>No recurring charges found. Charges that come back weekly, monthly, quarterly or yearly at about the same amount show up here after three bookings.</value>
+  </data>
+  <data name="Empty_Filtered" xml:space="preserve">
+    <value>Nothing to show here.</value>
+  </data>
+  <data name="Last" xml:space="preserve">
+    <value>last charge</value>
+  </data>
+  <data name="Next" xml:space="preserve">
+    <value>expected</value>
+  </data>
+  <data name="NoName" xml:space="preserve">
+    <value>(no name)</value>
+  </data>
+  <data name="NoCategory" xml:space="preserve">
+    <value>Uncategorised</value>
+  </data>
+  <data name="Status_Overdue" xml:space="preserve">
+    <value>overdue</value>
+  </data>
+  <data name="Status_Ended" xml:space="preserve">
+    <value>ended</value>
+  </data>
+  <data name="PriceChange" xml:space="preserve">
+    <value>{0} → {1} since {2}</value>
+  </data>
+  <data name="PriceChange_Title" xml:space="preserve">
+    <value>The amount changed on {0}</value>
+  </data>
+  <data name="LastOn" xml:space="preserve">
+    <value>last {0}</value>
+  </data>
+  <data name="Bookings" xml:space="preserve">
+    <value>{0} bookings</value>
+  </data>
+  <data name="Dismiss" xml:space="preserve">
+    <value>Not a subscription</value>
+  </data>
+  <data name="Restore" xml:space="preserve">
+    <value>Show again</value>
+  </data>
+  <data name="PerMonth" xml:space="preserve">
+    <value>≈ {0} / month</value>
+  </data>
+  <data name="Rhythm_Weekly" xml:space="preserve">
+    <value>Weekly</value>
+  </data>
+  <data name="Rhythm_EveryWeeks" xml:space="preserve">
+    <value>Every {0} weeks</value>
+  </data>
+  <data name="Rhythm_Monthly" xml:space="preserve">
+    <value>Monthly</value>
+  </data>
+  <data name="Rhythm_Quarterly" xml:space="preserve">
+    <value>Quarterly</value>
+  </data>
+  <data name="Rhythm_HalfYearly" xml:space="preserve">
+    <value>Half-yearly</value>
+  </data>
+  <data name="Rhythm_Yearly" xml:space="preserve">
+    <value>Yearly</value>
+  </data>
+  <data name="Rhythm_EveryMonths" xml:space="preserve">
+    <value>Every {0} months</value>
+  </data>
+</root>

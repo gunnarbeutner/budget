@@ -15,14 +15,17 @@ public class CashflowProjectionService
     private readonly CategoryHierarchyService _hierarchy;
     private readonly ProjectService _projects;
     private readonly SystemDbContextFactory? _system;
+    private readonly RecurringPaymentService? _recurring;
 
     public CashflowProjectionService(
         IDbContextFactory<BudgetDbContext> dbFactory,
         CategoryHierarchyService hierarchy,
         ProjectService projects,
-        SystemDbContextFactory? system = null)
+        SystemDbContextFactory? system = null,
+        RecurringPaymentService? recurring = null)
     {
         _system = system;
+        _recurring = recurring;
         _dbFactory = dbFactory;
         _hierarchy = hierarchy;
         _projects = projects;
@@ -156,6 +159,10 @@ public class CashflowProjectionService
     /// account's bookings follow; on an Exclusive account all of them. An order whose counterparty IBAN is another
     /// of the project's "In cashflow" accounts (a payout plan from the savings account to the Girokonto, a savings
     /// standing order the other way) only moves money between them and is left out.
+    ///
+    /// Active recurring series the user has not dismissed (<see cref="RecurringPaymentService"/>) are treated like
+    /// standing orders: their expected charges are booked on their days and covered in the row of their latest booking's
+    /// category.
     /// </summary>
     public async Task<ScheduledCashflow> GetScheduledCashflowAsync(
         int projectId, int year, DateOnly today, IReadOnlyCollection<(long Id, CategoryItemType ItemType)> rowKeys)
@@ -185,7 +192,8 @@ public class CashflowProjectionService
             await using var sys = await _system.CreateDbContextAsync();
             instalments = (await Connectors.Receipts.ExpectedInstalments.ForAccountsAsync(sys, visible, from)).Where(e => e.Date <= to).ToList();
         }
-        if (orders.Count == 0 && instalments.Count == 0) return result;
+        var recurring = _recurring == null ? [] : await _recurring.ActiveAsync(projectId, today, accountIds);
+        if (orders.Count == 0 && instalments.Count == 0 && recurring.Count == 0) return result;
 
         var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.OwnerUserId);
         var rowByLeaf = new Dictionary<long, (long, CategoryItemType)>();
@@ -229,6 +237,24 @@ public class CashflowProjectionService
             if (scopeByAccount[e.AccountId] == AccountScope.Shared && (e.CategoryId == null || projectLeaves?.Contains(e.CategoryId.Value) != true))
                 continue;
             result.Occurrences.Add(new ScheduledOccurrence(e.Date, e.Cents / 100m, $"Amazon {e.OrderNumber} ({e.Number}/{e.Count})", ScheduledPaymentKind.Instalment));
+        }
+        // Active recurring series (subscriptions): like standing orders, in the category of their latest booking, and taken
+        // out of that category's projection so they are not counted twice.
+        foreach (var r in recurring)
+        {
+            if (scopeByAccount[r.AccountId] == AccountScope.Shared && (r.CategoryId == null || projectLeaves?.Contains(r.CategoryId.Value) != true))
+                continue;
+            var covered = r.CategoryId is { } c && rowByLeaf.TryGetValue(c, out var row) ? row : ((long, CategoryItemType)?)null;
+            foreach (var date in r.Occurrences(from, to))
+            {
+                var amount = r.Cents / 100m;
+                result.Occurrences.Add(new ScheduledOccurrence(date, amount, r.Payee, ScheduledPaymentKind.Recurring));
+                if (covered is { } key)
+                {
+                    if (!result.CoveredByRow.TryGetValue(key, out var months)) result.CoveredByRow[key] = months = new decimal[12];
+                    months[date.Month - 1] += amount;
+                }
+            }
         }
         result.Occurrences.Sort((a, b) => a.Date.CompareTo(b.Date));
         return result;

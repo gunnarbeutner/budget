@@ -47,6 +47,8 @@ builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<BrowseService>();
 builder.Services.AddScoped<DocumentService>();
 builder.Services.AddScoped<ScheduledPaymentService>();
+builder.Services.AddScoped<RecurringPaymentService>();
+builder.Services.AddSingleton<RecurringPaymentCache>();
 builder.Services.AddScoped<PortfolioService>();
 builder.Services.AddScoped<DepotMappingService>();
 builder.Services.AddScoped<SecurityTaxService>();

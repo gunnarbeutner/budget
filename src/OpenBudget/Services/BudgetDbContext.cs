@@ -71,6 +71,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<BankLoginAccount> BankLoginAccounts => Set<BankLoginAccount>();
     public DbSet<BankStatement> BankStatements => Set<BankStatement>();
     public DbSet<StatementRead> StatementReads => Set<StatementRead>();
+    public DbSet<RecurringDismissal> RecurringDismissals => Set<RecurringDismissal>();
     public DbSet<BankStatementAlias> BankStatementAliases => Set<BankStatementAlias>();
     public DbSet<BackgroundSyncRun> BackgroundSyncRuns => Set<BackgroundSyncRun>();
     public DbSet<FinTsBankSetting> FinTsBankSettings => Set<FinTsBankSetting>();
@@ -243,6 +244,8 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<UserProjectOrder>().HasOne<Project>().WithMany().HasForeignKey(o => o.ProjectId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<UserProjectOrder>().HasOne<AppUser>().WithMany().HasForeignKey(o => o.UserId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<StatementRead>().HasKey(r => new { r.UserId, r.StatementId });
+        modelBuilder.Entity<RecurringDismissal>().HasKey(d => new { d.OwnerUserId, d.SeriesKey });
+        modelBuilder.Entity<RecurringDismissal>().HasOne<AppUser>().WithMany().HasForeignKey(d => d.OwnerUserId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<MarketQuote>().HasKey(q => new { q.Symbol, q.Day });
         modelBuilder.Entity<StatementRead>().HasIndex(r => r.StatementId);
         modelBuilder.Entity<StatementRead>().HasOne<BankStatement>().WithMany().HasForeignKey(r => r.StatementId).OnDelete(DeleteBehavior.Cascade);
