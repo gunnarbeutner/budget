@@ -110,9 +110,11 @@
                 }
             </ul>
         }
+        @* Always a drop target, like the rows: the render after dragstart can reach the browser after the drop, and
+           DropAtEndAsync ignores a drop without a dragged row. *@
         <div class="project-switcher-foot @(dragOverEnd && dragId != null ? "drop-before" : "")" data-testid="switcher-foot"
              @ondragenter="() => (dragOverId, dragOverEnd) = (null, true)"
-             @ondragover:preventDefault="@(dragId != null)"
+             @ondragover:preventDefault="true"
              @ondrop="DropAtEndAsync" @ondrop:preventDefault="true">
             <button type="button" class="dropdown-item" data-testid="switcher-new-project" @onclick="OpenNewProject">
                 <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>@L["Item_NewProject"]
