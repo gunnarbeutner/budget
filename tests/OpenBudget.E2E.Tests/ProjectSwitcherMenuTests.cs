@@ -114,6 +114,18 @@ public sealed class ProjectSwitcherMenuTests : EndToEndTestBase
         await ExpectOrderAsync(Third, Second, E2ESeed.ProjectName);
         await Expect(Page.Locator(".drop-before")).ToHaveCountAsync(0);
 
+        // The order is saved after the page shows it: wait until the moved project is stored last before reloading.
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        int? lastStored;
+        do
+        {
+            await Task.Delay(100);
+            await using var db = await Db.CreateDbContextAsync();
+            lastStored = await db.UserProjectOrders.Where(o => o.UserId == E2ESeed.OwnerUserId)
+                .OrderByDescending(o => o.SortOrder).Select(o => (int?)o.ProjectId).FirstOrDefaultAsync();
+        }
+        while (lastStored != E2ESeed.ProjectId && DateTime.UtcNow < deadline);
+
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
         await OpenSwitcherAsync();
         await ExpectOrderAsync(Third, Second, E2ESeed.ProjectName);
