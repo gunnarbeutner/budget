@@ -107,7 +107,9 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
         var factory = Services.GetRequiredService<SystemDbContextFactory>();
         await E2ESeed.ResetAsync(factory);
         Microsoft.Reset();
-        Services.GetRequiredService<RecurringPaymentCache>().Clear();
+        // The browser talks to the Kestrel host, whose singletons are not this factory's Services: clear its caches.
+        BrowserHostServices.GetRequiredService<RecurringPaymentCache>().Clear();
+        BrowserHostServices.GetRequiredService<OpenBudget.Connectors.Receipts.PriceHistoryCache>().Clear();
         // The login every test uses (owns the baseline world) and a second user to share with.
         var owner = await CreateUserAsync(E2ESeed.OwnerUserId, E2ESeed.UserName, E2ESeed.Password);
         await CreateUserAsync(E2ESeed.SecondUserId, E2ESeed.SecondUserName, E2ESeed.Password);
