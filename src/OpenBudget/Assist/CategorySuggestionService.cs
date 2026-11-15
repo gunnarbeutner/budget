@@ -48,11 +48,9 @@ public sealed record CategorySuggestionResult(
 /// </summary>
 public sealed partial class CategorySuggestionService
 {
-    /// <summary>Deterministic suggestions at least this sure are not sent to the AI.</summary>
-    public const double SureEnough = 0.75;
     public const int BatchSize = 25;
+    /// <summary>A rule is proposed only when it matches at least this many categorized bookings: one match is a coincidence, not a pattern.</summary>
     public const int MinRuleMatches = 2;
-    public const double MaxRuleConflictShare = 0.05;
 
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly SystemDbContextFactory _system;
@@ -136,11 +134,11 @@ public sealed partial class CategorySuggestionService
             }
             var target = CategoryEvidence.Target(t);
             bool AllowedHere(long c) => Allowed(ctx, c, t.AccountId);
-            var keyed = matching.Decide(target, AllowedHere, SureEnough, out var knnNeighbours);
+            var keyed = matching.Decide(target, AllowedHere, AssistTuning.SureEnough, out var knnNeighbours);
             var vote = RuleVote(ctx, t) ?? keyed;
             var neighbours = CategoryEvidence.PromptNeighbours(matching, target, knnNeighbours, AllowedHere);
             if (vote != null) results[t.Id] = Present(ctx, t.Id, vote.CategoryId, vote.Confidence, vote.Source, vote.Rationale);
-            if (vote == null || vote.Confidence < SureEnough) unsure.Add((t, target, neighbours));
+            if (vote == null || vote.Confidence < AssistTuning.SureEnough) unsure.Add((t, target, neighbours));
         }
 
         string? aiError = null;
@@ -344,7 +342,7 @@ public sealed partial class CategorySuggestionService
 
     /// <summary>A rule is offered when it matches at least two bookings and at most 5 % of them have another category.</summary>
     public static bool Offerable(RuleSuggestion r) =>
-        r.Matches >= MinRuleMatches && r.Uncategorized > 0 && r.Conflicts <= Math.Floor(r.Matches * MaxRuleConflictShare);
+        r.Matches >= MinRuleMatches && r.Uncategorized > 0 && r.Conflicts <= Math.Floor(r.Matches * AssistTuning.MaxRuleConflictShare);
 
     /// <summary>
     /// Parses and validates a rule and counts what it would match. Null when it does not parse, is not valid or uses

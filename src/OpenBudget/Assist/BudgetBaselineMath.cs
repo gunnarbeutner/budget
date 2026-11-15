@@ -50,7 +50,7 @@ public sealed record BudgetBaseline(
 /// Statistics behind "Suggest budget": per category, last year's total (the 12 months before the cut-off) without clear
 /// one-offs: a single booking of its payee, robust z-score over 3.5 and ten times the usual booking; or a booking far
 /// outside its own payee's usual range (robust z over 3.5 on that payee's amounts, five times its median and at
-/// least <see cref="MinPayeeOutlier"/>). Payments repeating every 3, 6 or 12 months from the same payee (amounts
+/// least <see cref="MinPayeeOutlierShare"/> of the category's median month). Payments repeating every 3, 6 or 12 months from the same payee (amounts
 /// within ±10 %) stay in their calendar month, as do a payee's bookings in a calendar month it was booked in during at
 /// least two of the window's years when it has bookings outside a monthly series in at most two calendar months
 /// (yearly payments of varying amount; placed at the latest amount). Standing orders the bank holds land where they
@@ -59,9 +59,13 @@ public sealed record BudgetBaseline(
 /// </summary>
 public static class BudgetBaselineMath
 {
-    public const double OutlierZ = 3.5;
-    /// <summary>The smallest booking flagged as unusual for its payee.</summary>
-    public const decimal MinPayeeOutlier = 100m;
+    /// <summary>
+    /// The smallest booking flagged as unusual for its payee, as a share of the category's median monthly total over
+    /// the window: a booking below a quarter of a typical month hardly moves the year's budget, so leaving it in is
+    /// harmless. Relative, so it works the same in any currency and for small and large categories (a category of
+    /// about 400 a month gets a minimum of about 100).
+    /// </summary>
+    public const decimal MinPayeeOutlierShare = 0.25m;
     private static readonly int[] Intervals = [1, 3, 6, 12];
 
     public static decimal Median(IReadOnlyList<decimal> values)
@@ -147,11 +151,14 @@ public static class BudgetBaselineMath
         var madSize = Mad(sizes);
         var payeeCounts = bookings.GroupBy(b => b.PayeeKey, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
         var outliers = bookings
-            .Where(b => !recurringIds.Contains(b.Id) && RobustZ(b.Amount, medSize, madSize) > OutlierZ && b.Amount > 10 * Math.Max(medSize, 1)
+            .Where(b => !recurringIds.Contains(b.Id) && RobustZ(b.Amount, medSize, madSize) > AssistTuning.OutlierZ && b.Amount > 10 * Math.Max(medSize, 1)
                 && payeeCounts[b.PayeeKey] == 1)
             .ToList();
         var notes = outliers.ToDictionary(o => o.Id, o => "only booking of this payee in the window");
         // Bookings far outside their own payee's range (a big purchase at a shop otherwise used for small things).
+        var monthTotals = new decimal[months];
+        foreach (var b in bookings) monthTotals[MonthIndex(b.Date) - firstIndex] += b.Amount;
+        var minPayeeOutlier = MinPayeeOutlierShare * Median(monthTotals);
         foreach (var g in bookings.Where(b => b.PayeeKey.Length > 0).GroupBy(b => b.PayeeKey, StringComparer.Ordinal))
         {
             var amounts = g.Select(b => b.Amount).ToList();
@@ -160,7 +167,7 @@ public static class BudgetBaselineMath
             var payeeMad = Mad(amounts);
             foreach (var b in g)
             {
-                if (recurringIds.Contains(b.Id) || notes.ContainsKey(b.Id) || b.Amount < MinPayeeOutlier || b.Amount < 5 * Math.Max(med, 1) || RobustZ(b.Amount, med, payeeMad) <= OutlierZ) continue;
+                if (recurringIds.Contains(b.Id) || notes.ContainsKey(b.Id) || b.Amount < minPayeeOutlier || b.Amount < 5 * Math.Max(med, 1) || RobustZ(b.Amount, med, payeeMad) <= AssistTuning.OutlierZ) continue;
                 outliers.Add(b);
                 notes[b.Id] = string.Create(CultureInfo.InvariantCulture,
                     $"payee has {amounts.Count - 1} other bookings in the window, typically {Math.Round(med, 0)} EUR");

@@ -11,12 +11,10 @@ namespace OpenBudget.Assist;
 /// has an AI configured and the receipt's owner opted in to AI suggestions; each line goes as a booking of payee
 /// "Supermarkt" with the product name as its purpose and the receipt's date (nothing else of the receipt is sent), in
 /// batches; the lines of several receipts with the same choices go together. Answers below
-/// <see cref="MinConfidence"/> are dropped; a failing request places nothing.
+/// <see cref="AssistTuning.MinReceiptItemConfidence"/> are dropped; a failing request places nothing.
 /// </summary>
 public sealed class ReceiptItemAiClassifier : IReceiptItemClassifier
 {
-    public const double MinConfidence = 0.6;
-
     private readonly SystemDbContextFactory _system;
     private readonly IAssistClient _client;
     private readonly ILogger<ReceiptItemAiClassifier> _log;
@@ -59,7 +57,7 @@ public sealed class ReceiptItemAiClassifier : IReceiptItemClassifier
                     new AssistRequest(CategoryPrompt.SchemaName, CategoryPrompt.Schema(), system, CategoryPrompt.UserContent(items)), ct);
                 _log.LogInformation("AI categorized {Count} receipt items ({Input} input tokens, {Output} output)", batch.Length, response.InputTokens, response.OutputTokens);
                 foreach (var s in CategoryPrompt.ParseAnswer(response, redactor, handles))
-                    if (s.CategoryId is { } category && allowed.Contains(category) && s.Confidence >= MinConfidence) result[s.TransactionId] = category;
+                    if (s.CategoryId is { } category && allowed.Contains(category) && s.Confidence >= AssistTuning.MinReceiptItemConfidence) result[s.TransactionId] = category;
             }
         }
         catch (AssistException ex)

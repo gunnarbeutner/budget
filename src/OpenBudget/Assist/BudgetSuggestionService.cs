@@ -36,7 +36,6 @@ public sealed record BudgetToolRun(AssistResponse Final, int Rounds, IReadOnlyDi
 /// </summary>
 public sealed class BudgetSuggestionService
 {
-    public const double FlagDeviation = 0.3;
     public const string SchemaName = "budget_suggestions";
     /// <summary>Payees listed per category; the rest go into one "other payees" line.</summary>
     public const int MaxPayees = 15;
@@ -476,7 +475,7 @@ public sealed class BudgetSuggestionService
             }
             var baseTotal = row.Baseline.Sum();
             var total = suggested.Sum();
-            var flagged = baseTotal == 0 ? total != 0 : (double)Math.Abs((total - baseTotal) / baseTotal) > FlagDeviation;
+            var flagged = baseTotal == 0 ? total != 0 : (double)Math.Abs((total - baseTotal) / baseTotal) > AssistTuning.FlagDeviation;
             var basis = Str(node["basis"]) is { } b && b is "median" or "seasonal" or "recurring" or "trend" or "none" ? b : row.Basis;
             var explanation = Str(node["explanation"]);
             if (explanation is { Length: > 400 }) explanation = explanation[..400];

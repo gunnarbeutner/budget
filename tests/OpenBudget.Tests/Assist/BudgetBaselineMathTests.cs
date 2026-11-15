@@ -135,6 +135,35 @@ public sealed class BudgetBaselineMathTests
         Assert.True(result.Monthly[7] < 100m);
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(100)]
+    [InlineData(10)]
+    public void The_payee_outlier_minimum_scales_with_the_category(double scaleValue)
+    {
+        var scale = (decimal)scaleValue;
+        // A category of about 400 a month: a small regular payee and a big regular one.
+        List<BaselineBooking> Category(decimal unusual, out BaselineBooking odd)
+        {
+            var list = Months(2023, 36).SelectMany(m => new[]
+            {
+                B(m.Year, m.Month, 10m * scale, "EXAMPLE BAKERY"),
+                B(m.Year, m.Month, 390m * scale, "EXAMPLE MARKET", day: 20),
+            }).ToList();
+            odd = B(2025, 8, unusual * scale, "EXAMPLE BAKERY", day: 12);
+            list.Add(odd);
+            return list;
+        }
+
+        // 80 is far outside the bakery's range but below a quarter of the category's month: it stays in.
+        var small = BudgetBaselineMath.Compute(Category(80m, out _), [], 2026, AsOf);
+        Assert.Empty(small.Outliers);
+
+        // 150 is above a quarter of the month: a one-off at that payee.
+        var big = BudgetBaselineMath.Compute(Category(150m, out var odd), [], 2026, AsOf);
+        Assert.Equal([odd], big.Outliers);
+    }
+
     [Fact]
     public void Refunds_never_make_a_month_negative()
     {
