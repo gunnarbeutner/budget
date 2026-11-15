@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using OpenBudget.Connectors.PayPal;
+using OpenBudget.Services;
 
 namespace OpenBudget.Connectors.Amazon;
 
@@ -360,8 +360,7 @@ internal static partial class AmazonPages
     // ---- values ----
 
     /// <summary>A shown amount ("-€10.60", "−10,60 €", "+€5.00") as a signed decimal.</summary>
-    public static decimal? ParseAmount(string? text) =>
-        text == null ? null : PayPalCsv.ParseAmount(text.Replace('−', '-').Replace("EUR", "", StringComparison.Ordinal));
+    public static decimal? ParseAmount(string? text) => MoneyText.Parse(text);
 
     private static string CurrencyOf(string? text) =>
         text == null ? "EUR" : text.Contains('$', StringComparison.Ordinal) ? "USD" : text.Contains('£', StringComparison.Ordinal) ? "GBP" : "EUR";

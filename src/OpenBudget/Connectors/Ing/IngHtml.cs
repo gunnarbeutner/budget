@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using OpenBudget.Services;
 
 namespace OpenBudget.Connectors.Ing;
 
@@ -238,7 +239,7 @@ internal static partial class IngHtml
     }
 
     public static decimal ParseAmount(string text) =>
-        decimal.Parse(Regex.Replace(text, @"\s", "", RegexOptions.None, TimeSpan.FromSeconds(1)), NumberStyles.Number | NumberStyles.AllowLeadingSign, German);
+        MoneyText.Parse(text) ?? throw new FormatException("not an amount: " + text);
 
     // ---- postbox ----
 

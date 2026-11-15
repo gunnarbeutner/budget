@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using OpenBudget.Services;
 
 namespace OpenBudget.Connectors.PayPal;
 
@@ -185,35 +186,7 @@ internal static class PayPalCsv
         return parts.Count > 0 ? string.Join(" · ", parts) : null;
     }
 
-    /// <summary>An amount with either decimal separator ("1.234,56", "1,234.56", "-12,50", "12.5"); null when empty or unreadable.</summary>
-    public static decimal? ParseAmount(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return null;
-        var s = new string(text.Where(c => char.IsDigit(c) || c is '.' or ',' or '-' or '+' or '(' or ')').ToArray());
-        var negative = s.Contains('-', StringComparison.Ordinal) || (s.StartsWith('(', StringComparison.Ordinal) && s.EndsWith(')', StringComparison.Ordinal));
-        s = s.Trim('(', ')').Replace("-", "", StringComparison.Ordinal).Replace("+", "", StringComparison.Ordinal);
-        if (s.Length == 0) return null;
-        var lastDot = s.LastIndexOf('.', StringComparison.Ordinal);
-        var lastComma = s.LastIndexOf(',', StringComparison.Ordinal);
-        char? decimalSep = null;
-        if (lastDot >= 0 && lastComma >= 0) decimalSep = lastDot > lastComma ? '.' : ',';
-        else if (lastDot >= 0 || lastComma >= 0)
-        {
-            var sep = lastDot >= 0 ? '.' : ',';
-            var last = Math.Max(lastDot, lastComma);
-            // PayPal writes two decimals; a single separator followed by exactly three digits groups thousands.
-            var single = s.Count(c => c == sep) == 1;
-            if (single && s.Length - last - 1 != 3) decimalSep = sep;
-        }
-        var digits = new StringBuilder();
-        foreach (var c in s)
-        {
-            if (char.IsDigit(c)) digits.Append(c);
-            else if (c == decimalSep) digits.Append('.');
-        }
-        if (!decimal.TryParse(digits.ToString(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value)) return null;
-        return negative ? -value : value;
-    }
+    public static decimal? ParseAmount(string? text) => MoneyText.Parse(text);
 
     /// <summary>Whether slash dates put the day first (dd/MM/yyyy), judged over all dates of the file; US order otherwise.</summary>
     private static bool DayFirst(IEnumerable<string?> dates)
