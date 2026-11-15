@@ -439,31 +439,11 @@ public static class RuleExpression
         }
     }
 
-    /// <summary>Upper case, umlauts and ß transliterated, whitespace runs collapsed (for comparing text).</summary>
-    public static string Fold(string text)
-    {
-        var sb = new StringBuilder(text.Length + 8);
-        var space = false;
-        foreach (var ch in text.ToUpperInvariant())
-        {
-            if (char.IsWhiteSpace(ch))
-            {
-                if (!space) sb.Append(' ');
-                space = true;
-                continue;
-            }
-            space = false;
-            switch (ch)
-            {
-                case 'Ä': sb.Append("AE"); break;
-                case 'Ö': sb.Append("OE"); break;
-                case 'Ü': sb.Append("UE"); break;
-                case 'ß' or 'ẞ': sb.Append("SS"); break;
-                default: sb.Append(ch); break;
-            }
-        }
-        return sb.ToString();
-    }
+    /// <summary>
+    /// Upper case, umlauts and ß spelled out, other accents kept, whitespace runs collapsed: the form user rules
+    /// compare against (see <see cref="TextFold"/>).
+    /// </summary>
+    public static string Fold(string text) => TextFold.Fold(text, TextCase.Upper, stripAccents: false, collapseWhitespace: true);
 
     /// <summary>Whether the expression restricts to our account <paramref name="accountId"/> (account_id=N).</summary>
     public static bool ReferencesAccount(string? expression, long accountId) =>

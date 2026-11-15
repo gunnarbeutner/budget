@@ -411,14 +411,14 @@ public class BankLoginService
         var accounts = await db.Accounts.AsNoTracking()
             .Where(a => a.OwnerUserId == owner && a.Provider == AccountProviders.Manual && a.Type != (long)AccountType.Group && !a.Closed)
             .OrderBy(a => a.Name).ToListAsync(ct);
-        var wanted = NormalizeIban(remote.Iban);
+        var wanted = Iban.Normalize(remote.Iban);
         // A depot only links to a depot, and a cash account only to a non-depot account: positions and
         // transactions are stored differently, so mixing them would show nonsense on both sides.
         bool remoteIsDepot = remote.Type == RemoteAccountType.Depot;
         var eligible = accounts.Where(a => !taken.Contains(a.Id) && a.IsDepot == remoteIsDepot).ToList();
         // The suggestion is the account with the same IBAN; without one, the account with the same account number
         // (an IBAN's embedded account number counts, a subaccount suffix does not, leading zeros are ignored).
-        Func<Account, bool> suggested = a => wanted.Length > 0 && NormalizeIban(a.Iban) == wanted;
+        Func<Account, bool> suggested = a => wanted.Length > 0 && Iban.Normalize(a.Iban) == wanted;
         if (!eligible.Any(suggested))
         {
             var number = AccountNumber(string.IsNullOrEmpty(remote.Iban) ? remote.RemoteId : remote.Iban);
@@ -433,7 +433,7 @@ public class BankLoginService
     /// </summary>
     public static string AccountNumber(string? value)
     {
-        var v = NormalizeIban(value);
+        var v = Iban.Normalize(value);
         if (v.Length == 22 && v.StartsWith("DE", StringComparison.Ordinal) && v[2..].All(char.IsAsciiDigit)) v = v[^10..];
         else if (v.IndexOf('-', StringComparison.Ordinal) is > 0 and var dash) v = v[..dash];
         if (v.Length == 0 || !v.All(char.IsAsciiDigit)) return string.Empty;
@@ -451,7 +451,6 @@ public class BankLoginService
         _ => AccountType.Other,
     };
 
-    public static string NormalizeIban(string? iban) => (iban ?? string.Empty).Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 
     /// <summary>
     /// Links a remote account to an existing manual account, which is the connector's from then on. The account keeps its

@@ -89,7 +89,7 @@ public sealed partial class OrderEnrichmentService
         accounts = accounts.Where(a => scope.CanEditTransactionsOf(a.OwnerUserId, a.Id)).ToList();
         var digits = LastDigits().Match(name) is { Success: true } m ? m.Groups["d"].Value : null;
         bool Suggested(Account a) => digits != null
-            && ((a.Iban != null && BankLoginService.NormalizeIban(a.Iban).EndsWith(digits, StringComparison.Ordinal))
+            && ((a.Iban != null && Iban.Normalize(a.Iban).EndsWith(digits, StringComparison.Ordinal))
                 || (a.Name != null && LastDigits().Match(a.Name) is { Success: true } n && n.Groups["d"].Value.EndsWith(digits, StringComparison.Ordinal)));
         return accounts.Select(a => scope.Owns(a.OwnerUserId)
                 ? new InstrumentCandidate(a.Id, a.Name ?? "?", Suggested(a), a.Closed, a.GroupId, a.Sort, AccountIcons.ForAccount(a.Icon, a.Type, false))

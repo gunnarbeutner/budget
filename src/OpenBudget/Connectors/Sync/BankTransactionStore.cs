@@ -377,6 +377,8 @@ public sealed class BankTransactionStore
 
     private static string Squash(string text) => string.Concat(text.Where(c => !char.IsWhiteSpace(c)));
 
+    // Part of the stored dedup hashes, so it stays this simple fold (upper case, whitespace collapsed) rather than
+    // TextFold: folding umlauts or accents here would change the hash of every stored booking.
     private static string Normalize(string? text) =>
         string.Join(' ', (text ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
 

@@ -227,7 +227,7 @@ internal static partial class IngHtml
     public static string? NormalizeIban(string? text)
     {
         if (text == null) return null;
-        var compact = Regex.Replace(Decode(text), @"\s", "", RegexOptions.None, TimeSpan.FromSeconds(1)).ToUpperInvariant();
+        var compact = Iban.Normalize(Decode(text));
         return IbanRegex().IsMatch(compact) ? compact : null;
     }
 

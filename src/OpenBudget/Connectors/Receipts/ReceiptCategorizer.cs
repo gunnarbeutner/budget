@@ -79,6 +79,8 @@ public static partial class ReceiptCategorizer
     /// The name the memory keys on: lower case, "*" and sizes ("150g", "0,5l", "ca. 500g", "6x1,5l") removed, punctuation
     /// as single spaces, so the same product in another size is the same entry.
     /// </summary>
+    // The result is stored and shown as the item memory's name (ItemCategoryMemory.NormalizedName), so it keeps its own
+    // de-DE lower case with umlauts as written instead of TextFold: spelling them out would orphan the stored entries.
     public static string Normalize(string name)
     {
         var s = name.ToLower(CultureInfo.GetCultureInfo("de-DE")).Replace("*", " ", StringComparison.Ordinal);
