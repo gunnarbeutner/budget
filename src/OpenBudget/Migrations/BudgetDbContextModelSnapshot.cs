@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261115082937_RecurringDismissals";
+    public override string LastMigrationId => "20261115091319_DataFixes";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -340,6 +340,20 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .HasDatabaseName("UserNameIndex");
 
                 b.ToTable("AspNetUsers");
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.AppliedDataFix", b =>
+            {
+                b.Property<string>("Name")
+                    .HasMaxLength(200)
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime>("AppliedAt")
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Name");
+
+                b.ToTable("data_fixes");
             });
 
         modelBuilder.Entity("OpenBudget.Models.BackgroundSyncRun", b =>

@@ -148,6 +148,7 @@ builder.Services.AddSingleton(portfolioFiles);
 builder.Services.AddSingleton<IPortfolioFileSource>(portfolioFiles);
 builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<PortfolioAccountSync>();
+builder.Services.AddSingleton<OpenBudget.Services.DataFixes.DataFixRunner>();
 builder.Services.AddScoped<PortfolioAccountSettingsService>();
 
 // Yahoo quotes for the held PortfolioPerformance securities, between saves of the file.
@@ -171,34 +172,8 @@ var app = builder.Build();
 await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
 {
     await budgetDb.Database.MigrateAsync();
-    // Amazon orders still in their former tables move to the shared receipts (once; drops those tables).
-    await using (var amazonDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
-    {
-        if (await OpenBudget.Connectors.Amazon.AmazonReceiptMigration.RunAsync(amazonDb, DateTime.UtcNow) is { } moved)
-            app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OpenBudget.Migrations").LogInformation(
-                "Amazon: {Charges} charges ({Matched} matched) moved to receipts; {Adopted} splits kept as the receipts', {LeftAlone} left as set by hand; {Memory} item memory entries.",
-                moved.Charges, moved.Matched, moved.SplitsAdopted, moved.SplitsLeftAlone, moved.MemoryEntries);
-    }
-    // Amazon receipts of single points or gift card charges become credit lines of their orders (idempotent).
-    await using (var pointsDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
-        await OpenBudget.Connectors.Amazon.AmazonReceiptStore.FoldPointsReceiptsAsync(pointsDb, DateTime.UtcNow);
-    // PortfolioPerformance files still stored under a former per-data-set number move to their owner (idempotent).
-    await portfolioFiles.RelocateLegacyFilesAsync(budgetDb);
-    // Category rules of data imported before rules were imported (idempotent).
-    await OpenBudget.Importers.MoneyMoney.MoneyMoneyRuleImport.BackfillAsync(budgetDb, CancellationToken.None);
-    // Every category group and category has a colour (idempotent).
-    await using (var colorDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
-        await CategoryColorBackfill.FillAsync(colorDb);
-    // Uncategorized zero-amount bookings take their main booking's category (idempotent).
-    await using (var zeroDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
-    {
-        if (await ZeroCompanions.FollowAsync(zeroDb, null, null, null, CancellationToken.None) > 0) await zeroDb.SaveChangesAsync();
-    }
-    // Logins that can sync fully on their own sync in the background unless the owner chose otherwise (idempotent).
-    await OpenBudget.Services.BackgroundDefaults.ApplyAsync(budgetDb, app.Services.GetRequiredService<OpenBudget.Connectors.ConnectorRegistry>(),
-        app.Services.GetRequiredService<SecretsProtector>());
-    // Every user owns a project to land new accounts in (idempotent).
-    await UserDefaultProject.EnsureAllAsync(app.Services.GetRequiredService<SystemDbContextFactory>());
+    // One-off repairs of existing data, each once per database (see DataFixList).
+    await app.Services.GetRequiredService<OpenBudget.Services.DataFixes.DataFixRunner>().RunAsync(OpenBudget.Services.DataFixes.DataFixList.All);
     var ruleLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OpenBudget.Rules");
     OpenBudget.Services.RuleExpression.UnknownFieldLog = field => ruleLog.LogWarning("Rule expression uses unknown field '{Field}'; such terms never match", field);
 }

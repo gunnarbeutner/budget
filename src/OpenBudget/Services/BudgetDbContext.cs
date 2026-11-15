@@ -72,6 +72,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<BankStatement> BankStatements => Set<BankStatement>();
     public DbSet<StatementRead> StatementReads => Set<StatementRead>();
     public DbSet<RecurringDismissal> RecurringDismissals => Set<RecurringDismissal>();
+    public DbSet<AppliedDataFix> AppliedDataFixes => Set<AppliedDataFix>();
     public DbSet<BankStatementAlias> BankStatementAliases => Set<BankStatementAlias>();
     public DbSet<BackgroundSyncRun> BackgroundSyncRuns => Set<BackgroundSyncRun>();
     public DbSet<FinTsBankSetting> FinTsBankSettings => Set<FinTsBankSetting>();

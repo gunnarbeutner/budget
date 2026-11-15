@@ -5,7 +5,7 @@ namespace OpenBudget.Services;
 /// <summary>
 /// Gives every category group and category without a colour one, so each shows a coloured ribbon: a category the
 /// palette colour it was shown in before (<see cref="CategoryColors.FallbackColor"/>), a group the palette colours in
-/// turn. MoneyMoney's sentinel rows are left alone. Runs at startup and after an import; idempotent.
+/// turn. MoneyMoney's sentinel rows are left alone. Runs after an import and as a data fix; idempotent.
 /// </summary>
 public static class CategoryColorBackfill
 {

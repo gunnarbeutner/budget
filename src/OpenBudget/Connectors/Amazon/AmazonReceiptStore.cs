@@ -184,7 +184,7 @@ public static class AmazonReceiptStore
 
     /// <summary>
     /// Turns stored receipts of single points or gift card charges into credit lines of their order (see
-    /// <see cref="Fold"/>), at startup; idempotent. The order's other receipts keep their bookings, states and the
+    /// <see cref="Fold"/>), as a data fix; idempotent. The order's other receipts keep their bookings, states and the
     /// owner's item moves. Returns how many such receipts were folded.
     /// </summary>
     public static async Task<int> FoldPointsReceiptsAsync(BudgetDbContext db, DateTime nowUtc, CancellationToken ct = default)

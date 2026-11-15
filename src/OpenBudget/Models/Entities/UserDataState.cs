@@ -34,7 +34,7 @@ public class UserDataState
 
     /// <summary>
     /// Comma-separated numbers under which the user's last PortfolioPerformance file may still be stored from before files
-    /// were kept per user; moved at startup (see <c>UploadedPortfolioFileSource.RelocateLegacyFilesAsync</c>), then null.
+    /// were kept per user; moved by a data fix (see <c>UploadedPortfolioFileSource.RelocateLegacyFilesAsync</c>), then null.
     /// </summary>
     [MaxLength(100)]
     public string? LegacyFileKeys { get; set; }

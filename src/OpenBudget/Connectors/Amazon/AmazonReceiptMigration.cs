@@ -12,7 +12,7 @@ public sealed record AmazonMigrationResult(int Charges, int Matched, int SplitsA
 
 /// <summary>
 /// Moves Amazon orders from their former tables (amazon_orders, amazon_order_items, amazon_charges) into the shared
-/// receipt tables, once, at startup after the schema migrations: one receipt per charge with the items that charge paid
+/// receipt tables, once, as a data fix after the schema migrations: one receipt per charge with the items that charge paid
 /// for, its match (booking and state) kept. A booking split by an accepted order suggestion stays as it is: when the
 /// receipt's lines (each in the category the owner gave it) give exactly its parts, the split counts as the receipt's
 /// (it follows later moves of items); otherwise it counts as changed by hand and is left alone. The categories the owner

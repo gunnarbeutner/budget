@@ -149,7 +149,7 @@ public sealed class GetStartedTests : EndToEndTestBase
     {
         await LogoutAsync();
         await ReopenGetStartedAsync(E2ESeed.SecondUserId);
-        await UserDefaultProject.EnsureAsync(Db, E2ESeed.SecondUserId);   // as at startup
+        await UserDefaultProject.EnsureAsync(Db, E2ESeed.SecondUserId);   // as at user creation
         await LoginAsync(E2ESeed.SecondUserName);
         // Two ways to start, side by side; no Skip on this step.
         await Expect(Page.GetByTestId("start-import")).ToBeVisibleAsync();
@@ -241,7 +241,7 @@ public sealed class GetStartedTests : EndToEndTestBase
     {
         await LogoutAsync();
         await ReopenGetStartedAsync(E2ESeed.SecondUserId);
-        await UserDefaultProject.EnsureAsync(Db, E2ESeed.SecondUserId);   // as at startup
+        await UserDefaultProject.EnsureAsync(Db, E2ESeed.SecondUserId);   // as at user creation
         await LoginAsync(E2ESeed.SecondUserName);
 
         // Signing in leads to Get started; its first step is the MoneyMoney import.

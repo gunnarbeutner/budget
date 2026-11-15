@@ -72,7 +72,7 @@ public static class MoneyMoneyRuleImport
         return changes;
     }
 
-    /// <summary>Startup backfill: every owner whose MoneyMoney categories have rules.</summary>
+    /// <summary>Backfill (a data fix): every owner whose MoneyMoney categories have rules.</summary>
     public static async Task<int> BackfillAsync(BudgetDbContext db, CancellationToken ct)
     {
         var sources = await db.Categories.Where(c => c.Rules != null && c.Rules != "").Select(c => c.OwnerUserId).Distinct().ToListAsync(ct);

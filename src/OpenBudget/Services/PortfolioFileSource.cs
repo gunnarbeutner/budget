@@ -41,7 +41,7 @@ public sealed class UploadedPortfolioFileSource : IPortfolioFileSource
 
     /// <summary>
     /// Renames files stored under a former per-data-set number ("&lt;n&gt;.portfolio") to their owner's name, as listed in
-    /// <see cref="Models.UserDataState.LegacyFileKeys"/>, and clears that list. Run at startup; does nothing when all moved.
+    /// <see cref="Models.UserDataState.LegacyFileKeys"/>, and clears that list. Runs as a data fix; does nothing when all moved.
     /// </summary>
     public async Task RelocateLegacyFilesAsync(BudgetDbContext db, CancellationToken ct = default)
     {

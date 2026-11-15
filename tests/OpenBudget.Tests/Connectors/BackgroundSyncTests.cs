@@ -267,6 +267,14 @@ public sealed class BackgroundSyncTests
     }
 
     [Fact]
+    public async Task A_new_login_has_its_background_default_settled_without_the_data_fix()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var id = await w.AddLoginAsync(BankWorld.Alice);
+        Assert.True((await StoredAsync(w, id)).BackgroundDefaulted);
+    }
+
+    [Fact]
     public async Task Existing_full_logins_get_background_syncs_once()
     {
         await using var w = await BankWorld.CreateAsync();
