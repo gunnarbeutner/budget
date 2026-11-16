@@ -90,9 +90,11 @@ public sealed class KeptBrowserTests
         await using var session = await Service(host, TimeSpan.FromMilliseconds(100)).StartAsync(BankWorld.Alice, Spec(), [], CancellationToken.None);
         await session.Completion.WaitAsync(TimeSpan.FromSeconds(5));
         var kept = session.TakeBrowser()!;
-        for (var i = 0; i < 300 && kept.IsOpen; i++) await Task.Delay(10);
+        var browser = Assert.Single(host.Sessions);
+        // Closing marks the browser closed before its session is disposed.
+        for (var i = 0; i < 500 && (kept.IsOpen || !browser.Disposed); i++) await Task.Delay(10);
         Assert.False(kept.IsOpen);
-        Assert.True(Assert.Single(host.Sessions).Disposed);
+        Assert.True(browser.Disposed);
     }
 
     [Fact]
