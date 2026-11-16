@@ -18,7 +18,7 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
     public async Task SeedAsync()
     {
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
-        login = await ReceiptsSeed.SeedAsync(factory, ReceiptSources.Lidl);
+        _login = await ReceiptsSeed.SeedAsync(factory, ReceiptSources.Lidl);
         await using var db = await factory.CreateDbContextAsync();
         var day = DateTime.UtcNow.Date.AddDays(-40);
         for (var i = 0; i < 60; i++)
@@ -41,7 +41,7 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
         {
             OwnerUserId = E2ESeed.OwnerUserId,
             Shop = ReceiptShops.Amazon,
-            BankLoginId = login,
+            BankLoginId = _login,
             PaymentMethodId = ReceiptsSeed.AmazonCard,
             InvoiceNumber = "E2E-AMZ-GIFT",
             SourceKey = "E2E-AMZ-GIFT",
@@ -67,7 +67,7 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
         await db.SaveChangesAsync();
     }
 
-    private int login;
+    private int _login;
 
     private const string RunningOrder = "302-0000000-0000210";
     private const string CancelledOrder = "302-0000000-0000220";
@@ -76,7 +76,7 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
     {
         OwnerUserId = E2ESeed.OwnerUserId,
         Shop = ReceiptShops.Amazon,
-        BankLoginId = login,
+        BankLoginId = _login,
         PaymentMethodId = ReceiptsSeed.AmazonCard,
         InvoiceNumber = key,
         SourceKey = key,
