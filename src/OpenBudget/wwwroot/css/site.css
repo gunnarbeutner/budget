@@ -1920,7 +1920,8 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 .tx-split-row, .tx-transfer-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .tx-split-row .form-control, .tx-split-row .form-select { font-size: 13px; border-color: var(--ob-input-border); }
 .tx-split-amount { width: 7.5rem; flex: 0 0 auto; text-align: right; }
-.tx-split-category { flex: 1 1 12rem; max-width: 22rem; }
+.tx-split-category { flex: 1 1 12rem; max-width: 22rem; min-width: 0; display: flex; align-items: center; text-align: left; overflow: hidden; white-space: nowrap; }
+.tx-split-category > .cat-pill { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .tx-split-note { flex: 1 1 10rem; }
 .tx-split-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .tx-transfer-row { font-size: 13px; }

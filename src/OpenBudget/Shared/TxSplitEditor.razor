@@ -2,10 +2,12 @@
 @using OpenBudget.Services
 @inject IStringLocalizer<TxSplitEditor> L
 @inject SplitService Splits
+@inject IJSRuntime JS
 
 @* Splits one booking into parts (amount, category, optional note). Amounts are entered without sign; every part takes
    the booking's sign. The parts must add up to the booking: the remaining amount is shown and "Assign rest" puts it on
-   a part. Saving replaces the parts of an existing split; "Remove split" makes the booking whole again. *@
+   a part. A part's category shows as its pill on a button that opens the category picker below it. Saving replaces the
+   parts of an existing split; "Remove split" makes the booking whole again. *@
 
 <div class="tx-split" data-testid="split-editor">
     @if (info == null)
@@ -25,14 +27,18 @@
             <div class="tx-split-row" data-testid="split-part">
                 <input type="text" inputmode="decimal" class="form-control form-control-sm tx-split-amount" data-testid="split-amount"
                        aria-label="@L["Amount"]" placeholder="0,00" @bind="part.Amount" @bind:event="oninput" />
-                <select class="form-select form-select-sm tx-split-category" data-testid="split-category" aria-label="@L["Category"]"
-                        @bind="part.CategoryId">
-                    <option value="">@L["NoCategory"]</option>
-                    @foreach (var o in PickerData.Options)
+                <button type="button" class="form-select form-select-sm tx-split-category" data-testid="split-category" data-category="@part.CategoryId"
+                        aria-label="@L["Category"]" aria-haspopup="dialog" aria-expanded="@((picking == part).ToString().ToLowerInvariant())"
+                        @ref="part.Button" @onclick="() => OpenPickerAsync(part)">
+                    @if (part.CategoryId is { } cid)
                     {
-                        <option value="@o.Id">@o.Path</option>
+                        <CategoryPill CategoryId="cid" PickerData="PickerData" />
                     }
-                </select>
+                    else
+                    {
+                        <span class="text-body-secondary">@L["NoCategory"]</span>
+                    }
+                </button>
                 <input type="text" class="form-control form-control-sm tx-split-note" data-testid="split-note" maxlength="500" aria-label="@L["Note"]"
                        placeholder="@L["Note"]" @bind="part.Note" />
                 <button type="button" class="ob-btn" data-testid="split-assign-rest" title="@L["AssignRest"]" disabled="@(Remaining == 0 || Remaining is null)"
@@ -62,6 +68,11 @@
         }
     }
 </div>
+@if (picking is { } open)
+{
+    <CategoryPicker Data="PickerData" CurrentCategoryId="open.CategoryId" RemoveLabel="@L["NoCategory"]" AllowRemove="open.CategoryId != null"
+                    X="pickerX" Y="pickerY" OnPick="id => ClosePickerAsync(open, id, true)" OnClose="() => ClosePickerAsync(open, null, false)" />
+}
 
 @code {
     [Parameter, EditorRequired] public TransactionRow Row { get; set; } = null!;
@@ -74,7 +85,11 @@
         public string Amount { get; set; } = "";
         public long? CategoryId { get; set; }
         public string? Note { get; set; }
+        public ElementReference Button { get; set; }
     }
+
+    private PartModel? picking;
+    private double pickerX, pickerY;
 
     private SplitInfo? info;
     private readonly List<PartModel> parts = [];
@@ -126,6 +141,22 @@
         .ToList();
 
     private void AddPart() => parts.Add(new PartModel());
+
+    /// <summary>Opens the category picker below the part's button.</summary>
+    private async Task OpenPickerAsync(PartModel part)
+    {
+        var box = await JS.TryInvokeAsync<double[]?>("obAnchorBelow", part.Button);
+        (pickerX, pickerY) = box is { Length: 2 } ? (box[0], box[1]) : (0, 0);
+        picking = part;
+    }
+
+    /// <summary>Closes the picker, sets the picked category (null: none) and puts the focus back on the part's button.</summary>
+    private async Task ClosePickerAsync(PartModel part, long? id, bool picked)
+    {
+        if (picked) part.CategoryId = id;
+        picking = null;
+        await JS.TryInvokeVoidAsync("obFocus", part.Button);
+    }
 
     private void AssignRest(int index)
     {

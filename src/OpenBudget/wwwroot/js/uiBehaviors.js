@@ -429,6 +429,13 @@ document.addEventListener("contextmenu", function (e) {
 // Long-press on touch opens the context menu of an element marked [data-ob-longpress] (the sidebar's accounts and
 // categories, see BrowseTreeRail's node menu): a held finger dispatches "contextmenu" like a right-click; the click
 // that follows the release is swallowed so the row is not also selected.
+// Where a picker opened from a button goes: below the button's left edge.
+window.obAnchorBelow = function (el) {
+    if (!el || !el.getBoundingClientRect) return null;
+    var r = el.getBoundingClientRect();
+    return [r.left, r.bottom + 4];
+};
+
 // Where a keyboard-opened context menu goes: below the focused element.
 window.obFocusAnchor = function () {
     var el = document.activeElement;

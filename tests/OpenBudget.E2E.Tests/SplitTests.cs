@@ -33,6 +33,57 @@ public sealed class SplitTests : EndToEndTestBase
         return await db.Transactions.AsNoTracking().ToListAsync();
     }
 
+    /// <summary>Opens a part's category picker and picks the category of that name.</summary>
+    private async Task PickCategoryAsync(ILocator button, string name)
+    {
+        await button.ClickAsync();
+        var picker = Page.GetByTestId("category-picker");
+        await picker.GetByTestId("category-picker-option").Filter(new() { HasText = name }).First.ClickAsync();
+        await Expect(picker).ToHaveCountAsync(0);
+        await Expect(button).ToContainTextAsync(name);
+        await Expect(button).ToBeFocusedAsync();
+    }
+
+    /// <summary>
+    /// A part's category is a pill on a button that opens the category picker below it; the keyboard opens it too, Escape
+    /// closes it and the focus goes back to the button. On a phone the button stays inside the editor.
+    /// </summary>
+    [TestCase(1280)]
+    [TestCase(390)]
+    public async Task A_parts_category_opens_the_category_picker(int width)
+    {
+        await Page.SetViewportSizeAsync(width, 844);
+        await GoToAsync(GiroUrl);
+        await Row("−25,00").ClickAsync();
+        await Page.GetByTestId("tx-details-split").ClickAsync();
+        var editor = Page.GetByTestId("split-editor");
+        var empty = editor.GetByTestId("split-category").Nth(1);
+        await Expect(empty).ToHaveTextAsync("No category");
+
+        await empty.FocusAsync();
+        await Page.Keyboard.PressAsync("Enter");
+        var picker = Page.GetByTestId("category-picker");
+        await Expect(picker).ToBeVisibleAsync();
+        var button = (await empty.BoundingBoxAsync())!;
+        var panel = (await picker.BoundingBoxAsync())!;
+        Assert.That(panel.Y, Is.GreaterThanOrEqualTo(button.Y + button.Height).Or.LessThanOrEqualTo(button.Y), "the picker opens beside the button, not over it");
+        await Page.Keyboard.PressAsync("Escape");
+        await Expect(picker).ToHaveCountAsync(0);
+        await Expect(empty).ToBeFocusedAsync();
+
+        await PickCategoryAsync(empty, EditingSeed.EnergyCategory);
+        await Expect(empty.Locator(".cat-pill")).ToBeVisibleAsync();
+        var box = (await editor.BoundingBoxAsync())!;
+        foreach (var b in await editor.GetByTestId("split-category").AllAsync())
+        {
+            var r = (await b.BoundingBoxAsync())!;
+            Assert.That(r.X + r.Width, Is.LessThanOrEqualTo(box.X + box.Width + 1), "the category button stays inside the editor");
+        }
+        var dir = Environment.GetEnvironmentVariable("OB_SPLIT_SCREENSHOT_DIR");
+        if (!string.IsNullOrEmpty(dir))
+            await editor.ScreenshotAsync(new() { Path = Path.Combine(dir, $"split-{width}.png") });
+    }
+
     [Test]
     public async Task A_booking_is_split_into_parts_with_assign_rest_and_the_split_can_be_removed()
     {
@@ -47,7 +98,7 @@ public sealed class SplitTests : EndToEndTestBase
         await amounts.Nth(0).FillAsync("15");
         await Expect(editor.GetByTestId("split-remaining")).ToContainTextAsync("10,00");
         await Expect(editor.GetByTestId("split-save")).ToBeDisabledAsync();
-        await editor.GetByTestId("split-category").Nth(0).SelectOptionAsync("202");
+        await PickCategoryAsync(editor.GetByTestId("split-category").Nth(0), EditingSeed.EnergyCategory);
         await editor.GetByTestId("split-assign-rest").Nth(1).ClickAsync();
         await Expect(amounts.Nth(1)).ToHaveValueAsync("10,00");
         await Expect(editor.GetByTestId("split-remaining")).ToContainTextAsync("0,00");
@@ -91,7 +142,7 @@ public sealed class SplitTests : EndToEndTestBase
         await Page.GetByTestId("tx-details-split").ClickAsync();
         var editor = Page.GetByTestId("split-editor");
         await editor.GetByTestId("split-amount").Nth(0).FillAsync("32");
-        await editor.GetByTestId("split-category").Nth(0).SelectOptionAsync("202");
+        await PickCategoryAsync(editor.GetByTestId("split-category").Nth(0), EditingSeed.EnergyCategory);
         await editor.GetByTestId("split-assign-rest").Nth(1).ClickAsync();
         await editor.GetByTestId("split-save").ClickAsync();
         await Expect(Row("−32,00")).ToContainTextAsync("Split");
