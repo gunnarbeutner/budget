@@ -408,9 +408,10 @@ document.addEventListener("dragstart", function (e) {
 })();
 
 // The row whose menu a right-click / long-press on a booking opens: the booking's row, also from its expanded details,
-// but not from the day header, text fields (they keep the browser's menu for copy/paste) or links.
+// but not from the day header, text fields (they keep the browser's menu for copy/paste), links or a dialog opened from
+// the details.
 window.obTxMenuRow = function (target) {
-    if (!(target instanceof Element)) return null;
+    if (!(target instanceof Element) || target.closest("[role=dialog]")) return null;
     var item = target.closest(".tx-item");
     if (!item || target.closest(".tx-day, input, textarea, select, a, [contenteditable]")) return null;
     return item.querySelector(":scope > .tx-row");

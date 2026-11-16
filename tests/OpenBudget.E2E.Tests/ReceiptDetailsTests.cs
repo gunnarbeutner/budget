@@ -107,4 +107,57 @@ public sealed class ReceiptDetailsTests : EndToEndTestBase
         if (await Page.GetByTestId("tx-receipt").CountAsync() == 0) await rows.First.ClickAsync();
         await Expect(Page.GetByTestId("tx-receipt").Locator($"[data-category='{Energy}']")).ToContainTextAsync("(3)");
     }
+
+    /// <summary>
+    /// Clicks, double-clicks and text selection inside the receipt panel stay in the panel: the booking stays expanded and
+    /// selected, nothing in the list beneath is selected, and a drag that ends on the backdrop does not close the panel.
+    /// </summary>
+    [Test]
+    public async Task Clicks_in_the_receipt_panel_stay_in_the_panel()
+    {
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&q=REWE");
+        var rows = Page.GetByTestId("tx-row");
+        await Expect(rows).ToHaveCountAsync(2);
+        await rows.First.ClickAsync();
+        var receipt = Page.GetByTestId("tx-receipt");
+        await receipt.GetByTestId("tx-receipt-open").ClickAsync();
+        var panel = Page.GetByTestId("receipt-panel");
+        var name = panel.GetByTestId("receipt-panel-line").Filter(new() { HasText = "Apfelschorle" }).Locator("td").First;
+        await Expect(name).ToBeVisibleAsync();
+
+        await name.ClickAsync();
+        await name.DblClickAsync();
+        await name.ClickAsync(new() { ClickCount = 3 });
+        await name.ClickAsync(new() { Modifiers = [Microsoft.Playwright.KeyboardModifier.Shift] });
+        var box = (await name.BoundingBoxAsync())!;
+        await Page.Mouse.MoveAsync(box.X + 2, box.Y + box.Height / 2);
+        await Page.Mouse.DownAsync();
+        await Page.Mouse.MoveAsync(box.X + box.Width - 2, box.Y + box.Height / 2, new() { Steps = 5 });
+        await Page.Mouse.UpAsync();
+        // A drag from inside the panel that ends on the backdrop.
+        await Page.Mouse.MoveAsync(box.X + 2, box.Y + box.Height / 2);
+        await Page.Mouse.DownAsync();
+        await Page.Mouse.MoveAsync(5, 300, new() { Steps = 5 });
+        await Page.Mouse.UpAsync();
+
+        await Expect(panel).ToBeVisibleAsync();
+        Assert.That(await Page.EvaluateAsync<bool>(@"() => {
+            const s = getSelection();
+            if (!s || s.isCollapsed) return true;
+            const n = s.anchorNode && (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement);
+            const f = s.focusNode && (s.focusNode.nodeType === 1 ? s.focusNode : s.focusNode.parentElement);
+            return !!(n && n.closest('[role=dialog]') && f && f.closest('[role=dialog]'));
+        }"), Is.True, "no text beneath the panel is selected");
+        await Page.GetByTestId("modal-dialog").Locator(".btn-close").ClickAsync();
+        await Expect(panel).ToHaveCountAsync(0);
+        await Expect(Page.Locator(".tx-row[aria-selected=true]")).ToHaveCountAsync(1);
+        await Expect(receipt).ToBeVisibleAsync();
+
+        // A click on the backdrop still closes the panel.
+        await receipt.GetByTestId("tx-receipt-open").ClickAsync();
+        await Expect(panel).ToBeVisibleAsync();
+        await Page.Mouse.ClickAsync(5, 300);
+        await Expect(panel).ToHaveCountAsync(0);
+        await Expect(receipt).ToBeVisibleAsync();
+    }
 }

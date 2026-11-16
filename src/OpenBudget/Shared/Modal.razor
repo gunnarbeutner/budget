@@ -27,9 +27,12 @@
          role="dialog" aria-modal="true"
          aria-labelledby="@(string.IsNullOrEmpty(Title) ? null : _titleId)"
          @ref="_modalRef"
-         @onkeydown="OnKeyDown"
-         @onclick="OnBackdropClick">
-        <div class="modal-dialog @SizeClass" @onclick:stopPropagation="true">
+         @onkeydown="OnKeyDown" @onkeydown:stopPropagation="true"
+         @onmousedown="() => _pressOnBackdrop = true" @onmousedown:stopPropagation="true"
+         @onclick="OnBackdropClick" @onclick:stopPropagation="true"
+         @ondblclick:stopPropagation="true" @oncontextmenu:stopPropagation="true">
+        <div class="modal-dialog @SizeClass" @onclick:stopPropagation="true"
+             @onmousedown="() => _pressOnBackdrop = false" @onmousedown:stopPropagation="true">
             <div class="modal-content">
                 @if (!string.IsNullOrEmpty(Title) || ShowCloseButton)
                 {
@@ -110,8 +113,14 @@
         if (e.Key == "Escape") await Close();
     }
 
+    // Whether the last press began on the backdrop: a click that only ends there (a drag or text selection started in
+    // the dialog) leaves the dialog open.
+    private bool _pressOnBackdrop;
+
     private async Task OnBackdropClick(MouseEventArgs e)
     {
+        if (!_pressOnBackdrop) return;
+        _pressOnBackdrop = false;
         if (CloseOnBackdropClick) await Close();
     }
 
