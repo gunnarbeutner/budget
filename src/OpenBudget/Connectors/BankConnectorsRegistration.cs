@@ -63,6 +63,9 @@ public static class BankConnectorsRegistration
             Headless = string.Equals(sp.GetRequiredService<IConfiguration>()[BrowserHeadlessVariable], "true", StringComparison.OrdinalIgnoreCase)
                 || sp.GetRequiredService<Microsoft.Extensions.Hosting.IHostEnvironment>().IsEnvironment("Test"),
         });
+        // Long-lived browser profiles of bank logins, encrypted on the data volume.
+        services.AddSingleton(sp => new BrowserProfileStore(Path.Combine(OpenBudgetPaths.DataDir(contentRoot), "browser-profiles"),
+            sp.GetRequiredService<SecretsProtector>(), sp.GetRequiredService<ILogger<BrowserProfileStore>>()));
         services.AddSingleton<BrowserService>();
         services.AddSingleton<IBrowserHost>(sp => sp.GetRequiredService<BrowserService>());
         services.AddSingleton(new WebLoginOptions());

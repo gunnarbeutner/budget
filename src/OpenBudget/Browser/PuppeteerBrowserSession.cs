@@ -15,13 +15,15 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
     private readonly ICDPSession _cdp;
     private readonly BrowserOptions _options;
     private readonly Action _onClosed;
+    private readonly Func<Task>? _close;
     private LatestPump<ScreencastFrame>? _pump;
     private int _castW, _castH, _castQuality;
     private int _disposed;
 
-    private PuppeteerBrowserSession(IBrowserContext context, IPage page, ICDPSession cdp, BrowserOptions options, Action onClosed)
+    private PuppeteerBrowserSession(IBrowserContext context, IPage page, ICDPSession cdp, BrowserOptions options, Action onClosed, Func<Task>? close)
     {
         _context = context;
+        _close = close;
         _page = page;
         _cdp = cdp;
         _options = options;
@@ -29,15 +31,19 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         _cdp.MessageReceived += OnCdpMessage;
     }
 
+    /// <summary>
+    /// A session on <paramref name="page"/>; disposing it closes <paramref name="context"/>, or runs <paramref name="close"/>
+    /// instead (a browser of its own, whose default context cannot be closed), then <paramref name="onClosed"/>.
+    /// </summary>
     public static async Task<PuppeteerBrowserSession> CreateAsync(
-        IBrowserContext context, IPage page, BrowserOptions options, Action onClosed)
+        IBrowserContext context, IPage page, BrowserOptions options, Action onClosed, Func<Task>? close = null)
     {
         var cdp = await page.CreateCDPSessionAsync();
         // Ordinary links stay in the streamed tab without replacing native browser functions or identity properties.
         await page.EvaluateFunctionOnNewDocumentAsync("() => { " + SameTabLinks + " }");
         page.DefaultNavigationTimeout = options.NavigationTimeoutMs;
         var native = await page.EvaluateFunctionAsync<JsonElement>("() => ({ userAgent: navigator.userAgent, width: innerWidth, height: innerHeight })");
-        return new PuppeteerBrowserSession(context, page, cdp, options, onClosed)
+        return new PuppeteerBrowserSession(context, page, cdp, options, onClosed, close)
         {
             UserAgent = native.GetProperty("userAgent").GetString()!,
             ViewportWidth = native.GetProperty("width").GetInt32(),
@@ -655,7 +661,7 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         _cdp.MessageReceived -= OnCdpMessage;
         _pump = null;
-        try { await _context.CloseAsync(); }
+        try { await (_close?.Invoke() ?? _context.CloseAsync()); }
         catch (Exception ex) when (ex is PuppeteerException or ObjectDisposedException or InvalidOperationException) { /* browser already gone */ }
         _onClosed();
     }

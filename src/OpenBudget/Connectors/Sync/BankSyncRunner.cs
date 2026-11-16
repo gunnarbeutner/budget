@@ -66,6 +66,9 @@ public sealed class BankSyncRunner
         /// <summary>A background run (nothing is asked, nothing shown).</summary>
         public bool Silent { get; init; }
 
+        /// <summary>The login's long-lived browser profile its web logins run in (see <see cref="BrowserProfileStore"/>).</summary>
+        public string? BrowserProfile { get; init; }
+
         /// <summary>How a web login may run in a background run (null: it is not tried at all).</summary>
         public WebLoginUnattended? Unattended { get; set; }
 
@@ -169,7 +172,7 @@ public sealed class BankSyncRunner
         bool credentialsInvalid = false;
         IBankConnector? connector = null;
         using var http = _httpFactory();
-        var context = new SyncContext(login.OwnerUserId, http) { Silent = request.Background };
+        var context = new SyncContext(login.OwnerUserId, http) { Silent = request.Background, BrowserProfile = BrowserProfileStore.ForLogin(login.Id) };
         string? needsUser = null;
         string? blz = null;
 
@@ -481,7 +484,7 @@ public sealed class BankSyncRunner
         }
         try
         {
-            session = await _webLogins.StartAsync(context.OwnerUserId, spec, context.Http.ExportCookies(), ct, AskForCodeAsync);
+            session = await _webLogins.StartAsync(context.OwnerUserId, spec, context.Http.ExportCookies(), ct, AskForCodeAsync, profile: context.BrowserProfile);
         }
         catch (BrowserActionException ex)
         {
@@ -547,7 +550,7 @@ public sealed class BankSyncRunner
         WebLoginSession session;
         try
         {
-            session = await _webLogins.StartAsync(context.OwnerUserId, spec, context.Http.ExportCookies(), ct, askForCode: null, unattended: mode);
+            session = await _webLogins.StartAsync(context.OwnerUserId, spec, context.Http.ExportCookies(), ct, askForCode: null, unattended: mode, profile: context.BrowserProfile);
         }
         catch (BrowserActionException ex)
         {

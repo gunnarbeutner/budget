@@ -111,11 +111,13 @@ public interface IWebLoginService
     bool IsAvailable { get; }
 
     /// <summary>
-    /// Opens a fresh isolated browser for <paramref name="ownerUserId"/>, seeds it with <paramref name="seed"/> (filtered to the
-    /// spec's domains) and starts watching for the success condition.
+    /// Opens a browser for <paramref name="ownerUserId"/> (in the long-lived profile <paramref name="profile"/> when given,
+    /// see <see cref="BrowserProfileStore"/>; otherwise fresh and isolated), seeds it with <paramref name="seed"/> (filtered
+    /// to the spec's domains) and starts watching for the success condition.
     /// </summary>
     Task<WebLoginSession> StartAsync(string ownerUserId, WebLoginSpec spec, IReadOnlyList<CookieState> seed, CancellationToken ct,
-        Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? askForCode = null, WebLoginUnattended unattended = WebLoginUnattended.None);
+        Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? askForCode = null, WebLoginUnattended unattended = WebLoginUnattended.None,
+        string? profile = null);
 
     /// <summary>The open web login with this id, only if it belongs to <paramref name="userId"/>.</summary>
     WebLoginSession? Find(string sessionId, string userId);
@@ -140,10 +142,11 @@ public sealed class WebLoginService : IWebLoginService
     public bool IsAvailable => _host.IsAvailable;
 
     public async Task<WebLoginSession> StartAsync(string ownerUserId, WebLoginSpec spec, IReadOnlyList<CookieState> seed, CancellationToken ct,
-        Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? askForCode = null, WebLoginUnattended unattended = WebLoginUnattended.None)
+        Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? askForCode = null, WebLoginUnattended unattended = WebLoginUnattended.None,
+        string? profile = null)
     {
         if (!_host.IsAvailable) throw new BrowserActionException("No browser is available on this server.");
-        var browser = await _host.OpenSessionAsync(ct);
+        var browser = await _host.OpenSessionAsync(profile, ct);
         var now = _clock.GetUtcNow();
         var session = new WebLoginSession(
             ownerUserId, spec, browser, _host.Options, _options, now.UtcDateTime + _options.Timeout,

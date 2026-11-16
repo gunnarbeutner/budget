@@ -100,6 +100,8 @@ public sealed class WebLoginTests
         var result = await world.SyncAsync(BankWorld.Alice, login.Id, LoginOnly(login.Id), shortFirst ? ["12", "123456"] : ["123456"]);
         Assert.True(result.Succeeded, result.Error);
         Assert.Equal("123456", browser.Sessions.Single().Filled["#code"]);
+        // the web login runs in the login's own long-lived browser profile
+        Assert.Equal(BrowserProfileStore.ForLogin(login.Id), browser.Profiles.Single());
         Assert.Single(browser.Sessions.Single().Clicked);
     }
 

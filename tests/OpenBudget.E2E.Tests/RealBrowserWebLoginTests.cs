@@ -74,8 +74,15 @@ public sealed class RealBrowserWebLoginTests
             }
             var bytes = Encoding.UTF8.GetBytes(html);
             ctx.Response.ContentType = "text/html";
-            await ctx.Response.OutputStream.WriteAsync(bytes);
-            ctx.Response.Close();
+            try
+            {
+                await ctx.Response.OutputStream.WriteAsync(bytes);
+                ctx.Response.Close();
+            }
+            catch (Exception ex) when (ex is HttpListenerException or IOException or ObjectDisposedException)
+            {
+                // the browser closed before the answer was written; the next request is served as usual
+            }
         }
     }
 
@@ -299,6 +306,42 @@ public sealed class RealBrowserWebLoginTests
     }
 
     private BrowserService NewBrowser(bool headless = true) => new(NullLogger<BrowserService>.Instance, new BrowserOptions { ExecutablePath = _chrome, IdleShutdown = TimeSpan.FromSeconds(1), Headless = headless });
+
+    [Test]
+    public async Task A_logins_browser_profile_keeps_its_site_data_for_the_next_session_only()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ob-e2e-profiles-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new BrowserProfileStore(dir, new SecretsProtector(SecretsProtector.GenerateKey()), NullLogger<BrowserProfileStore>.Instance);
+            await using var browser = new BrowserService(NullLogger<BrowserService>.Instance,
+                new BrowserOptions { ExecutablePath = _chrome, IdleShutdown = TimeSpan.FromSeconds(1), Headless = true }, store);
+            var mine = BrowserProfileStore.ForLogin(1);
+            const string read = "() => ({ ok: localStorage.getItem('seen') === 'yes', reason: String(localStorage.getItem('seen')) })";
+            await using (var first = await browser.OpenSessionAsync(mine, CancellationToken.None))
+            {
+                await first.NavigateAsync(new Uri(_baseUrl + "home"), CancellationToken.None);
+                await first.CheckAsync("() => { localStorage.setItem('seen', 'yes'); return { ok: true, reason: '' }; }", "");
+            }
+            Assert.That(store.Exists(mine), Is.True, "the profile is stored when the browser closes");
+
+            await using (var again = await browser.OpenSessionAsync(mine, CancellationToken.None))
+            {
+                await again.NavigateAsync(new Uri(_baseUrl + "home"), CancellationToken.None);
+                var check = await again.CheckAsync(read, "");
+                Assert.That(check.Ok, Is.True, "the same login sees its site data again: " + check.Reason);
+            }
+            await using (var other = await browser.OpenSessionAsync(BrowserProfileStore.ForLogin(2), CancellationToken.None))
+            {
+                await other.NavigateAsync(new Uri(_baseUrl + "home"), CancellationToken.None);
+                Assert.That((await other.CheckAsync(read, "")).Ok, Is.False, "another login starts without it");
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { /* best-effort */ }
+        }
+    }
 
     [Test]
     public async Task A_web_login_seeds_the_browser_exports_the_cookies_and_leaves_nothing_behind()

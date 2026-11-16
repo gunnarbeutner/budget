@@ -391,4 +391,10 @@
   <data name="SourceMethod_Remove" xml:space="preserve">
     <value>Remove account</value>
   </data>
+  <data name="Button_ResetBrowserProfile" xml:space="preserve">
+    <value>Reset browser data</value>
+  </data>
+  <data name="Hint_ResetBrowserProfile" xml:space="preserve">
+    <value>The bank's site data is kept between syncs, so its sign-in sees the same browser each time. Resetting it starts the next sign-in in a fresh browser; the saved sign-in session is kept.</value>
+  </data>
 </root>

@@ -78,6 +78,37 @@ public sealed class SecretsProtector
         return Prefix + Convert.ToBase64String(payload);
     }
 
+    /// <summary>Encrypts binary data (nonce + tag + ciphertext), bound to <paramref name="purpose"/>.</summary>
+    public byte[] EncryptBytes(ReadOnlySpan<byte> plain, string purpose)
+    {
+        var key = _key ?? throw new InvalidOperationException("The secrets key is not configured.");
+        var payload = new byte[NonceBytes + TagBytes + plain.Length];
+        var nonce = payload.AsSpan(0, NonceBytes);
+        RandomNumberGenerator.Fill(nonce);
+        using (var aes = new AesGcm(key, TagBytes))
+            aes.Encrypt(nonce, plain, payload.AsSpan(NonceBytes + TagBytes), payload.AsSpan(NonceBytes, TagBytes), Encoding.UTF8.GetBytes(purpose));
+        return payload;
+    }
+
+    /// <summary>Decrypts data produced by <see cref="EncryptBytes"/>; false when the key is missing/wrong or the data was altered.</summary>
+    public bool TryDecryptBytes(ReadOnlySpan<byte> payload, string purpose, out byte[] plain)
+    {
+        plain = [];
+        if (_key == null || payload.Length < NonceBytes + TagBytes) return false;
+        var result = new byte[payload.Length - NonceBytes - TagBytes];
+        try
+        {
+            using var aes = new AesGcm(_key, TagBytes);
+            aes.Decrypt(payload[..NonceBytes], payload[(NonceBytes + TagBytes)..], payload.Slice(NonceBytes, TagBytes), result, Encoding.UTF8.GetBytes(purpose));
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
+        plain = result;
+        return true;
+    }
+
     /// <summary>Decrypts a payload produced by <see cref="Encrypt"/>; false when the key is missing/wrong or the data was altered.</summary>
     public bool TryDecrypt(string? payload, string purpose, out string plaintext)
     {

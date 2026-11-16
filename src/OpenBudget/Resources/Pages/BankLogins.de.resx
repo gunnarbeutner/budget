@@ -391,4 +391,10 @@
   <data name="SourceMethod_Remove" xml:space="preserve">
     <value>Konto entfernen</value>
   </data>
+  <data name="Button_ResetBrowserProfile" xml:space="preserve">
+    <value>Browserdaten zurücksetzen</value>
+  </data>
+  <data name="Hint_ResetBrowserProfile" xml:space="preserve">
+    <value>Die Websitedaten der Bank bleiben zwischen Synchronisierungen erhalten, damit ihre Anmeldung jedes Mal denselben Browser sieht. Nach dem Zurücksetzen beginnt die nächste Anmeldung in einem frischen Browser; die gespeicherte Anmeldesitzung bleibt erhalten.</value>
+  </data>
 </root>

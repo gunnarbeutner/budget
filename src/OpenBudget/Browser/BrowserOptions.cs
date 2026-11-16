@@ -12,6 +12,12 @@ public sealed class BrowserOptions
     /// <summary>How long a web login waits for one of the <see cref="MaxConcurrentSessions"/> slots before it fails.</summary>
     public TimeSpan SlotWait { get; set; } = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// How long a session waits for another browser of the same long-lived profile to close (a kept browser, say) before
+    /// it runs in an ephemeral profile instead.
+    /// </summary>
+    public TimeSpan ProfileWait { get; set; } = TimeSpan.FromSeconds(30);
+
     /// <summary>Initial browser window size; frames and input use the native page's actual viewport.</summary>
     public int ViewportWidth { get; set; } = 1280;
 

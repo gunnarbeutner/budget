@@ -12,6 +12,12 @@ public interface IBrowserHost
 
     /// <summary>Opens a fresh, ephemeral session: its own cookie storage, no profile on disk, one page.</summary>
     Task<IBrowserSession> OpenSessionAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Opens a session in the long-lived profile <paramref name="profile"/> (see <see cref="BrowserProfileStore"/>), or an
+    /// ephemeral one when <paramref name="profile"/> is null or profiles are not kept.
+    /// </summary>
+    Task<IBrowserSession> OpenSessionAsync(string? profile, CancellationToken ct) => OpenSessionAsync(ct);
 }
 
 /// <summary>One isolated browser context with a single page. Disposing it destroys cookies and everything else.</summary>

@@ -445,6 +445,13 @@ else
                     }
                 </select>
             </div>
+            @if (Bank.HasBrowserProfile(editing.Id))
+            {
+                <div class="mb-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-action="reset-browser-profile" @onclick="ResetBrowserProfileAsync">@L["Button_ResetBrowserProfile"]</button>
+                    <div class="form-text">@L["Hint_ResetBrowserProfile"]</div>
+                </div>
+            }
             @if (!string.IsNullOrEmpty(editError)) { <div class="text-danger small">@editError</div> }
         }
     </ChildContent>
@@ -727,6 +734,13 @@ else
         var id = pendingDelete.Id;
         pendingDelete = null;
         await RunAsync(() => Bank.DeleteLoginAsync(id));
+    }
+
+    private async Task ResetBrowserProfileAsync()
+    {
+        if (editing == null) return;
+        var id = editing.Id;
+        await RunAsync(() => Bank.ResetBrowserProfileAsync(id));
     }
 
     private Task LinkAsync(int loginAccountId, string? accountId) =>

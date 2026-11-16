@@ -65,6 +65,8 @@ internal sealed class BankWorld : IAsyncDisposable
         Registry = new ConnectorRegistry([FakeBankConnector.Registration, .. _extras.Registrations]);
         StatementsDir = Path.Combine(Path.GetTempPath(), $"ob-stmts-{Guid.NewGuid():N}");
         StatementStore = new BankStatementStore(new BankStorageOptions(StatementsDir));
+        BrowserProfilesDir = Path.Combine(Path.GetTempPath(), $"ob-profiles-{Guid.NewGuid():N}");
+        BrowserProfiles = new BrowserProfileStore(BrowserProfilesDir, Secrets, NullLogger<BrowserProfileStore>.Instance);
         WebLogins = _extras.BrowserHost == null
             ? null
             : new WebLoginService(_extras.BrowserHost, _extras.WebLoginOptions ?? new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero },
@@ -81,6 +83,8 @@ internal sealed class BankWorld : IAsyncDisposable
     public ConnectorRegistry Registry { get; }
     public string StatementsDir { get; }
     public BankStatementStore StatementStore { get; }
+    public string BrowserProfilesDir { get; }
+    public BrowserProfileStore BrowserProfiles { get; }
     public IWebLoginService? WebLogins { get; }
     public BankSyncRunner Runner { get; }
     public BankSyncCoordinator Coordinator { get; }
@@ -114,7 +118,7 @@ internal sealed class BankWorld : IAsyncDisposable
         var factory = new ScopedDbContextFactory(T.System, access);
         var origin = new ChangeOrigin();
         return new BankLoginService(factory, access, new AccountService(factory),
-            Coordinator, Registry, Secrets, StatementStore, T.Notifier, origin);
+            Coordinator, Registry, Secrets, StatementStore, T.Notifier, origin, BrowserProfiles);
     }
 
     /// <summary>The account switch service as <paramref name="userId"/> sees it.</summary>
@@ -277,5 +281,6 @@ internal sealed class BankWorld : IAsyncDisposable
             try { File.Delete(f); } catch { /* best-effort */ }
         }
         try { Directory.Delete(StatementsDir, recursive: true); } catch { /* best-effort */ }
+        try { Directory.Delete(BrowserProfilesDir, recursive: true); } catch { /* best-effort */ }
     }
 }

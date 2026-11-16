@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using OpenBudget.Browser;
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.Sync;
 using OpenBudget.Models;
@@ -117,12 +118,14 @@ public class BankLoginService
     private readonly BankStatementStore _statementStore;
     private readonly ChangeNotificationService _notifier;
     private readonly ChangeOrigin _origin;
+    private readonly BrowserProfileStore? _browserProfiles;
 
     public BankLoginService(
         IDbContextFactory<BudgetDbContext> dbFactory, AccessScopeProvider access, AccountService accounts,
         BankSyncCoordinator coordinator, ConnectorRegistry registry, SecretsProtector secrets, BankStatementStore statementStore,
-        ChangeNotificationService notifier, ChangeOrigin origin)
+        ChangeNotificationService notifier, ChangeOrigin origin, BrowserProfileStore? browserProfiles = null)
     {
+        _browserProfiles = browserProfiles;
         _dbFactory = dbFactory;
         _access = access;
         _accounts = accounts;
@@ -357,8 +360,8 @@ public class BankLoginService
     }
 
     /// <summary>
-    /// Deletes the login with its credentials, session, remote-account list and downloaded statements (files
-    /// included). Accounts and transactions already imported are kept; the linked accounts become manual accounts.
+    /// Deletes the login with its credentials, session, browser profile, remote-account list and downloaded statements
+    /// (files included). Accounts and transactions already imported are kept; the linked accounts become manual accounts.
     /// </summary>
     public async Task DeleteLoginAsync(int id, CancellationToken ct = default)
     {
@@ -379,8 +382,24 @@ public class BankLoginService
         db.BankLogins.Remove(login);
         await db.SaveChangesAsync(ct);
         foreach (var s in statements) _statementStore.DeleteFile(s.FilePath);
+        _browserProfiles?.Delete(BrowserProfileStore.ForLogin(id));
         Changed(userId);
         _notifier.Publish(new DataChange(DataArea.ImportState), _origin.Id);
+    }
+
+    /// <summary>Whether a browser profile is kept for the login (see <see cref="BrowserProfileStore"/>).</summary>
+    public bool HasBrowserProfile(int id) => _browserProfiles?.Exists(BrowserProfileStore.ForLogin(id)) == true;
+
+    /// <summary>
+    /// Forgets the browser profile kept for one of the user's logins: its next web login starts in a fresh browser (the
+    /// stored session cookies are kept).
+    /// </summary>
+    public async Task ResetBrowserProfileAsync(int id, CancellationToken ct = default)
+    {
+        await RequireUserAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        if (!await db.BankLogins.AnyAsync(l => l.Id == id, ct)) throw new AccessDeniedException("Connection not found.");
+        _browserProfiles?.Delete(BrowserProfileStore.ForLogin(id));
     }
 
     // ---- Remote accounts and links ----

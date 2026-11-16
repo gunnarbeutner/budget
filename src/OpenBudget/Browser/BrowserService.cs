@@ -10,7 +10,9 @@ namespace OpenBudget.Browser;
 /// Singleton owning one lazily launched headed Chromium with its native browser identity. It has no persistent profile (a throw-away
 /// user-data directory per process) and hands out <see cref="IBrowserSession"/>s that are each an isolated
 /// incognito-style context, so bank sessions of different users can never mix. The process is closed again a
-/// minute after the last session ended.
+/// minute after the last session ended. A session in a long-lived profile (<see cref="OpenSessionAsync(string?, CancellationToken)"/>)
+/// runs in a Chromium process of its own on that profile, restored from <see cref="BrowserProfileStore"/> and stored
+/// back when the session ends; one such session per profile runs at a time.
 /// </summary>
 public sealed class BrowserService : IBrowserHost, IAsyncDisposable
 {
@@ -23,10 +25,13 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
     private int _open;
     private CancellationTokenSource? _idleCts;
     private bool _disposed;
+    private readonly BrowserProfileStore? _profiles;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> _profileGates = new(StringComparer.Ordinal);
 
-    public BrowserService(ILogger<BrowserService> logger, BrowserOptions? options = null)
+    public BrowserService(ILogger<BrowserService> logger, BrowserOptions? options = null, BrowserProfileStore? profiles = null)
     {
         _logger = logger;
+        _profiles = profiles;
         Options = options ?? new BrowserOptions();
         _slots = new SemaphoreSlim(Math.Max(1, Options.MaxConcurrentSessions));
     }
@@ -94,6 +99,82 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
         }
     }
 
+    public async Task<IBrowserSession> OpenSessionAsync(string? profile, CancellationToken ct)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (profile == null || _profiles is not { IsEnabled: true }) return await OpenSessionAsync(ct);
+        var gate = _profileGates.GetOrAdd(profile, _ => new SemaphoreSlim(1, 1));
+        if (!await gate.WaitAsync(Options.ProfileWait, ct))
+        {
+            _logger.LogInformation("The browser profile {Profile} is in use; this session runs in an ephemeral profile.", profile);
+            return await OpenSessionAsync(ct);
+        }
+        var gateHeld = 1;
+        void ReleaseGate()
+        {
+            if (Interlocked.Exchange(ref gateHeld, 0) == 1) gate.Release();
+        }
+        try
+        {
+            if (!await _slots.WaitAsync(Options.SlotWait, ct))
+                throw new BrowserActionException("Too many web logins are open at the moment; try again in a few minutes.");
+        }
+        catch
+        {
+            ReleaseGate();
+            throw;
+        }
+        lock (_gate)
+        {
+            _open++;
+            CancelIdleShutdown();
+        }
+        var dir = Path.Combine(Path.GetTempPath(), "openbudget-profile-" + Guid.NewGuid().ToString("N"));
+        IBrowser? browser = null;
+        try
+        {
+            Directory.CreateDirectory(dir);
+            _profiles.Restore(profile, dir);
+            browser = await LaunchAsync(dir);
+            var page = (await browser.PagesAsync()).FirstOrDefault() ?? await browser.NewPageAsync();
+            var started = browser;
+            async Task CloseAsync()
+            {
+                try
+                {
+                    await CloseProcessAsync(started);
+                    _profiles.Save(profile, dir);
+                }
+                finally
+                {
+                    DeleteDirectory(dir);
+                    ReleaseGate();
+                }
+            }
+            return await PuppeteerBrowserSession.CreateAsync(browser.DefaultContext, page, Options, OnSessionClosed, CloseAsync);
+        }
+        catch
+        {
+            if (browser != null) await CloseProcessAsync(browser);
+            DeleteDirectory(dir);
+            ReleaseGate();
+            OnSessionClosed();
+            throw;
+        }
+    }
+
+    private async Task CloseProcessAsync(IBrowser browser)
+    {
+        try { await browser.CloseAsync(); } catch (Exception ex) { _logger.LogDebug(ex, "Closing Chromium failed."); }
+        try { browser.Dispose(); } catch (Exception ex) { _logger.LogDebug(ex, "Disposing Chromium failed."); }
+    }
+
+    private void DeleteDirectory(string dir)
+    {
+        try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
+        catch (Exception ex) { _logger.LogDebug(ex, "Deleting a browser profile directory failed."); }
+    }
+
     private void CancelIdleShutdown()
     {
         var old = _idleCts;
@@ -141,51 +222,57 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
         {
             if (_browser is { IsClosed: false, IsConnected: true }) return _browser;
             await CloseBrowserAsync();
-            var exe = FindChrome(Options.ExecutablePath)
-                ?? throw new BrowserActionException("No Chromium found (CHROME_PATH is not set or the file is missing).");
             _profileDir = Path.Combine(Path.GetTempPath(), "openbudget-chromium-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_profileDir);
-            var noSandbox = Options.NoSandbox ?? (File.Exists("/.dockerenv") || Environment.UserName == "root"
-                || Environment.GetEnvironmentVariable("BROWSER_NO_SANDBOX") == "1");
-            int debuggingPort;
-            using (var reservation = new Socket(AddressFamily.InterNetwork, SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp))
-            {
-                reservation.Bind(new IPEndPoint(IPAddress.Loopback, 0));
-                debuggingPort = ((IPEndPoint)reservation.LocalEndPoint!).Port;
-            }
-            var args = new List<string>
-            {
-                "--disable-dev-shm-usage", $"--lang={Options.Locale}", "--no-first-run", "--no-default-browser-check",
-                $"--window-size={Options.ViewportWidth},{Options.ViewportHeight}", $"--user-data-dir={_profileDir}",
-                "--remote-debugging-address=127.0.0.1", $"--remote-debugging-port={debuggingPort}",
-            };
-            if (noSandbox) args.Add("--no-sandbox");
-            // headless pages otherwise count as hidden and stop rendering, which stalls clicks (they wait for a frame)
-            if (Options.Headless)
-                args.AddRange(["--headless=new", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows"]);
-            var launch = new LaunchOptions
-            {
-                ExecutablePath = exe,
-                Headless = false,
-                IgnoreDefaultArgs = true,
-                UserDataDir = _profileDir,
-                Args = [.. args],
-                DefaultViewport = null,
-                Timeout = 60000,
-            };
-            if (!Options.Headless && OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
-            {
-                const string xvfb = "/usr/bin/xvfb-run";
-                if (!File.Exists(xvfb)) throw new BrowserActionException("Web logins need a headed browser; install Xvfb and xauth or provide a DISPLAY.");
-                launch.ExecutablePath = xvfb;
-                launch.Args = ["--auto-servernum", "--", exe, .. args];
-            }
-            _logger.LogInformation("Starting {Mode} Chromium {Exe} (no-sandbox={NoSandbox}).", Options.Headless ? "headless" : "headed", exe, noSandbox);
-            var browser = await Puppeteer.LaunchAsync(launch);
+            var browser = await LaunchAsync(_profileDir);
             _browser = browser;
             return browser;
         }
         finally { _launchLock.Release(); }
+    }
+
+    /// <summary>Starts a Chromium process on the user-data directory <paramref name="userDataDir"/>.</summary>
+    private async Task<IBrowser> LaunchAsync(string userDataDir)
+    {
+        var exe = FindChrome(Options.ExecutablePath)
+            ?? throw new BrowserActionException("No Chromium found (CHROME_PATH is not set or the file is missing).");
+        var noSandbox = Options.NoSandbox ?? (File.Exists("/.dockerenv") || Environment.UserName == "root"
+            || Environment.GetEnvironmentVariable("BROWSER_NO_SANDBOX") == "1");
+        int debuggingPort;
+        using (var reservation = new Socket(AddressFamily.InterNetwork, SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp))
+        {
+            reservation.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            debuggingPort = ((IPEndPoint)reservation.LocalEndPoint!).Port;
+        }
+        var args = new List<string>
+        {
+            "--disable-dev-shm-usage", $"--lang={Options.Locale}", "--no-first-run", "--no-default-browser-check",
+            $"--window-size={Options.ViewportWidth},{Options.ViewportHeight}", $"--user-data-dir={userDataDir}",
+            "--remote-debugging-address=127.0.0.1", $"--remote-debugging-port={debuggingPort}",
+        };
+        if (noSandbox) args.Add("--no-sandbox");
+        // headless pages otherwise count as hidden and stop rendering, which stalls clicks (they wait for a frame)
+        if (Options.Headless)
+            args.AddRange(["--headless=new", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows"]);
+        var launch = new LaunchOptions
+        {
+            ExecutablePath = exe,
+            Headless = false,
+            IgnoreDefaultArgs = true,
+            UserDataDir = userDataDir,
+            Args = [.. args],
+            DefaultViewport = null,
+            Timeout = 60000,
+        };
+        if (!Options.Headless && OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
+        {
+            const string xvfb = "/usr/bin/xvfb-run";
+            if (!File.Exists(xvfb)) throw new BrowserActionException("Web logins need a headed browser; install Xvfb and xauth or provide a DISPLAY.");
+            launch.ExecutablePath = xvfb;
+            launch.Args = ["--auto-servernum", "--", exe, .. args];
+        }
+        _logger.LogInformation("Starting {Mode} Chromium {Exe} (no-sandbox={NoSandbox}).", Options.Headless ? "headless" : "headed", exe, noSandbox);
+        return await Puppeteer.LaunchAsync(launch);
     }
 
     private async Task CloseBrowserAsync()

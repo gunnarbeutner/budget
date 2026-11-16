@@ -24,10 +24,19 @@ internal sealed class FakeBrowserHost : IBrowserHost
     /// <summary>See <see cref="FakeBrowserSession.Redirect"/>.</summary>
     public Func<Uri, Uri?>? Redirect { get; set; }
 
-    public Task<IBrowserSession> OpenSessionAsync(CancellationToken ct)
+    /// <summary>The profile each session was opened in (null: ephemeral), in order.</summary>
+    public List<string?> Profiles { get; } = [];
+
+    public Task<IBrowserSession> OpenSessionAsync(CancellationToken ct) => OpenSessionAsync(null, ct);
+
+    public Task<IBrowserSession> OpenSessionAsync(string? profile, CancellationToken ct)
     {
         var session = new FakeBrowserSession(User) { FieldWait = FieldWait, Redirect = Redirect, UserAgent = UserAgent };
-        lock (Sessions) Sessions.Add(session);
+        lock (Sessions)
+        {
+            Sessions.Add(session);
+            Profiles.Add(profile);
+        }
         return Task.FromResult<IBrowserSession>(session);
     }
 }
