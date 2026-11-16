@@ -9,6 +9,10 @@ set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
+# dotnet format loads MSBuild from DOTNET_ROOT: point it at the installation of the dotnet on PATH, so an older SDK
+# elsewhere (which cannot load the projects, leaving their style rules unchecked) is never used.
+dotnet_bin=$(command -v dotnet)
+export DOTNET_ROOT=$(cd "$(dirname "$(readlink -f "$dotnet_bin")")" && pwd)
 log_dir=${CHECK_LOG_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/openbudget-check.XXXXXX")}
 mkdir -p "$log_dir"
 unit_only=false
