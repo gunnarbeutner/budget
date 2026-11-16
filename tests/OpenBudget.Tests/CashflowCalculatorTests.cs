@@ -140,7 +140,7 @@ public class CashflowCalculatorTests
         var (expenses, remaining) = CashflowCalculator.ProjectExpenses(budget, spent, currentMonth: 11);
 
         Assert.Equal(70m, remaining);    // November still holds 70, for its own remaining days
-        Assert.Equal(30m, expenses[10]); // November shows its actuals
+        Assert.Equal(100m, expenses[10]); // November: its 30 actuals plus the 70 still expected
         Assert.Equal(100m, expenses[11]); // December: its own budget; the 200 left unspent in Jan–Oct stays saved
         Assert.Equal(80m, expenses[0]);
     }
@@ -241,6 +241,49 @@ public class CashflowCalculatorTests
         Assert.Equal(460m, result.BalanceDaily[nov20]);
         Assert.Equal(400m, result.BalanceDaily[nov25]);
         Assert.Equal(400m, result.BalanceDaily[364]); // nothing of November reaches December
+    }
+
+    [Fact]
+    public void A_rows_yearly_total_matches_what_the_balance_line_spends_on_it()
+    {
+        // One budgeted row and no other money: 80 booked on the 1st of Jan–Oct, 30 on Nov 1, today Nov 16, budget 100 a
+        // month. The row's year (its total in the summary) and the balance line's change over the year must agree,
+        // including the 70 November still holds.
+        var budget = Enumerable.Repeat(100m, 12).ToArray();
+        var spent = new decimal[12];
+        var deltas = new decimal[365];
+        for (int m = 1; m <= 11; m++)
+        {
+            spent[m - 1] = m <= 10 ? 80m : 30m;
+            deltas[new DateTime(2026, m, 1).DayOfYear - 1] = -spent[m - 1];
+        }
+        var (expenses, remaining) = CashflowCalculator.ProjectExpenses(budget, spent, currentMonth: 11);
+        var row = new CategoryCashflow
+        {
+            CategoryId = 3,
+            ItemType = CategoryItemType.Category,
+            IsAggregateRow = true,
+            MonthlyAmounts = expenses,
+            CurrentMonthRemaining = remaining,
+        };
+        var weights = new decimal[31];
+        weights[24] = 1m;
+        var data = new ProjectDailyDeltaResult
+        {
+            HasAccounts = true,
+            StartingBalance = 2000m,
+            LastActualDayOfYear = new DateTime(2026, 11, 16).DayOfYear,
+            DailyDelta = deltas,
+        };
+
+        var result = CashflowCalculator.ComputeBalance(
+            data, selectedYear: 2026, currentYear: 2026, firstProjectedMonth: 12,
+            new List<CategoryCashflow>(), new List<CategoryCashflow> { row },
+            new Dictionary<(long, CategoryItemType), DayOfMonthDistribution> { [(3, CategoryItemType.Category)] = new() { Weights = weights } },
+            new List<WhatIfEntry>(), floor: 0m);
+
+        Assert.Equal(1000m, expenses.Sum()); // 800 + (30 + 70) + 100
+        Assert.Equal(2000m - expenses.Sum(), result.BalanceDaily[^1]);
     }
 
     // 12-element monthly array with a single month (1-based) set.

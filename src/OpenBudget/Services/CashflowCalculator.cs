@@ -40,7 +40,8 @@ public class CategoryCashflow
 
     /// <summary>
     /// Expense rows: what the budget still holds for the current month (its budget minus what was spent so far, not
-    /// below zero). The balance line spreads it over the month's remaining days.
+    /// below zero). It is part of the current month's <see cref="MonthlyAmounts"/> (actuals plus this rest); the balance
+    /// line, whose actuals come from the bookings, spreads only this rest over the month's remaining days.
     /// </summary>
     public decimal CurrentMonthRemaining { get; set; }
 }
@@ -152,9 +153,9 @@ public static class CashflowCalculator
     /// month at its own monthly budget. Money left unspent so far stays saved; it is not added to the later months. When
     /// the spending so far leaves less of the yearly budget than the later months' budgets add up to, every later month
     /// is cut by the same share, so the year ends at its budget (no month below zero; all of them zero when the yearly
-    /// budget is already used up). The current month keeps its actuals and counts as spent at least up to its budget:
-    /// what it still holds (<see cref="CategoryCashflow.CurrentMonthRemaining"/>, returned as <c>Remaining</c>) belongs
-    /// to its own remaining days.
+    /// budget is already used up). The current month is its actuals plus what its budget still holds (at least its
+    /// budget, more when it is overspent); that rest (<see cref="CategoryCashflow.CurrentMonthRemaining"/>, returned as
+    /// <c>Remaining</c>) is still to be spent on its own remaining days.
     /// </summary>
     public static (decimal[] Expenses, decimal Remaining) ProjectExpenses(decimal[] budget, decimal[] spent, int currentMonth)
     {
@@ -167,7 +168,8 @@ public static class CashflowCalculator
             else if (m == currentMonth)
             {
                 remaining = Math.Max(0m, budget[m - 1] - spent[m - 1]);
-                spentSoFar += spent[m - 1] + remaining;
+                expenses[m - 1] = spent[m - 1] + remaining;
+                spentSoFar += expenses[m - 1];
             }
             else laterBudget += Math.Max(0m, budget[m - 1]);
         }
