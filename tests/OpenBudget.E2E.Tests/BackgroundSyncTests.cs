@@ -62,6 +62,37 @@ public sealed class BackgroundSyncTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task The_running_syncs_list_stays_on_a_phone_screen()
+    {
+        const string username = "demo+slow+running-phone";
+        await GoToAsync("/connections");
+        await Page.GetByTestId("add-login-open").ClickAsync();
+        await Page.Locator("#new-login-connector").SelectOptionAsync("fake");
+        await Page.Locator("#new-login-name").FillAsync("Slow phone bank");
+        await Page.Locator("#new-login-username").FillAsync(username);
+        await Page.Locator("#new-login-pin").FillAsync("1234");
+        await Page.Locator("#new-login-add").ClickAsync();
+
+        try
+        {
+            await Page.SetViewportSizeAsync(390, 844);
+            var menu = Page.GetByTestId("bank-sync-running");
+            await menu.GetByTestId("bank-sync-chip").ClickAsync();
+            var list = menu.Locator(".sync-problems-menu");
+            await Expect(list.Locator("[data-testid=sync-running][data-login='Slow phone bank']")).ToBeVisibleAsync();
+            var box = await list.BoundingBoxAsync();
+            var chip = await menu.GetByTestId("bank-sync-chip").BoundingBoxAsync();
+            Assert.That(box!.X, Is.EqualTo(16).Within(1));
+            Assert.That(box.X + box.Width, Is.EqualTo(390 - 16).Within(1));
+            Assert.That(box.Y, Is.GreaterThanOrEqualTo(chip!.Y + chip.Height));
+        }
+        finally
+        {
+            FakeBankConnector.Release(username);
+        }
+    }
+
+    [Test]
     public async Task The_sync_indicator_lists_the_running_syncs_until_they_finish()
     {
         const string username = "demo+slow+running-list";

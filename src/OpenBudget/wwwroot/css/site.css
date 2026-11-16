@@ -1422,6 +1422,9 @@ button.cat-pill:hover { filter: brightness(0.96); }
     .app-topbar > .sync-problems, .app-topbar > .user-menu { width: 44px; height: 44px; }
     .app-topbar > .sync-problems > .app-sync-attention, .app-topbar > .user-menu > .app-avatar { position: absolute; inset: 0; margin: auto; }
     .app-topbar > .user-menu { margin-right: -8px; }
+    /* The sync menus span the screen between the gutters: the buttons to their right would push a menu aligned to
+       its own button off the left edge. top: auto keeps them just below their button. */
+    .app-topbar > .sync-problems > .sync-problems-menu { position: fixed; top: auto; left: 16px; right: 16px; width: auto; margin-top: 8px; max-height: calc(100dvh - var(--ob-topbar-h) - 96px); overflow-y: auto; }
     .app-wordmark { display: none; }
     .app-sync-label { display: none; }
 
