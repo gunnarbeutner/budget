@@ -1282,6 +1282,8 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-sele
     text-overflow: ellipsis;
 }
 .tx-comment { font-size: 13px; color: var(--ob-muted); }
+/* An expanded row shows its whole purpose. */
+.tx-item.expanded .tx-purpose { white-space: normal; overflow-wrap: anywhere; }
 .tx-new-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ob-accent); flex: 0 0 auto; }
 .tx-flag {
     font-size: 11px;

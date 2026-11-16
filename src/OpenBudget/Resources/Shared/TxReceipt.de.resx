@@ -69,4 +69,7 @@
   </data>
   <data name="OpenAtShop" xml:space="preserve"><value>Bei Amazon öffnen</value></data>
   <data name="OpenOrderAtShop" xml:space="preserve"><value>{0} bei Amazon öffnen</value></data>
+  <data name="Items_One" xml:space="preserve">
+    <value>{0} Artikel</value>
+  </data>
 </root>

@@ -137,4 +137,13 @@
   <data name="Plan_Cancelled" xml:space="preserve">
     <value>Instalments cancelled: the order was returned or cancelled, the remaining instalments do not come.</value>
   </data>
+  <data name="PartItems" xml:space="preserve">
+    <value>Items</value>
+  </data>
+  <data name="PartShare" xml:space="preserve">
+    <value>Share of bonus and coupons</value>
+  </data>
+  <data name="PartAmount" xml:space="preserve">
+    <value>This part</value>
+  </data>
 </root>

@@ -137,4 +137,13 @@
   <data name="Plan_Cancelled" xml:space="preserve">
     <value>Ratenzahlung storniert: die Bestellung wurde zurückgegeben oder storniert, die übrigen Raten kommen nicht.</value>
   </data>
+  <data name="PartItems" xml:space="preserve">
+    <value>Artikel</value>
+  </data>
+  <data name="PartShare" xml:space="preserve">
+    <value>Anteil an Bonus und Coupons</value>
+  </data>
+  <data name="PartAmount" xml:space="preserve">
+    <value>Dieser Teil</value>
+  </data>
 </root>

@@ -143,12 +143,28 @@
                         }
                     </tbody>
                     <tfoot class="small rp-foot">
+                    @if (part is { } shownPart)
+                    {
+                        @* One part: its items, its share of what the receipt adds or takes off, and its amount. *@
+                        var g = view.Groups[shownPart];
+                        var items = g.Lines.Sum(l => l.TotalCents);
+                        var amount = Math.Abs(g.AmountCents);
+                        <tr><td colspan="2">@L["PartItems"]</td><td class="text-end text-nowrap rp-price" data-testid="receipt-panel-part-items">@Formatting.FormatMoneyDe(items / 100m)</td>@if (categorized) { <td class="rp-empty"></td> }</tr>
+                        @if (amount != items)
+                        {
+                            <tr><td colspan="2">@L["PartShare"]</td><td class="text-end text-nowrap rp-price" data-testid="receipt-panel-part-share">@Formatting.FormatMoneyDe((amount - items) / 100m)</td>@if (categorized) { <td class="rp-empty"></td> }</tr>
+                        }
+                        <tr class="fw-semibold"><td colspan="2">@L["PartAmount"]</td><td class="text-end text-nowrap rp-price" data-testid="receipt-panel-part-amount">@Formatting.FormatMoneyDe(amount / 100m)</td>@if (categorized) { <td class="rp-empty"></td> }</tr>
+                    }
+                    else
+                    {
                         <tr><td colspan="2">@L["Total"]</td><td class="text-end text-nowrap rp-price">@Formatting.FormatMoneyDe(view.TotalCents / 100m)</td>@if (categorized) { <td class="rp-empty"></td> }</tr>
                         @if (view.BonusCents != 0)
                         {
                             <tr><td colspan="2">@(view.Instalment ? L["OtherInstalments"] : view.BonusCents < 0 ? L["Bonus"] : L["Unitemised"])</td><td class="text-end text-nowrap rp-price">@Formatting.FormatMoneyDe(view.BonusCents / 100m)</td>@if (categorized) { <td class="rp-empty"></td> }</tr>
                         }
                         <tr class="fw-semibold"><td colspan="2">@L["Paid"]</td><td class="text-end text-nowrap rp-price" data-testid="receipt-panel-paid">@Formatting.FormatMoneyDe(view.PaymentCents / 100m)</td>@if (categorized) { <td class="rp-empty"></td> }</tr>
+                    }
                     </tfoot>
                 </table>
             </div>

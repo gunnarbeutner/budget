@@ -153,7 +153,10 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await Expect(Row("\u221225,00")).ToContainTextAsync("Example Grocer");                    // payee stays in the row above the details
         await Expect(details).ToContainTextAsync("DE89 3704 0044 0532 0130 00");
         await Expect(details).ToContainTextAsync("COBADEFFXXX");
-        await Expect(details).ToContainTextAsync("Card payment 1234");
+        // The row shows the purpose in full while expanded; the details do not repeat it.
+        await Expect(Row("−25,00").Locator(".tx-purpose")).ToHaveTextAsync("Card payment 1234");
+        await Expect(Row("−25,00").Locator(".tx-purpose")).ToHaveCSSAsync("white-space", "normal");
+        await Expect(details).Not.ToContainTextAsync("Card payment 1234");
         await Expect(details).ToContainTextAsync("Lastschrift");
         await Expect(details).ToContainTextAsync("REF-101");
         await Expect(details.GetByTestId("tx-details-account")).ToHaveTextAsync(EditingSeed.BankAccountName);

@@ -68,7 +68,8 @@
         }
     </div>
 
-    @if (!string.IsNullOrWhiteSpace(Row.Purpose))
+    @* The row shows the cleaned purpose; the details add the bank's text only when cleaning changed it. *@
+    @if (!string.IsNullOrWhiteSpace(Row.Purpose) && PurposeText.Clean(Row.Purpose) != Row.Purpose.Trim())
     {
         <div class="tx-details-purpose"><b class="text-body">@L["Purpose"]</b> @Row.Purpose</div>
     }

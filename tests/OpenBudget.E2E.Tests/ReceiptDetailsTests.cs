@@ -33,6 +33,50 @@ public sealed class ReceiptDetailsTests : EndToEndTestBase
         await Factory.Services.GetRequiredService<ReceiptStore>().MatchAsync(db, E2ESeed.OwnerUserId, default);
     }
 
+    /// <summary>
+    /// A split part's receipt opens on that part: the footer sums the part's items, its share of the bonus and the part's
+    /// amount; "All" shows the whole receipt's total, bonus and payment again.
+    /// </summary>
+    [Test]
+    public async Task A_parts_receipt_opens_on_the_part_with_its_own_totals()
+    {
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&q=REWE");
+        var rows = Page.GetByTestId("tx-row");
+        await Expect(rows).ToHaveCountAsync(2);
+        await rows.First.ClickAsync();
+        var receipt = Page.GetByTestId("tx-receipt");
+        await Expect(receipt.Locator(".cat-pill-current")).ToHaveCountAsync(1);
+        await receipt.GetByTestId("tx-receipt-open").ClickAsync();
+
+        var panel = Page.GetByTestId("receipt-panel");
+        await Expect(panel.Locator("[data-testid=receipt-panel-part].btn-secondary")).ToHaveCountAsync(1);
+        await Expect(panel.GetByTestId("receipt-panel-paid")).ToHaveCountAsync(0);
+        var amount = await panel.GetByTestId("receipt-panel-part-amount").InnerTextAsync();
+        var items = await panel.GetByTestId("receipt-panel-part-items").InnerTextAsync();
+        var share = panel.GetByTestId("receipt-panel-part-share");
+        // The part's amount is its items plus its share of the bonus, when it has one.
+        var shareCents = await share.CountAsync() == 1 ? Cents(await share.InnerTextAsync()) : 0;
+        Assert.That(Cents(amount), Is.EqualTo(Cents(items) + shareCents));
+        if (Environment.GetEnvironmentVariable("OB_RECEIPT_SCREENSHOT_DIR") is { Length: > 0 } dir)
+        {
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, "panel-part-1280.png") });
+            await Page.SetViewportSizeAsync(390, 844);
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, "panel-part-390.png") });
+            await Page.GetByTestId("modal-dialog").Locator(".btn-close").ClickAsync();
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, "row-expanded-390.png") });
+            await Page.SetViewportSizeAsync(1280, 900);
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, "row-expanded-1280.png") });
+            return;
+        }
+
+        await panel.Locator(".btn", new() { HasTextRegex = new System.Text.RegularExpressions.Regex("^All$") }).ClickAsync();
+        await Expect(panel.GetByTestId("receipt-panel-paid")).ToHaveCountAsync(1);
+        await Expect(panel.GetByTestId("receipt-panel-part-amount")).ToHaveCountAsync(0);
+    }
+
+    private static long Cents(string text) =>
+        long.Parse(new string(text.Where(char.IsDigit).ToArray()), System.Globalization.CultureInfo.InvariantCulture) * (text.Contains('−') || text.Contains('-') ? -1 : 1);
+
     [Test]
     public async Task The_details_show_the_receipt_by_part_and_moving_an_item_resplits()
     {
@@ -48,6 +92,7 @@ public sealed class ReceiptDetailsTests : EndToEndTestBase
         // The receipt panel lists the items; moving one re-splits the booking and the panel shows the result.
         await receipt.GetByTestId("tx-receipt-open").ClickAsync();
         var panel = Page.GetByTestId("receipt-panel");
+        await panel.Locator(".btn", new() { HasTextRegex = new System.Text.RegularExpressions.Regex("^All$") }).ClickAsync();
         var schorle = panel.GetByTestId("receipt-panel-line").Filter(new() { HasText = "Apfelschorle" });
         await Expect(schorle).ToHaveCountAsync(1);
         await schorle.GetByTestId("receipt-panel-category").ClickAsync();

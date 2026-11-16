@@ -9,7 +9,7 @@
 
 <div class="tx-details-purpose" data-testid="tx-receipt">
     <b class="text-body me-1">@L["Receipt"]</b>
-    <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-start" data-testid="tx-receipt-open" @onclick="() => Open(null)">@Receipt.Title@(Receipt.DeliveryDate is { } d ? " · " + d.ToAppDate() : "") · @L["Items", Receipt.ItemCount]</button>
+    <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-start" data-testid="tx-receipt-open" @onclick="() => Open(ShownPart)">@Receipt.Title@(Receipt.DeliveryDate is { } d ? " · " + d.ToAppDate() : "") · @L[Receipt.ItemCount == 1 ? "Items_One" : "Items", Receipt.ItemCount]</button>
     @if (Receipt.ShopUrls() is { Count: > 1 } orders)
     {
         @foreach (var (number, url) in orders)
@@ -54,6 +54,11 @@
 
     private long? openId;
     private int? openPart;
+
+    /// <summary>The part in the category being viewed, which the receipt opens filtered to; null: all items.</summary>
+    private int? ShownPart => Receipt.Groups.Count > 1 && HighlightCategoryId is { } c
+        ? Receipt.Groups.Select((g, i) => (g, i)).Where(x => x.g.CategoryId == c).Select(x => (int?)x.i).FirstOrDefault()
+        : null;
 
     private void Open(int? part) => (openId, openPart) = (Receipt.ReceiptId, part);
 

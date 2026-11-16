@@ -69,4 +69,7 @@
   </data>
   <data name="OpenAtShop" xml:space="preserve"><value>Open at Amazon</value></data>
   <data name="OpenOrderAtShop" xml:space="preserve"><value>Open {0} at Amazon</value></data>
+  <data name="Items_One" xml:space="preserve">
+    <value>{0} item</value>
+  </data>
 </root>
