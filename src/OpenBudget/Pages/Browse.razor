@@ -1368,7 +1368,7 @@
             var index = request.StartIndex - lead + i;
             var day = ToLocalDay(row.Date);
             var showDay = previousDay != day;
-            decimal? dayBalance = showDay && running != null ? running.AtEndOf(day) : null;
+            decimal? dayBalance = showDay && running != null ? running.AtEndOfBookedDay(day) : null;
             previousDay = day;
             rowIndex[row.Id] = index;
             rowCache[row.Id] = row;

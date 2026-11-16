@@ -41,6 +41,12 @@ public sealed class RunningBalance
     /// </summary>
     public static bool Applies(bool accountScope, bool hasBalance, bool filtered) => accountScope && hasBalance && !filtered;
 
+    /// <summary>
+    /// The balance after the bookings of <paramref name="day"/>, or null when nothing is booked that day (only pending
+    /// bookings, whose money the balance does not include yet).
+    /// </summary>
+    public decimal? AtEndOfBookedDay(DateOnly day) => Array.BinarySearch(_days, day) >= 0 ? AtEndOf(day) : null;
+
     /// <summary>The balance after all bookings of <paramref name="day"/>: the current balance minus everything booked on later days.</summary>
     public decimal AtEndOf(DateOnly day)
     {

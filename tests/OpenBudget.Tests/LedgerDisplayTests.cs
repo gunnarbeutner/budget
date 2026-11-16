@@ -81,6 +81,16 @@ public sealed class LedgerDisplayTests
     }
 
     [Fact]
+    public void A_day_with_only_pending_bookings_has_no_balance()
+    {
+        // The flows are the booked bookings; a day without any (only pending ones) shows no balance.
+        var flows = new[] { (new DateTime(2026, 11, 11, 9, 0, 0, DateTimeKind.Utc), -56.94m) };
+        var balance = new RunningBalance(460m, flows, d => DateOnly.FromDateTime(d));
+        Assert.Equal(460m, balance.AtEndOfBookedDay(new DateOnly(2026, 11, 11)));
+        Assert.Null(balance.AtEndOfBookedDay(new DateOnly(2026, 11, 25)));
+    }
+
+    [Fact]
     public void End_of_day_balances_of_an_account_group_are_the_sums_of_its_accounts()
     {
         static DateTime At(int day) => new(2026, 1, day, 9, 0, 0, DateTimeKind.Utc);
