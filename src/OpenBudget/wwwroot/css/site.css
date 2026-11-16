@@ -1405,6 +1405,12 @@ button.cat-pill:hover { filter: brightness(0.96); }
 /* Rows keep the normal cursor; the grabbing cursor shows only while a row is being dragged. */
 .browse-tree.dragging, .browse-tree.dragging .browse-tree-row,
 .project-switcher-list.dragging, .project-switcher-list.dragging .project-switcher-row { cursor: grabbing; }
+/* The picture of a dragged row (uiBehaviors.js): the row on its own card, placed off screen. */
+.ob-drag-ghost {
+    position: fixed; top: -1000px; left: -1000px; z-index: -1; box-sizing: border-box;
+    background: var(--bs-body-bg); color: var(--bs-body-color); border: 1px solid var(--ob-line); border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .18); overflow: hidden; pointer-events: none; text-decoration: none;
+}
 .move-group-list { max-height: 22rem; overflow-y: auto; }
 .move-group-list .list-group-item { border-radius: 0.3rem; }
 

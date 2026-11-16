@@ -326,6 +326,18 @@ document.addEventListener("dragstart", function (e) {
     if (!el || !e.dataTransfer) return;
     e.dataTransfer.effectAllowed = "move";
     try { e.dataTransfer.setData("text/plain", el.getAttribute("title") || ""); } catch (err) { /* older browsers */ }
+    // The browser's own picture of a dragged link is its text squeezed together (Safari): a copy of the row at its
+    // size, kept off screen while the browser takes its picture, stands in for it.
+    if (!e.dataTransfer.setDragImage) return;
+    var box = el.getBoundingClientRect();
+    var ghost = el.cloneNode(true);
+    ghost.classList.add("ob-drag-ghost");
+    ghost.removeAttribute("id");
+    ghost.style.width = box.width + "px";
+    ghost.style.height = box.height + "px";
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, e.clientX - box.left, e.clientY - box.top);
+    setTimeout(function () { ghost.remove(); }, 0);
 });
 
 // Dropping on a group row moves into the group; its top edge instead places the row before the group. The edge is

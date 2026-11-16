@@ -96,6 +96,26 @@ public sealed class ProjectSwitcherMenuTests : EndToEndTestBase
         await ExpectOrderAsync(Second, Third, E2ESeed.ProjectName);
     }
 
+    /// <summary>A dragged row shows as a copy of itself at its size, not as the browser's picture of a link.</summary>
+    [Test]
+    public async Task A_dragged_row_shows_as_a_copy_of_the_row()
+    {
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
+        await OpenSwitcherAsync();
+        var image = await Row(E2ESeed.ProjectName).EvaluateAsync<double[]>(@"row => {
+            const t = new DataTransfer();
+            let seen = null;
+            t.setDragImage = (el, x, y) => { const b = el.getBoundingClientRect(); seen = [b.width, b.height, el.classList.contains('ob-drag-ghost') ? 1 : 0, el.textContent === row.textContent ? 1 : 0]; };
+            const box = row.getBoundingClientRect();
+            row.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: t, clientX: box.left + 5, clientY: box.top + 5 }));
+            row.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: t }));
+            return seen ? seen.concat([box.width, box.height]) : [];
+        }");
+        Assert.That(image, Has.Length.EqualTo(6), "the row sets its own drag image");
+        Assert.That((image[0], image[1], image[2], image[3]), Is.EqualTo((image[4], image[5], 1d, 1d)));
+        await Expect(Page.Locator(".ob-drag-ghost")).ToHaveCountAsync(0);
+    }
+
     [Test]
     public async Task Dragging_a_row_reorders_the_projects()
     {
