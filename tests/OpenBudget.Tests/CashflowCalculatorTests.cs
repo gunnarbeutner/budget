@@ -141,7 +141,7 @@ public class CashflowCalculatorTests
 
         Assert.Equal(70m, remaining);    // November still holds 70, for its own remaining days
         Assert.Equal(30m, expenses[10]); // November shows its actuals
-        Assert.Equal(300m, expenses[11]); // December: its 100 plus the 200 underrun of Jan–Oct, not November's 70
+        Assert.Equal(100m, expenses[11]); // December: its own budget; the 200 left unspent in Jan–Oct stays saved
         Assert.Equal(80m, expenses[0]);
     }
 
@@ -157,6 +157,35 @@ public class CashflowCalculatorTests
 
         Assert.Equal(0m, remaining);
         Assert.Equal(50m, expenses[11]);
+    }
+
+    [Fact]
+    public void ProjectExpenses_cuts_every_later_month_by_the_same_share_after_an_overrun()
+    {
+        // Budget 100 a month and 200 in December (1.300 a year); 1.050 spent through September (the current month)
+        // leaves 250 for Oct–Dec, whose budgets add up to 400: each of them gets 62,5 % of its budget.
+        var budget = Enumerable.Repeat(100m, 12).ToArray();
+        budget[11] = 200m;
+        var spent = new decimal[12];
+        for (int m = 0; m < 8; m++) spent[m] = 100m;
+        spent[8] = 250m;
+
+        var (expenses, _) = CashflowCalculator.ProjectExpenses(budget, spent, currentMonth: 9);
+
+        Assert.Equal(new[] { 62.5m, 62.5m, 125m }, expenses[9..]);
+        Assert.Equal(1300m, expenses.Sum());
+    }
+
+    [Fact]
+    public void ProjectExpenses_projects_nothing_once_the_yearly_budget_is_used_up()
+    {
+        var budget = Enumerable.Repeat(100m, 12).ToArray();
+        var spent = new decimal[12];
+        spent[0] = 1500m;
+
+        var (expenses, _) = CashflowCalculator.ProjectExpenses(budget, spent, currentMonth: 2);
+
+        Assert.All(expenses[2..], m => Assert.Equal(0m, m));
     }
 
     [Fact]

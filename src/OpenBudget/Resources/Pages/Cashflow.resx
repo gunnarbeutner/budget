@@ -215,7 +215,10 @@
     <value>Cashflow</value>
   </data>
   <data name="Balance_ScheduledIncluded" xml:space="preserve">
-    <value>The projection includes {0} executions of your bank's standing orders and scheduled transfers on their dates.</value>
+    <value>Standing orders, scheduled transfers and regular payments ({0} in all) are placed on their dates; for budgeted categories they are part of the budget, not added to it.</value>
+  </data>
+  <data name="Balance_ScheduledExtra" xml:space="preserve">
+    <value>{0} of them are outside the budget and are added to it.</value>
   </data>
   <data name="Balance_ScheduledLink" xml:space="preserve">
     <value>Show scheduled payments</value>

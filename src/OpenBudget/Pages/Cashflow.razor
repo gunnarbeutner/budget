@@ -181,6 +181,10 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                             <p class="text-body-secondary small mb-2" data-testid="cashflow-scheduled-note">
                                 <i class="bi bi-calendar-check me-1" aria-hidden="true"></i>
                                 @L["Balance_ScheduledIncluded", sched.Occurrences.Count]
+                                @if (sched.Occurrences.Count(o => !o.InBudget) is > 0 and var extra)
+                                {
+                                    <span data-testid="cashflow-scheduled-extra">@L["Balance_ScheduledExtra", extra]</span>
+                                }
                                 <a href="@($"/projects/{selectedProjectId}/scheduled")">@L["Balance_ScheduledLink"]</a>
                             </p>
                         }
@@ -963,7 +967,7 @@ else
                 recentIncomeSourceMonth.Year, recentIncomeSourceMonth.Month);
         }
 
-        // Pre-pass: the self-correcting expense projection of each budgeted row (see
+        // Pre-pass: the expense projection of each budgeted row (see
         // CashflowCalculator.ProjectExpenses), and what the current month's budget still holds.
         var currentMonthRemaining = new Dictionary<(long, CategoryItemType), decimal>();
         var today = Clock.Today;

@@ -223,7 +223,7 @@ public class CashflowProjectionService
             foreach (var date in order.Occurrences(from, to))
             {
                 var amount = order.Amount / 100m;
-                result.Occurrences.Add(new ScheduledOccurrence(date, amount, order.CounterpartyName ?? order.Purpose ?? string.Empty, order.Kind));
+                result.Occurrences.Add(new ScheduledOccurrence(date, amount, order.CounterpartyName ?? order.Purpose ?? string.Empty, order.Kind, covered != null));
                 if (covered is { } key)
                 {
                     if (!result.CoveredByRow.TryGetValue(key, out var months)) result.CoveredByRow[key] = months = new decimal[12];
@@ -248,7 +248,7 @@ public class CashflowProjectionService
             foreach (var date in r.Occurrences(from, to))
             {
                 var amount = r.Cents / 100m;
-                result.Occurrences.Add(new ScheduledOccurrence(date, amount, r.Payee, ScheduledPaymentKind.Recurring));
+                result.Occurrences.Add(new ScheduledOccurrence(date, amount, r.Payee, ScheduledPaymentKind.Recurring, covered != null));
                 if (covered is { } key)
                 {
                     if (!result.CoveredByRow.TryGetValue(key, out var months)) result.CoveredByRow[key] = months = new decimal[12];

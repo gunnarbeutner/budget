@@ -45,8 +45,12 @@ public class CategoryCashflow
     public decimal CurrentMonthRemaining { get; set; }
 }
 
-/// <summary>One execution of a standing order or scheduled transfer in the projection (amount signed, in currency units).</summary>
-public sealed record ScheduledOccurrence(DateOnly Date, decimal Amount, string Label, ScheduledPaymentKind Kind);
+/// <summary>
+/// One execution of a standing order, scheduled transfer, expected instalment or recurring charge in the projection
+/// (amount signed, in currency units). <see cref="InBudget"/>: it belongs to a budgeted row and is taken out of that row's
+/// projection (part of the budget); otherwise it is added on top of the budget.
+/// </summary>
+public sealed record ScheduledOccurrence(DateOnly Date, decimal Amount, string Label, ScheduledPaymentKind Kind, bool InBudget = false);
 
 /// <summary>
 /// The bank's orders in the cashflow projection (<see cref="CashflowProjectionService.GetScheduledCashflowAsync"/>):
@@ -144,37 +148,33 @@ public static class CashflowCalculator
 
     /// <summary>
     /// A row's expenses for the year from its budget: the actual <paramref name="spent"/> for the months before
-    /// <paramref name="currentMonth"/> (1-12; 13 or more: the whole year is past, 0 or less: none is), and for the
-    /// current and later months the self-correcting projection that keeps the cumulative spend on the annual budget
-    /// curve, so overruns shrink later months and underruns let them catch up (never below zero). The current month
-    /// keeps its actuals and counts as spent at least up to its budget: what it still holds
-    /// (<see cref="CategoryCashflow.CurrentMonthRemaining"/>, returned as <c>Remaining</c>) belongs to its own remaining
-    /// days, not to the months after it.
+    /// <paramref name="currentMonth"/> (1-12; 13 or more: the whole year is past, 0 or less: none is), and each later
+    /// month at its own monthly budget. Money left unspent so far stays saved; it is not added to the later months. When
+    /// the spending so far leaves less of the yearly budget than the later months' budgets add up to, every later month
+    /// is cut by the same share, so the year ends at its budget (no month below zero; all of them zero when the yearly
+    /// budget is already used up). The current month keeps its actuals and counts as spent at least up to its budget:
+    /// what it still holds (<see cref="CategoryCashflow.CurrentMonthRemaining"/>, returned as <c>Remaining</c>) belongs
+    /// to its own remaining days.
     /// </summary>
     public static (decimal[] Expenses, decimal Remaining) ProjectExpenses(decimal[] budget, decimal[] spent, int currentMonth)
     {
         var expenses = (decimal[])spent.Clone();
         if (currentMonth > 12) return (expenses, 0m);
-        decimal cumulSpent = 0m, cumulTarget = 0m, remaining = 0m;
+        decimal spentSoFar = 0m, remaining = 0m, laterBudget = 0m;
         for (int m = 1; m <= 12; m++)
         {
-            cumulTarget += budget[m - 1];
-            if (m < currentMonth)
-            {
-                cumulSpent += spent[m - 1];
-            }
+            if (m < currentMonth) spentSoFar += spent[m - 1];
             else if (m == currentMonth)
             {
                 remaining = Math.Max(0m, budget[m - 1] - spent[m - 1]);
-                cumulSpent += spent[m - 1] + remaining;
+                spentSoFar += spent[m - 1] + remaining;
             }
-            else
-            {
-                var projected = Math.Max(0m, cumulTarget - cumulSpent);
-                expenses[m - 1] = projected;
-                cumulSpent += projected;
-            }
+            else laterBudget += Math.Max(0m, budget[m - 1]);
         }
+        var yearLeft = Math.Max(0m, budget.Sum() - spentSoFar);
+        var share = laterBudget > yearLeft ? yearLeft / laterBudget : 1m;
+        for (int m = Math.Max(1, currentMonth + 1); m <= 12; m++)
+            expenses[m - 1] = Math.Round(Math.Max(0m, budget[m - 1]) * share, 2);
         return (expenses, remaining);
     }
 

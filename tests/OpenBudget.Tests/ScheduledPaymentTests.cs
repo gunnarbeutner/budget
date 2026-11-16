@@ -168,6 +168,9 @@ public sealed class ScheduledPaymentTests
         Assert.Equal(13, scheduled.Occurrences.Count); // twelve rents and the one-off transfer
         Assert.Equal(new DateOnly(2027, 1, 1), scheduled.Occurrences[0].Date);
         Assert.All(scheduled.CoveredByRow[rentRow], m => Assert.Equal(-850m, m)); // the one-off covers nothing
+        // The rents are part of the budget; the one-off transfer is added to it.
+        Assert.Equal(12, scheduled.Occurrences.Count(o => o.InBudget));
+        Assert.False(Assert.Single(scheduled.Occurrences, o => o.Kind == ScheduledPaymentKind.Scheduled).InBudget);
 
         // The budget projects 850 rent each month; the standing order pays exactly that.
         var expenses = new List<CategoryCashflow>

@@ -215,7 +215,10 @@
     <value>Cashflow</value>
   </data>
   <data name="Balance_ScheduledIncluded" xml:space="preserve">
-    <value>Die Prognose enthält {0} Ausführungen der Daueraufträge und terminierten Überweisungen deiner Bank an ihren Terminen.</value>
+    <value>Daueraufträge, terminierte Überweisungen und regelmäßige Zahlungen ({0} insgesamt) stehen an ihren Terminen; bei budgetierten Kategorien sind sie Teil des Budgets und kommen nicht hinzu.</value>
+  </data>
+  <data name="Balance_ScheduledExtra" xml:space="preserve">
+    <value>{0} davon liegen außerhalb des Budgets und kommen hinzu.</value>
   </data>
   <data name="Balance_ScheduledLink" xml:space="preserve">
     <value>Geplante Zahlungen anzeigen</value>
