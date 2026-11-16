@@ -1425,6 +1425,8 @@ button.cat-pill:hover { filter: brightness(0.96); }
     /* The sync menus span the screen between the gutters: the buttons to their right would push a menu aligned to
        its own button off the left edge. top: auto keeps them just below their button. */
     .app-topbar > .sync-problems > .sync-problems-menu { position: fixed; top: auto; left: 16px; right: 16px; width: auto; margin-top: 8px; max-height: calc(100dvh - var(--ob-topbar-h) - 96px); overflow-y: auto; }
+    /* The problems sign is positioned absolutely, so its menu starts at the top of the 44px box. */
+    .app-topbar > .sync-problems > .app-sync-attention + .sync-problems-menu { margin-top: 52px; }
     .app-wordmark { display: none; }
     .app-sync-label { display: none; }
 

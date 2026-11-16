@@ -52,6 +52,16 @@ public sealed class BackgroundSyncTests : EndToEndTestBase
         await Expect(problems.GetByTestId("sync-problem")).ToContainTextAsync("The bank wants a TAN or code.");
         await Expect(problems.GetByTestId("sync-problems-connections")).ToHaveAttributeAsync("href", "/connections");
 
+        // on a phone the list opens below its sign, between the gutters
+        var size = Page.ViewportSize!;
+        await Page.SetViewportSizeAsync(390, 844);
+        var sign = (await problems.Locator("summary").BoundingBoxAsync())!;
+        var list = (await problems.Locator(".sync-problems-menu").BoundingBoxAsync())!;
+        Assert.That(list.Y, Is.GreaterThanOrEqualTo(sign.Y + sign.Height), "the list leaves its sign visible");
+        Assert.That(list.X, Is.EqualTo(16).Within(1));
+        Assert.That(list.X + list.Width, Is.EqualTo(390 - 16).Within(1));
+        await Page.SetViewportSizeAsync(size.Width, size.Height);
+
         // the owner's own sync from that list (the session is remembered) clears it
         await problems.GetByTestId("sync-problem-sync").ClickAsync();
         await Expect(card.GetByTestId("background-status")).ToContainTextAsync("Last background sync");
