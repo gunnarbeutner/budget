@@ -129,4 +129,17 @@ public sealed class BudgetTests : EndToEndTestBase
         var category = (await wrap.Locator("thead th").First.BoundingBoxAsync())!;
         Assert.That(category.X, Is.EqualTo(wrapBox.X).Within(1), "the category column stays on the left");
     }
+
+    /// <summary>On a laptop-sized window the twelve months, the total and the categories fit beside the sidebar.</summary>
+    [Test]
+    public async Task The_amounts_table_fits_a_laptop_screen()
+    {
+        await Page.SetViewportSizeAsync(1440, 900);
+        await GoToAsync(EditUrl);
+        var wrap = Page.Locator(".budget-table-wrap");
+        await Expect(wrap).ToBeVisibleAsync();
+        Assert.That(await wrap.EvaluateAsync<bool>("e => e.scrollWidth <= e.clientWidth + 1"), Is.True, "no sideways scrolling");
+        var input = (await wrap.Locator(".amount-input").First.BoundingBoxAsync())!;
+        Assert.That(input.Width, Is.GreaterThanOrEqualTo(64), "amounts such as 1316.59 still fit");
+    }
 }

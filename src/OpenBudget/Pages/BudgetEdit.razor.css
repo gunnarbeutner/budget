@@ -23,3 +23,27 @@
     box-shadow: inset -1px 0 0 var(--bs-border-color, #dee2e6);
 }
 .budget-table-wrap thead th:first-child { z-index: 3; }
+
+/* Compact cells, like a spreadsheet: twelve months, the total and the category fit beside the sidebar on a laptop
+   screen. The inputs show their border on hover and focus; digits have equal widths so the columns line up. */
+.budget-table-wrap ::deep .budget-amounts > :not(caption) > * > * { padding: 0.125rem 0.125rem; }
+.budget-table-wrap ::deep .budget-amounts td:first-child,
+.budget-table-wrap ::deep .budget-amounts th:first-child { min-width: 8.5rem; max-width: 14rem; white-space: normal; padding-left: 0.5rem; }
+.budget-table-wrap ::deep .amount-input {
+    min-width: 0;
+    width: 4.25rem;
+    padding: 0.1875rem 0.3125rem;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+    border-color: transparent;
+    background-color: transparent;
+}
+.budget-table-wrap ::deep .amount-input:hover { border-color: var(--bs-border-color); }
+.budget-table-wrap ::deep .amount-input:focus { background-color: var(--bs-body-bg); }
+.budget-table-wrap ::deep .budget-amounts th.text-end,
+.budget-table-wrap ::deep .budget-amounts td.text-end:not(:has(.amount-input)) {
+    padding-right: calc(0.125rem + var(--bs-border-width) + 0.3125rem);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
