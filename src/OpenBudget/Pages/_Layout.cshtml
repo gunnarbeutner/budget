@@ -59,7 +59,9 @@
     <script src="js/moneymoneyUpload.js" asp-append-version="true"></script>
     @* autostart="false": reconnect.js starts Blazor with a reconnection handler that survives
        background tabs and reloads when the server has dropped the circuit. *@
-    <script src="_framework/blazor.server.js" autostart="false"></script>
+    @* The framework's version in the address: a browser that cached the script of an older framework would call into
+       functions the server no longer matches (a broken circuit), so a framework upgrade loads the script anew. *@
+    <script src="_framework/blazor.server.js?v=@(Uri.EscapeDataString(System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(Microsoft.AspNetCore.Components.Server.CircuitOptions).Assembly)?.InformationalVersion ?? ""))" autostart="false"></script>
     <script src="js/reconnect.js" asp-append-version="true"></script>
 </body>
 </html>
