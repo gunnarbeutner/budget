@@ -225,9 +225,12 @@ public sealed class CategoryPickerTests : EndToEndTestBase
         await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = theme == "dark" ? ColorScheme.Dark : ColorScheme.Light });
         await GoToAsync(UncategorizedUrl);
         var first = Page.GetByTestId("tx-row").First;
+        var titleBefore = (await Page.Locator(".browse-title").BoundingBoxAsync())!;
         await first.Locator(".tx-amount").ClickAsync();
         var bar = Page.GetByTestId("action-bar");
         await Expect(bar).ToBeVisibleAsync();
+        var titleAfter = (await Page.Locator(".browse-title").BoundingBoxAsync())!;
+        Assert.That(titleAfter.Y, Is.EqualTo(titleBefore.Y).Within(0.5), "the title stays put when the bar appears");
         var b = (await bar.BoundingBoxAsync())!;
         var r = (await first.BoundingBoxAsync())!;
         Assert.That(b.Y + b.Height, Is.LessThanOrEqualTo(r.Y + 0.5), "bar ends above the first row");

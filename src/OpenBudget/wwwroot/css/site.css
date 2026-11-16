@@ -1231,6 +1231,12 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-sele
     border-bottom: 0;
 }
 .browse-main > .page-toolbar.browse-toolbar { padding-top: 4px; padding-bottom: 4px; }
+/* The title row fills the toolbar's minimum height on its own, so it stays put when the selection's action bar adds a
+   row below it. */
+@media (min-width: 768px) {
+    .browse-main > .page-toolbar.browse-toolbar { align-content: flex-start; }
+    .browse-toolbar > .browse-ident { min-height: calc(var(--ob-toolbar-h) - 8px); justify-content: center; }
+}
 .browse-summary .browse-action-label { margin-left: 3px; }
 .browse-summary .money-neg { color: var(--ob-negative); }
 .browse-cards { padding: 12px 20px 0; }
