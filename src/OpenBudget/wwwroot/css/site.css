@@ -2375,3 +2375,6 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 /* Receipt chips: the part's amount after the category, and the part the shown booking is highlighted. */
 .cat-pill .cat-pill-amount { margin-left: 0.35em; opacity: 0.8; font-variant-numeric: tabular-nums; }
 .cat-pill.cat-pill-current { outline: 2px solid var(--ob-accent); outline-offset: 1px; }
+
+/* The remote browser's view: its height comes from the layout, not from the streamed frames (see remote-browser.js). */
+.rb-canvas { height: min(70dvh, 800px); min-height: 320px; }

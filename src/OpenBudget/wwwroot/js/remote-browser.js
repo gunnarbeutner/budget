@@ -178,11 +178,17 @@ export function attach(canvas, dotnet, sessionId) {
     }));
 
     // ---- size of the view: the server matches the frame size to it ----
-    const size = () => { const r = canvas.getBoundingClientRect(); return [r.width, r.height, window.devicePixelRatio || 1]; };
-    let resizeTimer = 0;
+    // The canvas box is sized by the layout (CSS), never by the frames, so a frame cannot resize the view it is drawn
+    // into; only a change of whole pixels is sent.
+    const size = () => { const r = canvas.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), window.devicePixelRatio || 1]; };
+    let resizeTimer = 0, sent = '';
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => { const [w, h, dpr] = size(); if (w > 0) send({ t: 'v', w, h, dpr }); }, 200);
+        resizeTimer = setTimeout(() => {
+            const [w, h, dpr] = size();
+            const key = w + 'x' + h + '@' + dpr;
+            if (w > 0 && h > 0 && key !== sent) { sent = key; send({ t: 'v', w, h, dpr }); }
+        }, 200);
     }) : null;
     ro?.observe(canvas);
 
@@ -194,7 +200,7 @@ export function attach(canvas, dotnet, sessionId) {
         ws.onopen = () => {
             wsOpen = true;
             const [w, h, dpr] = size();
-            if (w > 0) send({ t: 'v', w, h, dpr });
+            if (w > 0 && h > 0) { sent = w + 'x' + h + '@' + dpr; send({ t: 'v', w, h, dpr }); }
         };
         ws.onmessage = (e) => {
             if (typeof e.data !== 'string') { onFrame(e.data); return; }

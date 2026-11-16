@@ -73,8 +73,16 @@ public sealed class WebLoginDialogTests : EndToEndTestBase
         var canvas = Page.Locator("[data-testid=remote-browser] canvas");
         await Expect(canvas).ToBeVisibleAsync(new() { Timeout = 60000 });
 
-        // Click on the streamed page (the whole page is the sign-in link). Retry once the page has surely loaded.
+        // A frame of another shape does not resize the view it is drawn into (which would resize the page again).
         await Task.Delay(1500);
+        var heights = await canvas.EvaluateAsync<double[]>(@"c => {
+            const before = c.getBoundingClientRect().height;
+            c.width = 1000; c.height = 3000;
+            return [before, c.getBoundingClientRect().height];
+        }");
+        Assert.That(heights[1], Is.EqualTo(heights[0]).Within(0.5));
+
+        // Click on the streamed page (the whole page is the sign-in link).
         await canvas.ClickAsync();
 
         await Expect(Page.GetByTestId("bank-challenge")).ToHaveCountAsync(0, new() { Timeout = 60000 });
