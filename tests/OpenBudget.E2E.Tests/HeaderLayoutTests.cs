@@ -104,8 +104,8 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
         var chevron = await Box(".app-topbar .period-step i");
         Assert.That((await Box(".app-topbar .project-selector-name")).Left, Is.EqualTo(16).Within(1), "project name on the gutter");
         Assert.That(chevron.Left + (chevron.Right - chevron.Left) * 4.65f / 16, Is.EqualTo(16).Within(1), "chevron stroke on the gutter");
-        Assert.That((await Box(".browse-title-btn > span")).Left, Is.EqualTo(16).Within(1), "title on the gutter");
-        var title = await Box(".browse-title-btn > span");
+        Assert.That((await Box(".browse-title-text")).Left, Is.EqualTo(16).Within(1), "title on the gutter");
+        var title = await Box(".browse-title-text");
         var actions = Page.Locator(".browse-toolbar .browse-summary > .browse-action");
         Assert.That(await actions.CountAsync(), Is.GreaterThanOrEqualTo(3), "filter, summary and mark-all actions");
         var previousRight = title.Right;
@@ -174,8 +174,8 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
     }
 
     /// <summary>
-    /// On a phone with a typical total the title row has room for everything: the title shows in full with its
-    /// chevron, the icon actions sit packed right after it and the total ends at the avatar's edge. The summary card
+    /// On a phone with a typical total the title row has room for everything: the title shows in full,
+    /// the icon actions sit packed right after it and the total ends at the avatar's edge. The summary card
     /// labels its spending without the period, which the header already names.
     /// </summary>
     [TestCase("light")]
@@ -194,18 +194,14 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
         if (!string.IsNullOrEmpty(dir))
             await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"title-row-390-{theme}.png") });
 
-        var title = Page.Locator(".browse-title-btn > span");
+        var title = Page.Locator(".browse-title-text");
         Assert.That(await title.EvaluateAsync<bool>("e => e.scrollWidth <= e.clientWidth"), Is.True, "the title is not cut");
-        var chevron = Page.Locator(".browse-title-btn > i");
-        await Expect(chevron).ToBeVisibleAsync();
-        var chevronBox = (await chevron.BoundingBoxAsync())!;
-        var heading = (await Page.Locator(".browse-title").BoundingBoxAsync())!;
-        Assert.That(chevronBox.Width, Is.GreaterThan(8), "the chevron keeps its width");
-        Assert.That(chevronBox.X + chevronBox.Width, Is.LessThanOrEqualTo(heading.X + heading.Width + 1), "the chevron is not clipped");
+        Assert.That(await Page.Locator(".browse-title i").CountAsync(), Is.EqualTo(0), "the title has no chevron");
+        var titleBox = (await title.BoundingBoxAsync())!;
 
         var actions = Page.Locator(".browse-toolbar .browse-summary > .browse-action");
         Assert.That(await actions.CountAsync(), Is.GreaterThanOrEqualTo(3), "filter, summary and mark-all actions");
-        var previousRight = chevronBox.X + chevronBox.Width;
+        var previousRight = titleBox.X + titleBox.Width;
         for (var i = 0; i < await actions.CountAsync(); i++)
         {
             var a = (await actions.Nth(i).BoundingBoxAsync())!;
@@ -225,7 +221,7 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
 
     /// <summary>
     /// On a phone a very large total keeps its width and the title row stays one line: the title gives way with an
-    /// ellipsis while its chevron stays, the actions keep their boxes after it and the total still ends at the avatar's edge.
+    /// ellipsis, the actions keep their boxes after it and the total still ends at the avatar's edge.
     /// </summary>
     [Test]
     public async Task Phone_title_truncates_for_a_large_total()
@@ -237,16 +233,13 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
         await Expect(balance).ToContainTextAsync("987");
         await Expect(Page.GetByTestId("filter-toggle")).ToBeVisibleAsync();
         // Squeeze the row further with a long title so it has to give way.
-        await Page.Locator(".browse-title-btn > span").EvaluateAsync("e => e.textContent = 'All transactions of a long project name'");
+        await Page.Locator(".browse-title-text").EvaluateAsync("e => e.textContent = 'All transactions of a long project name'");
 
         var titleBox = (await Page.Locator(".browse-title").BoundingBoxAsync())!;
         var avatar = (await Page.Locator(".app-topbar .app-avatar").BoundingBoxAsync())!;
         var total = (await balance.BoundingBoxAsync())!;
-        Assert.That(await Page.Locator(".browse-title-btn > span").EvaluateAsync<bool>("e => e.scrollWidth > e.clientWidth + 1"),
+        Assert.That(await Page.Locator(".browse-title-text").EvaluateAsync<bool>("e => e.scrollWidth > e.clientWidth + 1"),
             Is.True, "the title is cut");
-        var chevron = (await Page.Locator(".browse-title-btn > i").BoundingBoxAsync())!;
-        Assert.That(chevron.Width, Is.GreaterThan(8), "the chevron stays");
-        Assert.That(chevron.X + chevron.Width, Is.LessThanOrEqualTo(titleBox.X + titleBox.Width + 1), "the chevron is not clipped");
         Assert.That(await balance.EvaluateAsync<bool>("e => e.scrollWidth <= e.clientWidth + 1"), Is.True, "the total is not cut");
         Assert.That(total.Height, Is.LessThan(30), "the total stays on one line");
         Assert.That(titleBox.Height, Is.LessThan(30), "the title stays on one line");

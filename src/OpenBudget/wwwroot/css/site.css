@@ -1449,9 +1449,6 @@ button.cat-pill:hover { filter: brightness(0.96); }
     .browse-toolbar > * { grid-column: 1 / -1; contain: inline-size; }
     .browse-toolbar > .browse-ident { grid-column: 1; grid-row: 1; contain: none; }
     .browse-toolbar .browse-sub { contain: inline-size; }
-    .browse-toolbar .browse-title-btn { display: inline-flex; align-items: center; }
-    .browse-toolbar .browse-title-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-    .browse-toolbar .browse-title-btn > i { flex: none; }
     .browse-toolbar > .browse-summary { grid-column: 2; grid-row: 1; contain: none; flex-wrap: nowrap; justify-content: flex-start; gap: 0; margin-left: 0; }
     .browse-toolbar > .browse-balance { contain: none; }
     .browse-toolbar > .browse-balance { grid-column: 4; grid-row: 1; margin-left: 4px; }
@@ -1516,17 +1513,12 @@ button.cat-pill:hover { filter: brightness(0.96); }
 }
 
 .browse-main { font-size: 14px; }
-.browse-title-btn {
-    border: 0;
-    background: transparent;
-    padding: 0;
-    font: inherit;
-    color: inherit;
+.browse-title-text {
+    display: block;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    cursor: default;
 }
 .browse-sub-btn { font-size: 11px; line-height: 1; vertical-align: baseline; }
 .browse-iban-btn { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: copy; }
@@ -1537,9 +1529,6 @@ button.cat-pill:hover { filter: brightness(0.96); }
 .tx-actionbar .btn-sm { font-size: 13px; padding: 2px 8px; }
 .tx-item.selected .tx-row.tx-cursor { outline: none; }
 .browse-tree-amount { overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
-@media (max-width: 767.98px) {
-    .browse-title-btn { cursor: pointer; }
-}
 
 /* ---- Project shell (2026 navigation): views on top of the sidebar, then accounts + categories ---- */
 .shell-views { padding: 0 0 6px; }
