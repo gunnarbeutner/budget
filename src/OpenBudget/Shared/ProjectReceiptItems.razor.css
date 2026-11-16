@@ -1,0 +1,26 @@
+/* Item categories in three shared columns: pill, description (two lines at most, full text in its tooltip), actions. */
+.rpi-list { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: 12px; row-gap: 6px; }
+.rpi-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; min-height: 28px; }
+.rpi-text { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.rpi-edit { display: flex; flex-wrap: wrap; gap: 6px; overflow: visible; }
+.rpi-edit input { flex: 1 1 12rem; min-width: 0; }
+.rpi-actions { display: flex; align-items: center; gap: 12px; justify-self: end; white-space: nowrap; }
+
+/* Per source: name, "All", then the pills, which wrap within their column. */
+.rpi-sources { display: grid; grid-template-columns: max-content max-content minmax(0, 1fr); column-gap: 16px; row-gap: 6px; }
+.rpi-source { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
+.rpi-source-pills { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+
+@media (max-width: 575.98px) {
+    /* The pill and its actions share a line; the description goes below them. */
+    .rpi-list { grid-template-columns: minmax(0, 1fr) max-content; row-gap: 10px; }
+    .rpi-row { grid-template-areas: "pill actions" "text text"; row-gap: 2px; }
+    .rpi-pill { grid-area: pill; min-width: 0; }
+    .rpi-text { grid-area: text; }
+    .rpi-actions { grid-area: actions; }
+    .rpi-sources { grid-template-columns: max-content minmax(0, 1fr); }
+    .rpi-source { grid-template-areas: "name all" "pills pills"; }
+    .rpi-source > :nth-child(1) { grid-area: name; }
+    .rpi-source > :nth-child(2) { grid-area: all; justify-self: end; }
+    .rpi-source-pills { grid-area: pills; }
+}

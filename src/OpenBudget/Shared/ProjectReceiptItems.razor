@@ -8,7 +8,8 @@
 @* A project's receipt item categories: the categories items of receipts whose booking lies on the project's accounts
    may be split into (by keywords, the item memory or the AI), each with a description of what belongs there and extra
    keywords, and per receipt source optionally only some of them. Everything else stays in the booking's category.
-   Shown in the project's settings and on the receipts page. *@
+   Shown in the project's settings and on the receipts page (which explains them once above all projects). The
+   categories line up in columns (pill, description, actions); on phones the description goes below the pill. *@
 
 <div class="receipt-source-categories" id="receipt-items" data-testid="project-receipt-items" data-project="@ProjectId">
     @if (ShowHeading)
@@ -21,29 +22,39 @@
     }
     else
     {
-        <p class="small mb-1" data-testid="source-categories-explain">@L["Explain"]</p>
-        <p class="small text-body-secondary mb-2">@L["Help"]</p>
-        <ul class="list-unstyled small mb-2">
+        @if (ShowExplain)
+        {
+            <p class="small mb-1" data-testid="source-categories-explain">@L["Explain"]</p>
+            <p class="small text-body-secondary mb-2">@L["Help"]</p>
+        }
+        <ul class="list-unstyled small mb-2 rpi-list">
             @foreach (var r in settings.Categories)
             {
-                <li class="d-flex flex-wrap align-items-center gap-2 mb-1" data-testid="source-allowed" data-category="@r.CategoryId">
-                    <CategoryPill CategoryId="r.CategoryId" PickerData="picker" FallbackName="?" />
+                var text = (r.Description ?? "") + (r.Keywords is { Length: > 0 } k ? $" · {L["KeywordsShort"]}: {k}" : "");
+                <li class="rpi-row" data-testid="source-allowed" data-category="@r.CategoryId">
+                    <span class="rpi-pill"><CategoryPill CategoryId="r.CategoryId" PickerData="picker" FallbackName="?" /></span>
                     @if (editing == r.Id)
                     {
-                        <input class="form-control form-control-sm" style="max-width: 16rem;" placeholder="@L["Description"]" aria-label="@L["Description"]"
-                               data-testid="source-allowed-description" @bind="editDescription" />
-                        <input class="form-control form-control-sm" style="max-width: 16rem;" placeholder="@L["Keywords"]" aria-label="@L["Keywords"]"
-                               data-testid="source-allowed-keywords" @bind="editKeywords" />
-                        <button type="button" class="btn btn-sm btn-primary" data-testid="source-allowed-save" @onclick="() => SaveAsync(r.Id)">@L["Save"]</button>
-                        <button type="button" class="btn btn-sm btn-link" @onclick="() => editing = null">@L["Cancel"]</button>
+                        <span class="rpi-text rpi-edit">
+                            <input class="form-control form-control-sm" placeholder="@L["Description"]" aria-label="@L["Description"]"
+                                   data-testid="source-allowed-description" @bind="editDescription" />
+                            <input class="form-control form-control-sm" placeholder="@L["Keywords"]" aria-label="@L["Keywords"]"
+                                   data-testid="source-allowed-keywords" @bind="editKeywords" />
+                        </span>
+                        <span class="rpi-actions">
+                            <button type="button" class="btn btn-sm btn-primary" data-testid="source-allowed-save" @onclick="() => SaveAsync(r.Id)">@L["Save"]</button>
+                            <button type="button" class="btn btn-sm btn-link" @onclick="() => editing = null">@L["Cancel"]</button>
+                        </span>
                     }
                     else
                     {
-                        <span class="text-body-secondary">@r.Description@(r.Keywords is { Length: > 0 } k ? $" · {L["KeywordsShort"]}: {k}" : "")</span>
-                        <button type="button" class="btn btn-sm btn-link p-0" data-testid="source-allowed-edit"
-                                @onclick="() => (editing, editDescription, editKeywords) = (r.Id, r.Description, r.Keywords)">@L["Edit"]</button>
-                        <button type="button" class="btn btn-sm btn-link p-0 text-danger" data-testid="source-allowed-remove"
-                                aria-label="@L["Remove"]" @onclick="() => RemoveAsync(r.Id)"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+                        <span class="rpi-text text-body-secondary" title="@text" data-testid="source-allowed-text">@text</span>
+                        <span class="rpi-actions">
+                            <button type="button" class="btn btn-sm btn-link p-0" data-testid="source-allowed-edit"
+                                    @onclick="() => (editing, editDescription, editKeywords) = (r.Id, r.Description, r.Keywords)">@L["Edit"]</button>
+                            <button type="button" class="btn btn-sm btn-link p-0 text-danger" data-testid="source-allowed-remove"
+                                    aria-label="@L["Remove"]" @onclick="() => RemoveAsync(r.Id)"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+                        </span>
                     }
                 </li>
             }
@@ -55,16 +66,18 @@
         {
             <div class="mt-3" data-testid="receipt-source-narrowing">
                 <p class="small text-body-secondary mb-1">@L["Narrow_Help"]</p>
+                <div class="rpi-sources">
                 @foreach (var source in ReceiptSources.All)
                 {
                     var narrowed = settings.Narrowed.GetValueOrDefault(source);
-                    <div class="d-flex flex-wrap align-items-center gap-2 small mb-1" data-testid="receipt-source-row" data-source="@source">
-                        <span class="fw-semibold" style="min-width: 8rem;">@L["Source_" + source]</span>
-                        <div class="form-check form-check-inline mb-0">
+                    <div class="rpi-source small" data-testid="receipt-source-row" data-source="@source">
+                        <span class="fw-semibold">@L["Source_" + source]</span>
+                        <div class="form-check mb-0">
                             <input class="form-check-input" type="checkbox" id="@($"narrow-{ProjectId}-{source}")" checked="@(narrowed == null)"
                                    data-testid="receipt-source-all" @onchange="e => AllChangedAsync(source, e.Value is true)" />
                             <label class="form-check-label" for="@($"narrow-{ProjectId}-{source}")">@L["Narrow_All"]</label>
                         </div>
+                        <div class="rpi-source-pills">
                         @if (narrowed != null)
                         {
                             @foreach (var c in settings.Categories)
@@ -76,8 +89,10 @@
                                               OnClick="() => ToggleAsync(source, category)" />
                             }
                         }
+                        </div>
                     </div>
                 }
+                </div>
             </div>
         }
         @if (picking)
@@ -96,6 +111,9 @@
 
     /// <summary>Whether the component shows its own heading (off where the surrounding card names it).</summary>
     [Parameter] public bool ShowHeading { get; set; } = true;
+
+    /// <summary>Whether the component explains what the categories do (off where the page explains it once for all projects).</summary>
+    [Parameter] public bool ShowExplain { get; set; } = true;
 
     private ProjectReceiptSettingsView? settings;
     private CategoryPickerData? picker;
