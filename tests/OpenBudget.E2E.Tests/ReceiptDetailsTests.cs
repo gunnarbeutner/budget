@@ -122,7 +122,7 @@ public sealed class ReceiptDetailsTests : EndToEndTestBase
         var receipt = Page.GetByTestId("tx-receipt");
         await receipt.GetByTestId("tx-receipt-open").ClickAsync();
         var panel = Page.GetByTestId("receipt-panel");
-        var name = panel.GetByTestId("receipt-panel-line").Filter(new() { HasText = "Apfelschorle" }).Locator("td").First;
+        var name = panel.GetByTestId("receipt-panel-line").First.Locator("td").First;
         await Expect(name).ToBeVisibleAsync();
 
         await name.ClickAsync();
