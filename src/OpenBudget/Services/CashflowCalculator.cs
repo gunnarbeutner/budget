@@ -37,6 +37,12 @@ public class CategoryCashflow
     /// these rows so a tracked group + tracked sub-cat don't double-count.
     /// </summary>
     public bool IsAggregateRow { get; set; }
+
+    /// <summary>
+    /// Expense rows: what the budget still holds for the current month (its budget minus what was spent so far, not
+    /// below zero). The balance line spreads it over the month's remaining days.
+    /// </summary>
+    public decimal CurrentMonthRemaining { get; set; }
 }
 
 /// <summary>One execution of a standing order or scheduled transfer in the projection (amount signed, in currency units).</summary>
@@ -136,6 +142,66 @@ public static class CashflowCalculator
         }
     }
 
+    /// <summary>
+    /// A row's expenses for the year from its budget: the actual <paramref name="spent"/> for the months before
+    /// <paramref name="currentMonth"/> (1-12; 13 or more: the whole year is past, 0 or less: none is), and for the
+    /// current and later months the self-correcting projection that keeps the cumulative spend on the annual budget
+    /// curve, so overruns shrink later months and underruns let them catch up (never below zero). The current month
+    /// keeps its actuals and counts as spent at least up to its budget: what it still holds
+    /// (<see cref="CategoryCashflow.CurrentMonthRemaining"/>, returned as <c>Remaining</c>) belongs to its own remaining
+    /// days, not to the months after it.
+    /// </summary>
+    public static (decimal[] Expenses, decimal Remaining) ProjectExpenses(decimal[] budget, decimal[] spent, int currentMonth)
+    {
+        var expenses = (decimal[])spent.Clone();
+        if (currentMonth > 12) return (expenses, 0m);
+        decimal cumulSpent = 0m, cumulTarget = 0m, remaining = 0m;
+        for (int m = 1; m <= 12; m++)
+        {
+            cumulTarget += budget[m - 1];
+            if (m < currentMonth)
+            {
+                cumulSpent += spent[m - 1];
+            }
+            else if (m == currentMonth)
+            {
+                remaining = Math.Max(0m, budget[m - 1] - spent[m - 1]);
+                cumulSpent += spent[m - 1] + remaining;
+            }
+            else
+            {
+                var projected = Math.Max(0m, cumulTarget - cumulSpent);
+                expenses[m - 1] = projected;
+                cumulSpent += projected;
+            }
+        }
+        return (expenses, remaining);
+    }
+
+    /// <summary>
+    /// Like <see cref="DistributeAcrossMonth"/>, but only over days <paramref name="firstDay"/>..<paramref name="daysInMonth"/>
+    /// of the month: the weights of those days are scaled up to carry the whole amount (evenly when they are all zero).
+    /// </summary>
+    private static void DistributeOverDays(decimal[] deltas, int startDoy, int firstDay, int daysInMonth, decimal amount, decimal[] weights, int sign)
+    {
+        decimal Weight(int d)
+        {
+            decimal w = weights[d - 1];
+            if (d == daysInMonth)
+                for (int extra = daysInMonth; extra < weights.Length; extra++) w += weights[extra];
+            return w;
+        }
+        decimal total = 0m;
+        for (int d = firstDay; d <= daysInMonth; d++) total += Weight(d);
+        int days = daysInMonth - firstDay + 1;
+        for (int d = firstDay; d <= daysInMonth; d++)
+        {
+            int idx = startDoy - 1 + (d - 1);
+            if (idx < 0 || idx >= deltas.Length) continue;
+            deltas[idx] += sign * amount * (total > 0m ? Weight(d) / total : 1m / days);
+        }
+    }
+
     /// <summary>The signed amount of standing orders in <paramref name="row"/>'s projection for <paramref name="month"/> (1-12).</summary>
     private static decimal Covered(ScheduledCashflow? scheduled, CategoryCashflow row, int month) =>
         scheduled != null && scheduled.CoveredByRow.TryGetValue((row.CategoryId, row.ItemType), out var months) ? months[month - 1] : 0m;
@@ -204,6 +270,27 @@ public static class CashflowCalculator
                     if (amount == 0m) continue;
                     if (!weights.TryGetValue((expense.CategoryId, expense.ItemType), out var dist)) continue;
                     DistributeAcrossMonth(deltas, startDoy, daysInMonth, amount, dist.Weights, sign: -1);
+                }
+            }
+        }
+
+        // The current month: what each expense row's budget still holds for it, less the standing orders and recurring
+        // charges booked on its remaining days below, spread over the days after the last real booking.
+        int currentMonth = firstProjectedMonth - 1;
+        if (selectedYear == currentYear && currentMonth is >= 1 and <= 12 && histograms != null)
+        {
+            int daysInMonth = DateTime.DaysInMonth(selectedYear, currentMonth);
+            int startDoy = new DateTime(selectedYear, currentMonth, 1).DayOfYear;
+            int firstDay = Math.Max(1, lastActualDayOfYear - startDoy + 2);
+            if (firstDay <= daysInMonth)
+            {
+                foreach (var expense in expenseCategories)
+                {
+                    if (!expense.IsAggregateRow) continue;
+                    var amount = Math.Max(0m, expense.CurrentMonthRemaining - Math.Max(0m, -Covered(scheduled, expense, currentMonth)));
+                    if (amount == 0m) continue;
+                    if (!histograms.TryGetValue((expense.CategoryId, expense.ItemType), out var dist)) continue;
+                    DistributeOverDays(deltas, startDoy, firstDay, daysInMonth, amount, dist.Weights, sign: -1);
                 }
             }
         }
@@ -438,6 +525,7 @@ public static class CashflowCalculator
         CategoryName = c.CategoryName,
         MonthlyAmounts = (decimal[])c.MonthlyAmounts.Clone(),
         IsAggregateRow = c.IsAggregateRow,
+        CurrentMonthRemaining = c.CurrentMonthRemaining,
         OriginProjectId = c.OriginProjectId,
         OriginProjectName = c.OriginProjectName,
     };

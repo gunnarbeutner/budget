@@ -128,6 +128,92 @@ public class CashflowCalculatorTests
         Assert.Equal(280m, result.BalanceDaily[364]); // carries to year end
     }
 
+    [Fact]
+    public void ProjectExpenses_keeps_the_current_months_remaining_budget_out_of_later_months()
+    {
+        // 100 a month; 80 spent in each of Jan–Oct (an underrun of 200), 30 so far in November (the current month).
+        var budget = Enumerable.Repeat(100m, 12).ToArray();
+        var spent = new decimal[12];
+        for (int m = 0; m < 10; m++) spent[m] = 80m;
+        spent[10] = 30m;
+
+        var (expenses, remaining) = CashflowCalculator.ProjectExpenses(budget, spent, currentMonth: 11);
+
+        Assert.Equal(70m, remaining);    // November still holds 70, for its own remaining days
+        Assert.Equal(30m, expenses[10]); // November shows its actuals
+        Assert.Equal(300m, expenses[11]); // December: its 100 plus the 200 underrun of Jan–Oct, not November's 70
+        Assert.Equal(80m, expenses[0]);
+    }
+
+    [Fact]
+    public void ProjectExpenses_lets_an_overrun_of_the_current_month_shrink_later_months()
+    {
+        var budget = Enumerable.Repeat(100m, 12).ToArray();
+        var spent = new decimal[12];
+        for (int m = 0; m < 10; m++) spent[m] = 100m;
+        spent[10] = 150m;
+
+        var (expenses, remaining) = CashflowCalculator.ProjectExpenses(budget, spent, currentMonth: 11);
+
+        Assert.Equal(0m, remaining);
+        Assert.Equal(50m, expenses[11]);
+    }
+
+    [Fact]
+    public void ProjectExpenses_projects_every_month_of_a_future_year_and_none_of_a_past_one()
+    {
+        var budget = Enumerable.Repeat(100m, 12).ToArray();
+        var spent = Enumerable.Repeat(40m, 12).ToArray();
+
+        Assert.All(CashflowCalculator.ProjectExpenses(budget, new decimal[12], currentMonth: 0).Expenses, m => Assert.Equal(100m, m));
+        var (past, remaining) = CashflowCalculator.ProjectExpenses(budget, spent, currentMonth: 13);
+        Assert.Equal(spent, past);
+        Assert.Equal(0m, remaining);
+    }
+
+    [Fact]
+    public void ComputeBalance_spreads_the_current_months_remaining_budget_over_its_remaining_days_less_its_charges()
+    {
+        // Today is Nov 16 (day 320 of 2026): the row's November budget still holds 100, of which a recurring charge of 40
+        // on Nov 20 is booked on its own; the other 60 go onto Nov 17–30 by the row's day pattern (the 1st is past, so
+        // all of it lands on the 25th here).
+        var data = new ProjectDailyDeltaResult
+        {
+            HasAccounts = true,
+            StartingBalance = 500m,
+            LastActualDayOfYear = 320,
+            DailyDelta = new decimal[365],
+        };
+        var weights = new decimal[31];
+        weights[0] = 0.5m;
+        weights[24] = 0.5m;
+        var expense = new CategoryCashflow
+        {
+            CategoryId = 7,
+            ItemType = CategoryItemType.Category,
+            IsAggregateRow = true,
+            MonthlyAmounts = new decimal[12],
+            CurrentMonthRemaining = 100m,
+        };
+        var histograms = new Dictionary<(long, CategoryItemType), DayOfMonthDistribution>
+        {
+            [(7, CategoryItemType.Category)] = new() { Weights = weights },
+        };
+        var scheduled = new ScheduledCashflow();
+        scheduled.Occurrences.Add(new ScheduledOccurrence(new DateOnly(2026, 11, 20), -40m, "Subscription", OpenBudget.Connectors.ScheduledPaymentKind.Recurring));
+        scheduled.CoveredByRow[(7, CategoryItemType.Category)] = MonthArray(month: 11, amount: -40m);
+
+        var result = CashflowCalculator.ComputeBalance(
+            data, selectedYear: 2026, currentYear: 2026, firstProjectedMonth: 12,
+            new List<CategoryCashflow>(), new List<CategoryCashflow> { expense }, histograms, new List<WhatIfEntry>(), floor: 0m, scheduled);
+
+        int nov20 = new DateTime(2026, 11, 20).DayOfYear - 1, nov25 = new DateTime(2026, 11, 25).DayOfYear - 1;
+        Assert.Equal(500m, result.BalanceDaily[nov20 - 1]);
+        Assert.Equal(460m, result.BalanceDaily[nov20]);
+        Assert.Equal(400m, result.BalanceDaily[nov25]);
+        Assert.Equal(400m, result.BalanceDaily[364]); // nothing of November reaches December
+    }
+
     // 12-element monthly array with a single month (1-based) set.
     private static decimal[] MonthArray(int month, decimal amount)
     {

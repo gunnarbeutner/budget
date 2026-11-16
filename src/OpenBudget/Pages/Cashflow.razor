@@ -840,7 +840,7 @@ else
         // needed; assignments are independent of the parent/child relationship).
         cachedDeltaResult = await CashflowProjectionService.GetProjectActualDailyDeltaAsync(selectedProjectId, selectedYear);
         cachedHistograms = null;
-        if (projecting)
+        if (projecting || selectedYear == Clock.Today.Year)
         {
             var projItems = slices.SelectMany(s => s.ProjectionItems).Distinct().ToList();
             cachedHistograms = await CashflowProjectionService.GetCategoryDayOfMonthWeightsAsync(projItems, projectOwnerId);
@@ -963,34 +963,22 @@ else
                 recentIncomeSourceMonth.Year, recentIncomeSourceMonth.Month);
         }
 
-        // Pre-pass: self-correcting expense projection. For each row each future month is
-        // sized to keep the running cumulative spend on the annual-budget curve — overruns
-        // earlier in the year shrink later months, underruns let later months catch up. Same
-        // mechanic as the original Cashflow workbook's `=-(annual×cumul_through_m − sum_prior)`
-        // formula. Floor at 0 so an already-over-budget row stops contributing rather than
-        // flipping to a negative ("income-shaped") bar.
-        if (projecting)
+        // Pre-pass: the self-correcting expense projection of each budgeted row (see
+        // CashflowCalculator.ProjectExpenses), and what the current month's budget still holds.
+        var currentMonthRemaining = new Dictionary<(long, CategoryItemType), decimal>();
+        var today = Clock.Today;
+        if (budgetAmounts != null && (projecting || selectedYear == today.Year))
         {
+            incomeItems ??= await BudgetService.GetIncomeItemsForProjectAsync(project.Id);
+            int currentMonth = selectedYear == today.Year ? today.Month : selectedYear < today.Year ? 13 : 0;
             foreach (var cat in availableCategories)
             {
-                bool isIncomeItem = incomeItems!.Contains((cat.Id, cat.ItemType));
-                if (isIncomeItem) continue;
-                if (!budgetAmounts!.TryGetValue((cat.Id, cat.ItemType), out var budgetMonthly)) continue;
-                var (_, expenses) = batch[(cat.Id, cat.ItemType)];
-                decimal cumulSpent = 0m;
-                decimal cumulTarget = 0m;
-                for (int m = 0; m < firstProjectedMonth - 1; m++)
-                {
-                    cumulSpent += expenses[m];
-                    cumulTarget += budgetMonthly[m];
-                }
-                for (int m = firstProjectedMonth - 1; m < 12; m++)
-                {
-                    cumulTarget += budgetMonthly[m];
-                    var projected = Math.Max(0m, cumulTarget - cumulSpent);
-                    expenses[m] = projected;
-                    cumulSpent += projected;
-                }
+                if (incomeItems.Contains((cat.Id, cat.ItemType))) continue;
+                if (!budgetAmounts.TryGetValue((cat.Id, cat.ItemType), out var budgetMonthly)) continue;
+                var (income, spent) = batch[(cat.Id, cat.ItemType)];
+                var (expenses, remaining) = CashflowCalculator.ProjectExpenses(budgetMonthly, spent, currentMonth);
+                batch[(cat.Id, cat.ItemType)] = (income, expenses);
+                currentMonthRemaining[(cat.Id, cat.ItemType)] = remaining;
             }
         }
 
@@ -1019,7 +1007,7 @@ else
                 });
             }
 
-            if (expenses.Any(m => m > 0))
+            if (expenses.Any(m => m > 0) || currentMonthRemaining.GetValueOrDefault((category.Id, category.ItemType)) > 0)
             {
                 slice.ExpenseCategories.Add(new CategoryCashflow
                 {
@@ -1030,7 +1018,8 @@ else
                     BaseMonthlyAmounts = (decimal[])expenses.Clone(),
                     OriginProjectId = project.Id,
                     OriginProjectName = project.Name,
-                    IsAggregateRow = isAggregateRow
+                    IsAggregateRow = isAggregateRow,
+                    CurrentMonthRemaining = currentMonthRemaining.GetValueOrDefault((category.Id, category.ItemType)),
                 });
             }
         }
