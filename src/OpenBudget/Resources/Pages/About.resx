@@ -121,7 +121,7 @@
   <data name="NotConfigured" xml:space="preserve">
     <value>Not set up</value>
   </data>
-  <data name="Label_OneDrive" xml:space="preserve">
-    <value>OneDrive (Microsoft Entra app)</value>
+  <data name="Label_Microsoft365" xml:space="preserve">
+    <value>Microsoft 365 (Entra app)</value>
   </data>
 </root>
