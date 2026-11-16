@@ -184,4 +184,10 @@
   <data name="Section_ExpectedHint" xml:space="preserve">
     <value>Aus deinen Buchungen und Bestellungen erkannt: Abos und Raten. Datum und Betrag sind geschätzt.</value>
   </data>
+  <data name="Kind_Order" xml:space="preserve">
+    <value>Wartende Bestellungen</value>
+  </data>
+  <data name="Rhythm_Order" xml:space="preserve">
+    <value>Bestellung, noch nicht abgebucht</value>
+  </data>
 </root>

@@ -39,7 +39,8 @@ public sealed record ScheduledOverview(IReadOnlyList<ScheduledItem> Items, IRead
 /// The Scheduled view: the standing orders and future-dated transfers the banks reported for the project's accounts,
 /// plus the expected instalments of running instalment plans whose payment method is mapped to one of them (see
 /// <see cref="ExpectedInstalments"/>) and the next expected charge of each active recurring series the user has not
-/// dismissed (see <see cref="RecurringPaymentService"/>), soonest first. Reads through the user-scoped context, so the access rules of
+/// dismissed (see <see cref="RecurringPaymentService"/>) and the expected charges of orders still waiting for their
+/// booking (see <see cref="ReceiptService.ExpectedChargesAsync"/>), soonest first. Reads through the user-scoped context, so the access rules of
 /// <see cref="ScheduledPayment"/> (those of the account's transactions) apply; the instalments are read on a system
 /// context, but only for the accounts the user sees.
 /// </summary>
@@ -48,15 +49,19 @@ public class ScheduledPaymentService
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly IDbContextFactory<BudgetDbContext>? _system;
     private readonly RecurringPaymentService? _recurring;
+    private readonly ReceiptService? _receipts;
 
-    public ScheduledPaymentService(IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory? system = null, RecurringPaymentService? recurring = null)
+    public ScheduledPaymentService(IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory? system = null, RecurringPaymentService? recurring = null,
+        ReceiptService? receipts = null)
     {
         _dbFactory = dbFactory;
         _system = system;
         _recurring = recurring;
+        _receipts = receipts;
     }
 
     private const long RecurringIdBase = long.MinValue / 2;
+    private const long OrderIdBase = long.MinValue / 4;
 
     public async Task<ScheduledOverview> GetAsync(int projectId, DateOnly today, CancellationToken ct = default)
     {
@@ -111,6 +116,18 @@ public class ScheduledPaymentService
                     r.Rhythm.Weekly ? ScheduleUnit.Week : ScheduleUnit.Month, r.Rhythm.Count, null,
                     r.Cents / 100m, "EUR", r.Payee, null, null, null,
                     r.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a), a.Color));
+            }
+        }
+        if (_receipts != null)
+        {
+            foreach (var c in await _receipts.ExpectedChargesAsync(projectId, today, ct))
+            {
+                if (!accounts.TryGetValue(c.AccountId, out var a)) continue;
+                // Ids between the recurring rows' and the instalments' ranges keep the waiting orders apart.
+                items.Add(new ScheduledItem(
+                    OrderIdBase - c.ReceiptId, ScheduledPaymentKind.Order, c.Date, null, null, null, null,
+                    c.Cents / 100m, "EUR", c.Title, null, null, c.FirstItem,
+                    c.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a), a.Color, c.ReceiptId));
             }
         }
         items = items.OrderBy(i => i.NextDate).ThenBy(i => i.CounterpartyName, StringComparer.CurrentCultureIgnoreCase).ThenBy(i => i.Id).ToList();

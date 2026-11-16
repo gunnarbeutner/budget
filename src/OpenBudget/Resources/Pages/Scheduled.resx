@@ -184,4 +184,10 @@
   <data name="Section_ExpectedHint" xml:space="preserve">
     <value>Detected from your bookings and orders: subscriptions and instalments. Dates and amounts are estimates.</value>
   </data>
+  <data name="Kind_Order" xml:space="preserve">
+    <value>Waiting orders</value>
+  </data>
+  <data name="Rhythm_Order" xml:space="preserve">
+    <value>Order, not charged yet</value>
+  </data>
 </root>

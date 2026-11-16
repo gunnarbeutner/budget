@@ -13,9 +13,10 @@
 @* The Scheduled view of a project, in two tabs (?tab=subscriptions selects the second):
    - Upcoming: the standing orders and future-dated transfers the banks reported for the project's accounts at the
      last sync, plus the expected instalments of running Amazon plans paid from them (an estimated day, opening the
-     order's receipt) and the next expected charge of each active recurring series (an estimated day). Two sections,
-     each soonest first: "From your bank" (standing orders, transfers, plans) and "Expected" (instalments and detected
-     subscriptions, estimates, marked by a dashed edge). Filters in the URL (?kind=standing|scheduled|instalment|recurring,
+     order's receipt), the next expected charge of each active recurring series (an estimated day) and the expected
+     charge of each order whose receipt still waits for its booking (an estimated day, opening the receipt). Two sections,
+     each soonest first: "From your bank" (standing orders, transfers, plans) and "Expected" (instalments, detected
+     subscriptions and waiting orders, estimates, marked by a dashed edge). Filters in the URL (?kind=standing|scheduled|instalment|recurring|order,
      ?account=<id>). Read-only: orders are managed at the bank.
    - Subscriptions: the detected recurring series (RecurringSubscriptions), filtered by ?show=. *@
 
@@ -53,6 +54,7 @@
                     <option value="standing" selected="@(kind == "standing")">@L["Kind_Standing"]</option>
                     <option value="instalment" selected="@(kind == "instalment")">@L["Kind_Instalment"]</option>
                     <option value="recurring" selected="@(kind == "recurring")">@L["Kind_Recurring"]</option>
+                    <option value="order" selected="@(kind == "order")">@L["Kind_Order"]</option>
                 </select>
                 <select class="form-select form-select-sm docs-select docs-select-wide" aria-label="@L["Filter_Account"]" data-testid="scheduled-account"
                         @onchange="e => SetFilter(account: e.Value?.ToString())">
@@ -136,7 +138,7 @@
     {
                     <li class="sched-row@(IsExpected(item.Kind) ? " sched-row--expected" : "")" @key="item.Id" data-testid="scheduled-row" data-kind="@KindKey(item.Kind)">
                         <div class="sched-date">
-                            <div class="fw-semibold" data-testid="scheduled-date">@(item.Kind is ScheduledPaymentKind.Instalment or ScheduledPaymentKind.Recurring ? "~" : "")@item.NextDate.ToAppDate()</div>
+                            <div class="fw-semibold" data-testid="scheduled-date">@(IsExpected(item.Kind) ? "~" : "")@item.NextDate.ToAppDate()</div>
                             <div class="small text-body-secondary" data-testid="scheduled-in">@InDays(item.NextDate)</div>
                         </div>
                         <div class="sched-main min-w-0">
@@ -147,7 +149,7 @@
                             }
                             <div class="small text-body-secondary sched-meta">
                                 <span class="sched-rhythm" data-testid="scheduled-rhythm">
-                                    <i class="bi @(item.Kind switch { ScheduledPaymentKind.Standing => "bi-arrow-repeat", ScheduledPaymentKind.Instalment => "bi-receipt", ScheduledPaymentKind.Recurring => "bi-arrow-clockwise", _ => "bi-calendar-event" }) me-1" aria-hidden="true"></i>@Rhythm(item)
+                                    <i class="bi @(item.Kind switch { ScheduledPaymentKind.Standing => "bi-arrow-repeat", ScheduledPaymentKind.Instalment => "bi-receipt", ScheduledPaymentKind.Recurring => "bi-arrow-clockwise", ScheduledPaymentKind.Order => "bi-bag", _ => "bi-calendar-event" }) me-1" aria-hidden="true"></i>@Rhythm(item)
                                 </span>
                                 @if (item.ReceiptId is { } receipt)
                                 {
@@ -172,8 +174,8 @@
                     </li>
     };
 
-    /// <summary>Detected subscriptions and instalments are estimates; standing orders, transfers and plans come from the bank.</summary>
-    private static bool IsExpected(ScheduledPaymentKind k) => k is ScheduledPaymentKind.Instalment or ScheduledPaymentKind.Recurring;
+    /// <summary>Detected subscriptions, instalments and waiting orders are estimates; standing orders and transfers come from the bank.</summary>
+    private static bool IsExpected(ScheduledPaymentKind k) => k is ScheduledPaymentKind.Instalment or ScheduledPaymentKind.Recurring or ScheduledPaymentKind.Order;
 
     private sealed record Section(string Key, string Title, string Hint, List<ScheduledItem> Items);
 
@@ -192,6 +194,7 @@
         ScheduledPaymentKind.Standing => "standing",
         ScheduledPaymentKind.Instalment => "instalment",
         ScheduledPaymentKind.Recurring => "recurring",
+        ScheduledPaymentKind.Order => "order",
         _ => "scheduled",
     };
 
@@ -207,6 +210,7 @@
         else if (kind == "scheduled") q = q.Where(i => i.Kind == ScheduledPaymentKind.Scheduled);
         else if (kind == "instalment") q = q.Where(i => i.Kind == ScheduledPaymentKind.Instalment);
         else if (kind == "recurring") q = q.Where(i => i.Kind == ScheduledPaymentKind.Recurring);
+        else if (kind == "order") q = q.Where(i => i.Kind == ScheduledPaymentKind.Order);
         if (long.TryParse(account, NumberStyles.None, CultureInfo.InvariantCulture, out var a)) q = q.Where(i => i.AccountId == a);
         return q.ToList();
     }
@@ -226,6 +230,7 @@
     private string Rhythm(ScheduledItem item)
     {
         if (item.Kind == ScheduledPaymentKind.Instalment) return L["Rhythm_Instalment", item.InstalmentNumber ?? 0, item.InstalmentCount ?? 0];
+        if (item.Kind == ScheduledPaymentKind.Order) return L["Rhythm_Order"];
         if (item.Kind == ScheduledPaymentKind.Recurring) return L["Rhythm_Recurring", RecurringRhythmText(item.IntervalUnit == ScheduleUnit.Week, item.IntervalCount ?? 1)];
         if (item.Kind != ScheduledPaymentKind.Standing) return L["Rhythm_Once"];
         var count = item.IntervalCount is > 0 ? item.IntervalCount.Value : 1;
@@ -299,7 +304,7 @@
     protected override async Task OnParametersSetAsync()
     {
         var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
-        kind = query.TryGetValue("kind", out var k) && k.ToString() is "standing" or "scheduled" or "instalment" or "recurring" ? k.ToString() : "all";
+        kind = query.TryGetValue("kind", out var k) && k.ToString() is "standing" or "scheduled" or "instalment" or "recurring" or "order" ? k.ToString() : "all";
         account = query.TryGetValue("account", out var ac) && ac.ToString() is { Length: > 0 } av ? av : "all";
         subscriptions = query.TryGetValue("tab", out var t) && t.ToString() == "subscriptions";
         show = query.TryGetValue("show", out var sh) && sh.ToString() is "ended" or "cancelled" or "dismissed" ? sh.ToString() : "active";

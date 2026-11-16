@@ -96,6 +96,12 @@ public enum ScheduledPaymentKind
     /// reported by a bank; never stored.
     /// </summary>
     Recurring = 3,
+
+    /// <summary>
+    /// The expected charge of an order whose receipt is still waiting for its booking, estimated from the receipts rather
+    /// than reported by a bank; never stored.
+    /// </summary>
+    Order = 4,
 }
 
 /// <summary>The time unit of a standing order's rhythm.</summary>

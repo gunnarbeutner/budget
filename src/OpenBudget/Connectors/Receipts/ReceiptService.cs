@@ -92,6 +92,12 @@ public sealed record ReceiptReviewRow(
     long Id, string Source, string Shop, string Title, DateTime? Date, long PaymentCents, int Items, ReceiptReviewState State,
     long? TransactionId, DateTime? BookingDate, bool IsOwn = true, InstalmentProgress? Instalments = null, string? OwnerName = null);
 
+/// <summary>
+/// An order still waiting for its charge (see <see cref="ReceiptService.ExpectedChargesAsync"/>): the receipt, the account
+/// it is expected on, the estimated day, the amount (negative cents), the receipt's title and its first item's name.
+/// </summary>
+public sealed record ExpectedReceiptCharge(long ReceiptId, long AccountId, DateOnly Date, long Cents, string Title, string? FirstItem);
+
 /// <summary>A booking that may be a receipt's: id, date, signed amount, payee and purpose.</summary>
 public sealed record ReceiptCandidate(long TransactionId, DateTime Date, long AmountCents, string? Name, string? Purpose);
 
@@ -573,6 +579,67 @@ public sealed class ReceiptService
         var rows = await RowsAsync(sys, user, invoices, source, null, int.MaxValue, ct);
         return rows.Where(r => r.TransactionId != null || r.State is ReceiptReviewState.Waiting or ReceiptReviewState.InstalmentsPending
             or ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched).Take(take).ToList();
+    }
+
+    /// <summary>
+    /// The charges a project's waiting receipts (see <see cref="ListProjectAsync"/>) are expected to bring, soonest first.
+    /// Each is expected on the project account its payment method or source is mapped to, or where the owner's bookings of
+    /// the source land; of several, the one with the most of the shop's matched bookings. The day is the receipt's
+    /// delivery (else order) day plus the median delay between those days and the bookings of the owner's matched
+    /// receipts of the shop in the last year; an estimate already past is expected today.
+    /// </summary>
+    public async Task<List<ExpectedReceiptCharge>> ExpectedChargesAsync(int projectId, DateOnly today, CancellationToken ct = default)
+    {
+        var waiting = (await ListProjectAsync(projectId, ct: ct)).Where(r => r.State == ReceiptReviewState.Waiting && r.PaymentCents > 0).ToDictionary(r => r.Id);
+        if (waiting.Count == 0) return [];
+        var user = await UserAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await using var sys = await _system.CreateDbContextAsync(ct);
+        var projectAccounts = (await db.ProjectAccountAssignments.AsNoTracking().Where(a => a.ProjectId == projectId).Select(a => a.AccountId).ToListAsync(ct)).ToHashSet();
+        var ids = waiting.Keys.ToList();
+        var invoices = await Project(sys.ReceiptInvoices.AsNoTracking().Where(r => ids.Contains(r.Id))).ToListAsync(ct);
+        var mapped = await MappedAccountsAsync(sys, invoices, ct);
+
+        var owners = invoices.Select(i => i.OwnerUserId).Distinct(StringComparer.Ordinal).ToList();
+        var shops = invoices.Select(i => i.Shop).Distinct(StringComparer.Ordinal).ToList();
+        var since = today.AddYears(-1).ToDateTime(TimeOnly.MinValue);
+        var history = await sys.ReceiptInvoices.AsNoTracking()
+            .Where(r => owners.Contains(r.OwnerUserId) && shops.Contains(r.Shop) && r.TransactionId != null && (r.DeliveryDate ?? r.OrderDate) >= since)
+            .Join(sys.Transactions, r => r.TransactionId, t => t.Id, (r, t) => new { r.OwnerUserId, r.Shop, Day = r.DeliveryDate ?? r.OrderDate, t.Timestamp, t.AccountId })
+            .ToListAsync(ct);
+        var byShop = history.GroupBy(h => (h.OwnerUserId, h.Shop)).ToDictionary(g => g.Key, g => g.ToList());
+        var firstItems = (await sys.ReceiptItems.AsNoTracking().Where(i => ids.Contains(i.ReceiptInvoiceId) && i.Kind == ReceiptItemKind.Product)
+                .Select(i => new { i.ReceiptInvoiceId, i.Position, i.Name }).ToListAsync(ct))
+            .GroupBy(i => i.ReceiptInvoiceId).ToDictionary(g => g.Key, g => g.OrderBy(i => i.Position).First().Name);
+
+        var result = new List<ExpectedReceiptCharge>();
+        var sourceAccounts = new Dictionary<string, HashSet<long>>(StringComparer.Ordinal);
+        foreach (var inv in invoices)
+        {
+            if ((inv.DeliveryDate ?? inv.OrderDate) is not { } day) continue;
+            HashSet<long> candidates;
+            if (mapped.TryGetValue(inv.Id, out var m)) candidates = m;
+            else if (inv.OwnerUserId == user)
+            {
+                var source = ReceiptSources.Of(inv.Shop);
+                if (!sourceAccounts.TryGetValue(source, out var s)) sourceAccounts[source] = s = await SourceAccountsAsync(db, user, source, ct);
+                candidates = s;
+            }
+            else continue;
+            var past = byShop.GetValueOrDefault((inv.OwnerUserId, inv.Shop)) ?? [];
+            var account = candidates.Where(projectAccounts.Contains)
+                .OrderByDescending(a => past.Count(h => h.AccountId == a)).ThenBy(a => a).Select(a => (long?)a).FirstOrDefault();
+            if (account == null) continue;
+            var delays = past.Where(h => h.Day != null)
+                .Select(h => Math.Max(0, DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(h.Timestamp).UtcDateTime).DayNumber - DateOnly.FromDateTime(h.Day!.Value).DayNumber))
+                .Order().ToList();
+            var delay = delays.Count == 0 ? 0 : delays[delays.Count / 2];
+            var date = DateOnly.FromDateTime(day).AddDays(delay);
+            var item = firstItems.GetValueOrDefault(inv.Id);
+            if (item is { Length: > ExpectedInstalments.MaxItemTitle }) item = null;
+            result.Add(new ExpectedReceiptCharge(inv.Id, account.Value, date < today ? today : date, -inv.PaymentCents, waiting[inv.Id].Title, item));
+        }
+        return result.OrderBy(r => r.Date).ThenBy(r => r.ReceiptId).ToList();
     }
 
     /// <summary>How many of the user's own receipts in a project (see <see cref="ListProjectAsync"/>) need review; 0 without access.</summary>
