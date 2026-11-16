@@ -6,7 +6,7 @@
 @inject IStringLocalizer<Receipts> L
 
 @* The Receipts view of a project: the receipt list (ReceiptList) scoped to the project — receipts on its bookings the
-   user may see, and the user's receipts still waiting for a booking from sources that book into it. The title row
+   user may see, and the receipts without a booking whose payment method or source pays from its accounts. The title row
    (desktop only; on phones the bottom bar names the view) scrolls away so the list's filter bar is the sticky part.
    Categories, item memory and AI options stay in Settings › Receipts, linked from the filter bar. *@
 
@@ -24,7 +24,7 @@
     <div class="page-toolbar position-static d-none d-md-flex" data-testid="project-receipts-toolbar">
         <h1 class="view-title">@L["Heading"]</h1>
     </div>
-    <ReceiptList ProjectId="ProjectId" SettingsHref="/receipts?tab=settings" />
+    <ReceiptList ProjectId="ProjectId" SettingsHref="/receipts" />
 </ProjectShell>
 
 @code {

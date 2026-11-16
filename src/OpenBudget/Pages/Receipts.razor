@@ -8,10 +8,10 @@
 @inject CategorizationService Categorization
 @inject IStringLocalizer<Receipts> L
 
-@* Settings › Receipts, in two tabs. "Receipts": all of the signed-in user's receipts across projects (ReceiptList;
-   each project also shows its own receipts as a project view, /projects/{id}/receipts). "Settings" (also
-   /receipts?tab=settings): each project's categories to split items into (see ProjectReceiptItems), the item memory (product → category, editable) and how the AI takes part. Everything is
-   the signed-in user's own; the sources themselves are on the connections page. *@
+@* Settings › Receipts: how receipts split their bookings — each project's categories to split items into (see
+   ProjectReceiptItems), the item memory (product → category, editable) and how the AI takes part. Everything is the
+   signed-in user's own; the receipts themselves are listed per project (/projects/{id}/receipts) and the sources are
+   on the connections page. *@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
@@ -20,31 +20,19 @@
 
 <p class="text-body-secondary small">@L["Intro"] <a href="/connections">@L["Intro_Connections"]</a></p>
 
-<div class="segmented mb-3" role="tablist" aria-label="@L["Heading"]" data-testid="receipts-tabs">
-    <button type="button" role="tab" class="btn @(tab == Tab.List ? "active" : "")" aria-selected="@(tab == Tab.List)"
-            data-testid="receipts-tab-list" @onclick="() => tab = Tab.List">@L["Tab_List"]</button>
-    <button type="button" role="tab" class="btn @(tab == Tab.Settings ? "active" : "")" aria-selected="@(tab == Tab.Settings)"
-            data-testid="receipts-tab-settings" @onclick="() => tab = Tab.Settings">@L["Tab_Settings"]</button>
-</div>
-
-@if (tab == Tab.List)
-{
-<ReceiptList />
-}
-else
-{
 @if (error != null)
 {
     <div class="alert alert-warning py-2" role="alert">@error</div>
 }
 <section class="mb-4" data-testid="receipts-categories">
     <h2 class="h5">@L["Categories_Heading"]</h2>
-    <p class="small text-body-secondary">@L["Categories_Help"]</p>
+    <p class="small text-body-secondary mb-1">@L["Categories_Help"]</p>
+    <p class="small text-body-secondary">@L["Categories_Matching"]</p>
     @foreach (var p in projects ?? [])
     {
         <details class="receipts-settings-block mb-2" open="@(p.Categories.Count > 0)" data-testid="receipts-project" data-project="@p.ProjectId">
             <summary class="fw-semibold">@p.ProjectName <span class="text-body-secondary fw-normal">(@p.Categories.Count)</span></summary>
-            <div class="pt-2"><ProjectReceiptItems ProjectId="p.ProjectId" ShowHeading="false" /></div>
+            <div class="pt-2"><ProjectReceiptItems ProjectId="p.ProjectId" ShowHeading="false" ShowExplain="false" /></div>
         </details>
     }
 </section>
@@ -91,13 +79,9 @@ else
     <h2 class="h5">@L["Ai_Heading"]</h2>
     <p class="small text-body-secondary">@L["Ai_Help"] <a href="/assist">@L["Ai_Link"]</a></p>
 </section>
-}
 </SettingsShell>
 
 @code {
-    private enum Tab { List, Settings }
-
-    private Tab tab;
     private List<ItemMemoryView>? memory;
     private List<ProjectReceiptSettingsView>? projects;
     private CategoryPickerData? picker;
@@ -107,14 +91,7 @@ else
     private string? memorySearch;
     private double pickerX, pickerY;
 
-    /// <summary>"settings" opens the Settings tab (links from the connections page).</summary>
-    [SupplyParameterFromQuery(Name = "tab")] public string? TabParam { get; set; }
-
-    protected override async Task OnInitializedAsync()
-    {
-        if (TabParam == "settings") tab = Tab.Settings;
-        await LoadAsync();
-    }
+    protected override Task OnInitializedAsync() => LoadAsync();
 
     protected override bool IsRelevantChange(DataChange change) =>
         (change.Area == DataArea.CloudFiles && change.UserId == userId) || (change.Area == DataArea.ImportedData && change.OwnerUserId == userId);

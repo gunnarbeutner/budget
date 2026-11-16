@@ -7,7 +7,7 @@ namespace OpenBudget.E2E.Tests;
 
 /// <summary>
 /// A project's Receipts view: the sidebar link with the count of receipts to review, the list scoped to the project
-/// (receipts on its bookings, open receipts of sources booking into it, not receipts elsewhere), the badge following
+/// (receipts on its bookings, receipts without a booking of sources booking into it, not receipts elsewhere), the badge following
 /// an assignment, the phone bottom bar and the phone list. Set OB_RECEIPTS_SCREENSHOT_DIR to keep screenshots.
 /// </summary>
 [TestFixture]
@@ -64,8 +64,14 @@ public sealed class ProjectReceiptsTests : EndToEndTestBase
 
         await rows.Filter(new() { HasText = "Sampletown Open A" }).GetByTestId("receipt-assign").ClickAsync();
         await Page.GetByTestId("receipt-dismiss").ClickAsync();
-        await Expect(rows).ToHaveCountAsync(2);
         await Expect(link.Locator(".shell-view-badge")).ToHaveTextAsync("1 to review");
+        // a dismissed receipt stays in the project, under "No booking"
+        await Expect(rows).ToHaveCountAsync(3);
+        var noBooking = Page.Locator("[data-testid=receipts-chip][data-group=nobooking]");
+        await Expect(noBooking.Locator(".receipts-chip-count")).ToHaveTextAsync("1");
+        await noBooking.ClickAsync();
+        await Expect(rows).ToHaveCountAsync(1);
+        await Expect(rows.Filter(new() { HasText = "Sampletown Open A" })).ToHaveCountAsync(1);
     }
 
     [Test]

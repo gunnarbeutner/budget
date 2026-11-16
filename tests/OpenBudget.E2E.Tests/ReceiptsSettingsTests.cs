@@ -9,7 +9,7 @@ namespace OpenBudget.E2E.Tests;
 
 /// <summary>
 /// The mailbox card on the connections page against the fake Microsoft: mail access starts as not granted, "Grant"
-/// signs in asking for Mail.Read, "Check mail now" reads a made-up invoice mail, and the receipts page lists the
+/// signs in asking for Mail.Read, "Check mail now" reads a made-up invoice mail, and the project the mailbox pays from lists the
 /// receipt until its booking arrives and opens it in the receipt panel.
 /// </summary>
 [TestFixture]
@@ -42,6 +42,7 @@ public sealed class ReceiptsSettingsTests : EndToEndTestBase
     [Test]
     public async Task Grant_mail_access_check_mail_and_list_the_receipt()
     {
+        await ReceiptsSeed.SeedAsync(Factory.Services.GetRequiredService<SystemDbContextFactory>(), ReceiptSources.Mail);
         Microsoft.AccountName = "e2e@example.org";
         Microsoft.AddMail(new("mail-99", "Deine Rechnung zu B-AAA-BBB-C99", DateTime.UtcNow.AddDays(-1),
             [("att-1", "Rechnung_PN10000000000099.pdf", SyntheticInvoice.Pdf(SyntheticInvoice.StandardLines(), invoice: "PN10000000000099", order: "B-AAA-BBB-C99"))]));
@@ -76,7 +77,7 @@ public sealed class ReceiptsSettingsTests : EndToEndTestBase
         await Page.GetByTestId("receipts-mail-stop").ClickAsync();
         await Expect(Page.GetByTestId("receipts-mail-grant")).ToBeVisibleAsync();
 
-        await GoToAsync("/receipts");
+        await GoToAsync(ReceiptsSeed.ReceiptsPath);
         // Other receipt tests may have added rows of their own: this test's row is found by its order number.
         var row = Page.GetByTestId("receipt-row").Filter(new() { HasText = "B-AAA-BBB-C99" });
         await Expect(row).ToHaveCountAsync(1);

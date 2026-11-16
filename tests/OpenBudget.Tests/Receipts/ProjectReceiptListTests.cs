@@ -148,6 +148,34 @@ public sealed class ProjectReceiptListTests
         await Assert.ThrowsAsync<AccessDeniedException>(() => Receipts(t, AccessWorld.Bob).ListProjectAsync(AccessWorld.Shared));
     }
 
+    [Fact]
+    public async Task Receipts_without_a_booking_show_in_the_project_their_card_pays_into()
+    {
+        var (t, login, _, _) = await WorldAsync();
+        await using var _t = t;
+        long dismissed, skipped, free;
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            var d = Receipt(AccessWorld.Bob, login, "302-0000000-0000005", 1500, Day, ReceiptMatchState.Dismissed, null);
+            var s = Receipt(AccessWorld.Bob, login, "302-0000000-0000006", 2500, Day, ReceiptMatchState.Skipped, null);
+            var f = Receipt(AccessWorld.Bob, login, "302-0000000-0000007", 0, Day, ReceiptMatchState.Skipped, null);
+            db.ReceiptInvoices.AddRange(d, s, f);
+            await db.SaveChangesAsync();
+            (dismissed, skipped, free) = (d.Id, s.Id, f.Id);
+        }
+        foreach (var user in new[] { AccessWorld.Bob, AccessWorld.Alice })
+        {
+            var rows = await Receipts(t, user).ListProjectAsync(AccessWorld.Shared);
+            Assert.Equal(ReceiptReviewGroup.NoBooking, ReceiptService.GroupOf(rows.Single(r => r.Id == dismissed).State, 1500));
+            Assert.Equal(ReceiptReviewGroup.NoBooking, ReceiptService.GroupOf(rows.Single(r => r.Id == skipped).State, 2500));
+            // nothing paid: done
+            Assert.Equal(ReceiptReviewGroup.Done, ReceiptService.GroupOf(rows.Single(r => r.Id == free).State, 0));
+        }
+        Assert.Empty(await Receipts(t, AccessWorld.Bob).ListProjectAsync(AccessWorld.BobProject));
+        // they need no review: the badge still counts only the older unmatched receipt
+        Assert.Equal(1, await Receipts(t, AccessWorld.Bob).CountProjectReviewAsync(AccessWorld.Shared));
+    }
+
     [Theory]
     [InlineData(ReceiptReviewState.Matched, 1000, ReceiptReviewGroup.Done)]
     [InlineData(ReceiptReviewState.Split, 1000, ReceiptReviewGroup.Done)]

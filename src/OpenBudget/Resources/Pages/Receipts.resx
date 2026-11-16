@@ -65,7 +65,7 @@
     <value>Receipts</value>
   </data>
   <data name="Intro" xml:space="preserve">
-    <value>All receipts your sources read: each is matched with the booking that paid it, and the booking is split by the items into the source's categories. The sources themselves are set up under</value>
+    <value>Each receipt your sources read is matched with the booking that paid it, and its items move the booking's money into the categories below. Every project lists its receipts under Receipts; the sources themselves are set up under</value>
   </data>
   <data name="Intro_Connections" xml:space="preserve">
     <value>Connections.</value>
@@ -181,12 +181,6 @@
   <data name="Ai_Link" xml:space="preserve">
     <value>AI settings</value>
   </data>
-  <data name="Tab_List" xml:space="preserve">
-    <value>Receipts</value>
-  </data>
-  <data name="Tab_Settings" xml:space="preserve">
-    <value>Settings</value>
-  </data>
   <data name="Search" xml:space="preserve">
     <value>Search shop, date or amount</value>
   </data>
@@ -285,5 +279,8 @@
   </data>
   <data name="Settings_Link" xml:space="preserve">
     <value>Receipt categories and item memory</value>
+  </data>
+  <data name="Categories_Matching" xml:space="preserve">
+    <value>Items are matched by the built-in keywords (drugstore, household, drinks, alcohol, pet supplies, non-food — via words in the category's name or description), your extra keywords, the item memory, or the AI if you opted in.</value>
   </data>
 </root>

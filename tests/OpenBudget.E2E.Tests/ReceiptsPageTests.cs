@@ -7,9 +7,9 @@ using OpenBudget.Services;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// The receipts page with many made-up receipts: status chips with counts over all rows, search, the virtualized list,
-/// the "Done" chip (nothing to pay, instalment plans), the assign dialog, the settings tab, and no horizontal scroll at
-/// phone width.
+/// A project's receipts with many made-up receipts paid from one of its accounts: status chips with counts over all
+/// rows, search, the virtualized list, the "Done" chip (nothing to pay, instalment plans), the assign dialog, the
+/// settings page, and no horizontal scroll at phone width.
 /// </summary>
 [TestFixture]
 public sealed class ReceiptsPageTests : EndToEndTestBase
@@ -18,6 +18,7 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
     public async Task SeedAsync()
     {
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        login = await ReceiptsSeed.SeedAsync(factory, ReceiptSources.Lidl);
         await using var db = await factory.CreateDbContextAsync();
         var day = DateTime.UtcNow.Date.AddDays(-40);
         for (var i = 0; i < 60; i++)
@@ -40,6 +41,8 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
         {
             OwnerUserId = E2ESeed.OwnerUserId,
             Shop = ReceiptShops.Amazon,
+            BankLoginId = login,
+            PaymentMethodId = ReceiptsSeed.AmazonCard,
             InvoiceNumber = "E2E-AMZ-GIFT",
             SourceKey = "E2E-AMZ-GIFT",
             OrderNumber = "302-0000000-0000100",
@@ -64,13 +67,17 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
         await db.SaveChangesAsync();
     }
 
+    private int login;
+
     private const string RunningOrder = "302-0000000-0000210";
     private const string CancelledOrder = "302-0000000-0000220";
 
-    private static ReceiptInvoice Instalment(string key, long cents, ReceiptMatchState state, DateTime day, string order = "302-0000000-0000200") => new()
+    private ReceiptInvoice Instalment(string key, long cents, ReceiptMatchState state, DateTime day, string order = "302-0000000-0000200") => new()
     {
         OwnerUserId = E2ESeed.OwnerUserId,
         Shop = ReceiptShops.Amazon,
+        BankLoginId = login,
+        PaymentMethodId = ReceiptsSeed.AmazonCard,
         InvoiceNumber = key,
         SourceKey = key,
         OrderNumber = order,
@@ -101,7 +108,7 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
     [Test]
     public async Task Chips_search_the_virtualized_list_and_the_assign_dialog()
     {
-        await GoToAsync("/receipts");
+        await GoToAsync(ReceiptsSeed.ReceiptsPath);
         var rows = Page.GetByTestId("receipt-row");
         await Expect(Page.GetByTestId("receipts-shown")).ToHaveTextAsync("71 receipts");
         await Expect(rows.First).ToBeVisibleAsync();
@@ -127,7 +134,7 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
     [Test]
     public async Task Nothing_to_pay_and_a_completed_instalment_plan_are_done()
     {
-        await GoToAsync("/receipts");
+        await GoToAsync(ReceiptsSeed.ReceiptsPath);
         await Expect(Page.Locator("[data-testid=receipts-chip][data-group=nobooking]")).ToHaveCountAsync(0);
         var done = Page.Locator("[data-testid=receipts-chip][data-group=done]");
         await Expect(done).ToContainTextAsync("Done");
@@ -144,7 +151,7 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
     [Test]
     public async Task A_running_instalment_plan_shows_its_progress()
     {
-        await GoToAsync("/receipts");
+        await GoToAsync(ReceiptsSeed.ReceiptsPath);
         var waiting = Page.Locator("[data-testid=receipts-chip][data-group=waiting]");
         await waiting.ClickAsync();
         // The filtered list arrives with the render that marks the chip; until then all three rows of the order show.
@@ -160,21 +167,61 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task The_settings_tab_holds_the_item_categories_and_memory()
+    public async Task The_settings_link_leads_to_the_item_categories_and_memory()
     {
-        await GoToAsync("/receipts");
-        await Expect(Page.GetByTestId("receipts-categories")).ToHaveCountAsync(0);
-        await Page.GetByTestId("receipts-tab-settings").ClickAsync();
+        await GoToAsync(ReceiptsSeed.ReceiptsPath);
+        await Page.GetByTestId("receipts-settings-link").ClickAsync();
         await Expect(Page.GetByTestId("receipts-categories")).ToContainTextAsync("Split receipt items into");
-        await Expect(Page.GetByTestId("source-categories-explain").First).ToContainTextAsync("stay in the booking's category");
+        await Expect(Page.GetByTestId("receipts-categories")).ToContainTextAsync("stay in the booking's category");
         await Expect(Page.GetByTestId("receipts-memory")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("receipts-list")).ToHaveCountAsync(0);
+        // the page explains the categories once, not in every project
+        await Expect(Page.GetByTestId("source-categories-explain")).ToHaveCountAsync(0);
+    }
+
+    /// <summary>
+    /// The item categories line up: each row's actions sit on its pill's line at one right edge however long the
+    /// description is, and the descriptions start at one left edge; at phone width nothing scrolls sideways.
+    /// </summary>
+    [TestCase(1280)]
+    [TestCase(390)]
+    public async Task The_item_categories_line_up_in_columns(int width)
+    {
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            var longText = string.Join(", ", Enumerable.Range(1, 30).Select(i => $"Example word {i}"));
+            db.ProjectReceiptCategories.Add(new ProjectReceiptCategory { OwnerUserId = E2ESeed.OwnerUserId, ProjectId = E2ESeed.ProjectId, CategoryId = 200, Description = longText });
+            db.ProjectReceiptCategories.Add(new ProjectReceiptCategory { OwnerUserId = E2ESeed.OwnerUserId, ProjectId = E2ESeed.ProjectId, CategoryId = 201, Description = "Short text" });
+            await db.SaveChangesAsync();
+        }
+        await Page.SetViewportSizeAsync(width, 900);
+        await GoToAsync("/receipts");
+        var rows = Page.GetByTestId("source-allowed");
+        await Expect(rows).ToHaveCountAsync(2);
+        if (Environment.GetEnvironmentVariable("OB_RECEIPTS_SETTINGS_SCREENSHOT_DIR") is { Length: > 0 } dir)
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"receipts-settings-{width}.png"), FullPage = true });
+
+        var boxes = new List<(LocatorBoundingBoxResult Pill, LocatorBoundingBoxResult Text, LocatorBoundingBoxResult Remove)>();
+        for (var i = 0; i < 2; i++)
+        {
+            var row = rows.Nth(i);
+            boxes.Add(((await row.Locator(".cat-pill").BoundingBoxAsync())!, (await row.GetByTestId("source-allowed-text").BoundingBoxAsync())!,
+                (await row.GetByTestId("source-allowed-remove").BoundingBoxAsync())!));
+        }
+        foreach (var (pill, _, remove) in boxes)
+            Assert.That(remove.Y + remove.Height / 2, Is.EqualTo(pill.Y + pill.Height / 2).Within(4), "actions on the pill's line");
+        Assert.That(boxes[0].Remove.X, Is.EqualTo(boxes[1].Remove.X).Within(1), "actions at one right edge");
+        Assert.That(boxes[0].Text.X, Is.EqualTo(boxes[1].Text.X).Within(1), "descriptions at one left edge");
+        Assert.That(await Page.GetByTestId("source-allowed-text").First.GetAttributeAsync("title"), Does.Contain("Example word 30"), "the full text in the tooltip");
+        Assert.That(await Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"), Is.True);
     }
 
     [Test]
     public async Task No_horizontal_scroll_at_phone_width()
     {
         await Page.SetViewportSizeAsync(375, 740);
-        await GoToAsync("/receipts");
+        await GoToAsync(ReceiptsSeed.ReceiptsPath);
         await Expect(Page.GetByTestId("receipt-row").First).ToBeVisibleAsync();
         Assert.That(await Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"), Is.True);
     }

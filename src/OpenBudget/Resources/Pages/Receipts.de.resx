@@ -65,7 +65,7 @@
     <value>Kassenbons</value>
   </data>
   <data name="Intro" xml:space="preserve">
-    <value>Alle Kassenbons, die deine Quellen gelesen haben: Jeder wird der Buchung zugeordnet, mit der er bezahlt wurde, und die Buchung wird nach den Artikeln auf die Kategorien der Quelle aufgeteilt. Die Quellen selbst richtest du ein unter</value>
+    <value>Jeder Beleg, den deine Quellen lesen, wird der Buchung zugeordnet, die ihn bezahlt hat, und seine Artikel verteilen das Geld der Buchung auf die Kategorien unten. Jedes Projekt listet seine Belege unter Belege; die Quellen selbst richtest du ein unter</value>
   </data>
   <data name="Intro_Connections" xml:space="preserve">
     <value>Verbindungen.</value>
@@ -181,12 +181,6 @@
   <data name="Ai_Link" xml:space="preserve">
     <value>KI-Einstellungen</value>
   </data>
-  <data name="Tab_List" xml:space="preserve">
-    <value>Kassenbons</value>
-  </data>
-  <data name="Tab_Settings" xml:space="preserve">
-    <value>Einstellungen</value>
-  </data>
   <data name="Search" xml:space="preserve">
     <value>Laden, Datum oder Betrag suchen</value>
   </data>
@@ -285,5 +279,8 @@
   </data>
   <data name="Settings_Link" xml:space="preserve">
     <value>Kassenbon-Kategorien und Artikelgedächtnis</value>
+  </data>
+  <data name="Categories_Matching" xml:space="preserve">
+    <value>Zugeordnet wird über die eingebauten Stichwörter (Drogerie, Haushalt, Getränke, Alkohol, Tierbedarf, Non-Food – über Wörter im Namen oder in der Beschreibung der Kategorie), eigene Stichwörter, die Artikelliste oder, wenn eingeschaltet, die KI.</value>
   </data>
 </root>

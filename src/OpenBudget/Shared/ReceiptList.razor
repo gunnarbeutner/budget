@@ -7,9 +7,8 @@
 @inject CategorizationService Categorization
 @inject IStringLocalizer<OpenBudget.Pages.Receipts> L
 
-@* The receipt list: all of the signed-in user's receipts, or with ProjectId a project's receipts (ReceiptService.
-   ListProjectAsync: those on the project's bookings the user may see, and the user's open receipts of sources booking
-   into it). Newest first, with a sticky filter bar (source, search, optional settings link, status chips with counts
+@* A project's receipt list (ReceiptService.ListProjectAsync: those on the project's bookings the user may see, and the
+   receipts without a booking whose payment method or source pays from the project's accounts). Newest first, with a sticky filter bar (source, search, optional settings link, status chips with counts
    over all rows); the rows are virtualized in the page's scroll container. On phones the table renders as a two-line
    list (title and amount; date, source, a short status and the row's action) and the chips scroll sideways. A row opens the receipt panel; the user's own ambiguous, waiting or
    unmatched receipt can be assigned to a booking by hand (a dialog lists the bookings near its date) or marked as
@@ -171,8 +170,8 @@
     /// <summary>The status chips: All and one per <see cref="ReceiptReviewGroup"/>.</summary>
     private enum Group { All, Review, Waiting, Done, NoBooking }
 
-    /// <summary>The project whose receipts are listed; null lists all of the user's receipts.</summary>
-    [Parameter] public int? ProjectId { get; set; }
+    /// <summary>The project whose receipts are listed.</summary>
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
 
     /// <summary>Where the filter bar's settings icon leads (receipt categories and item memory); null shows none.</summary>
     [Parameter] public string? SettingsHref { get; set; }
@@ -188,7 +187,7 @@
     private bool canEdit = true;
     private ReceiptReviewRow? assigning;
     private List<ReceiptCandidate>? candidates;
-    private int? _loadedProject = -1;
+    private int _loadedProject = -1;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -209,11 +208,11 @@
         var scope = await Access.GetAsync();
         userId = scope.UserId;
         if (userId == null) return;
-        canEdit = ProjectId is not { } p || scope.CanEdit(p);
+        canEdit = scope.CanEdit(ProjectId);
         picker ??= await Categorization.GetPickerDataAsync(userId);
         try
         {
-            rows = ProjectId is { } project ? await Service.ListProjectAsync(project, source) : await Service.ListAllAsync(source, take: 5000);
+            rows = await Service.ListProjectAsync(ProjectId, source);
         }
         catch (AccessDeniedException ex)
         {

@@ -544,8 +544,9 @@ public sealed class ReceiptService
 
     /// <summary>
     /// A project's receipts, newest first: receipts linked to bookings on the project's accounts that the user may see (their
-    /// own receipts, and other users' receipts on bookings visible to the user), plus receipts still without a booking
-    /// (waiting, ambiguous, unmatched, instalment plans still running): of any owner when their payment method or
+    /// own receipts, and other users' receipts on bookings visible to the user), plus receipts without a booking in any
+    /// state (waiting, ambiguous, unmatched, dismissed, paid without a booking to look for, nothing to pay, the full
+    /// price of an order paid in instalments): of any owner when their payment method or
     /// their source (see <see cref="ReceiptSourceAccount"/>) is mapped to one of the project's accounts, and the user's own
     /// of unmapped sources whose bookings land on the project's accounts (see <see cref="SourceAccountsAsync"/>). Other
     /// users' receipts are read-only (<see cref="ReceiptReviewRow.IsOwn"/>). Requires view access to the project.
@@ -576,9 +577,7 @@ public sealed class ReceiptService
         invoices.AddRange(openAll.Where(r => mappedAccounts.TryGetValue(r.Id, out var mapped)
             ? mapped.Overlaps(accounts)
             : r.OwnerUserId == user && !ReceiptSourceProfiles.Default.PerPaymentMethod(r.Shop) && unmappedSources.Contains(ReceiptSources.Of(r.Shop))));
-        var rows = await RowsAsync(sys, user, invoices, source, null, int.MaxValue, ct);
-        return rows.Where(r => r.TransactionId != null || r.State is ReceiptReviewState.Waiting or ReceiptReviewState.InstalmentsPending
-            or ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched).Take(take).ToList();
+        return await RowsAsync(sys, user, invoices, source, null, take, ct);
     }
 
     /// <summary>
