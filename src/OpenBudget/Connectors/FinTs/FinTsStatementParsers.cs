@@ -84,7 +84,7 @@ internal static class CamtParser
                 details == null ? null : Deep(details, credit ? "DbtrAgt" : "CdtrAgt", "BIC") ?? Deep(details, credit ? "DbtrAgt" : "CdtrAgt", "BICFI"),
                 details == null ? null : Deep(details, "AddtlTxInf"),
                 Sepa(entry, details, tags))
-            { KeyPurpose = keyPurpose.Length == 0 || keyPurpose == purpose ? null : keyPurpose });
+            { KeyPurpose = keyPurpose.Length == 0 || keyPurpose == purpose ? null : keyPurpose, IdIsUnique = false });
         }
         return result;
     }

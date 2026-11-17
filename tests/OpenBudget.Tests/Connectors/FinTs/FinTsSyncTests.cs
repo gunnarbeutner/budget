@@ -57,7 +57,7 @@ public sealed class FinTsSyncTests
         var giro = await w.RemoteAsync(BankWorld.Alice, id, SyntheticBank.Iban);
         var txs = await w.TransactionsAsync(giro.LinkedAccountId!.Value);
         Assert.Equal(2, txs.Count);
-        Assert.Single(txs, t => t.Booked && t.Amount == -1230 && t.ExternalId == "id:REF1");
+        Assert.Single(txs, t => t.Booked && t.Amount == -1230 && t.BankReference == "REF1" && t.ExternalId!.StartsWith("k:", StringComparison.Ordinal));
         Assert.Single(txs, t => !t.Booked && t.Amount == -400);
         Assert.Contains("1234.560000", (await w.AccountAsync(giro.LinkedAccountId.Value)).Balances, StringComparison.Ordinal);
 

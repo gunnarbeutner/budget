@@ -41,8 +41,9 @@ public sealed record RemoteTransaction(
     /// purposes were keyed with their lines run together, and keep that key so known bookings are recognised.</summary>
     public string? KeyPurpose { get; init; }
 
-    /// <summary>Whether <see cref="BankTransactionId"/> names this one booking. MT940's bank reference does not: banks fill
-    /// it with codes many bookings share (ING: the booking type), so such bookings are told apart by their contents.</summary>
+    /// <summary>Whether <see cref="BankTransactionId"/> names this one booking. A FinTS bank reference (MT940 or camt) does
+    /// not: banks fill it with codes many bookings share (ING: the booking type), so such bookings are told apart by their
+    /// contents.</summary>
     public bool IdIsUnique { get; init; } = true;
 }
 

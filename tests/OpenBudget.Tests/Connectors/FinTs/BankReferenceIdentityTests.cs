@@ -6,8 +6,8 @@ using Xunit;
 
 namespace OpenBudget.Tests.Connectors.FinTs;
 
-/// <summary>MT940 bank references are shared between bookings, so they do not identify one.</summary>
-public sealed class Mt940IdentityTests
+/// <summary>FinTS bank references are shared between bookings, so they do not identify one.</summary>
+public sealed class BankReferenceIdentityTests
 {
     private const string Statement =
         ":20:STARTUMS\r\n:25:50010517/0000000001\r\n:28C:0\r\n:60F:C261110EUR100,00\r\n"
@@ -22,6 +22,19 @@ public sealed class Mt940IdentityTests
         Assert.Equal(2, list.Count);
         Assert.All(list, t => Assert.Equal("006220", t.BankTransactionId));
         Assert.All(list, t => Assert.False(t.IdIsUnique));
+    }
+
+    [Fact]
+    public void A_camt_servicer_reference_is_not_taken_as_the_bookings_identity_either()
+    {
+        const string Camt = """
+            <Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"><BkToCstmrAcctRpt><Rpt>
+            <Ntry><Amt Ccy="EUR">7.20</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-16</Dt></BookgDt><AcctSvcrRef>009500</AcctSvcrRef></Ntry>
+            </Rpt></BkToCstmrAcctRpt></Document>
+            """;
+        var t = Assert.Single(CamtParser.Parse(Camt, bookedDocument: true));
+        Assert.Equal("009500", t.BankTransactionId);
+        Assert.False(t.IdIsUnique);
     }
 
     [Fact]
