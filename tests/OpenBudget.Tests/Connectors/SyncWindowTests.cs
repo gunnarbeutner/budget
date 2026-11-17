@@ -24,7 +24,13 @@ public sealed class SyncWindowTests
         var newest = await db.Transactions.Where(t => t.AccountId == accountId && t.Booked).MaxAsync(t => t.Timestamp);
         var newestDay = DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(newest).UtcDateTime);
         link.SyncFloorUtc = newestDay.AddDays(-60).ToDateTime(TimeOnly.MinValue);
-        var booked = await db.Transactions.Where(t => t.AccountId == accountId && t.Booked && t.Splitted != OpenBudget.Models.SplitState.Child).SumAsync(t => t.Amount);
+        // A split booking with an unsplit remainder: the parts and the remainder each count.
+        var parentId = OpenBudget.Services.RowIds.Namespace(BankWorld.SourceAlice, 9100);
+        db.Transactions.Add(new OpenBudget.Models.Transaction { Id = parentId, OwnerUserId = BankWorld.Alice, AccountId = accountId, Amount = -500, Booked = true, Timestamp = newest - (30 * 86400), Splitted = OpenBudget.Models.SplitState.Remainder, Name = "Example Split" });
+        db.Transactions.Add(new OpenBudget.Models.Transaction { Id = parentId + 1, OwnerUserId = BankWorld.Alice, AccountId = accountId, Amount = -1000, Booked = true, Timestamp = newest - (30 * 86400), Splitted = OpenBudget.Models.SplitState.Child, SplitParentId = parentId, Name = "Example Split" });
+        db.Transactions.Add(new OpenBudget.Models.Transaction { Id = parentId + 2, OwnerUserId = BankWorld.Alice, AccountId = accountId, Amount = -2000, Booked = true, Timestamp = newest - (30 * 86400), Splitted = OpenBudget.Models.SplitState.Child, SplitParentId = parentId, Name = "Example Split" });
+        await db.SaveChangesAsync();
+        var booked = await db.Transactions.Where(t => t.AccountId == accountId && t.Booked && t.Splitted != OpenBudget.Models.SplitState.Parent).SumAsync(t => t.Amount);
         account.InitialBalance = (long)Math.Round(account.CurrentBalance!.Value * 100m) - booked;
 
         Assert.Equal(newestDay.AddDays(-7), await BankSyncRunner.ComputeSinceAsync(db, link, account, CancellationToken.None));

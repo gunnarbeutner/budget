@@ -820,7 +820,7 @@ public sealed class BankSyncRunner
         // Bookings that do not add up to the bank's balance miss some: everything since the floor is compared again.
         if (account.CurrentBalance is { } balance && account.Kind != AccountType.Depot)
         {
-            var booked = await db.Transactions.Where(t => t.AccountId == account.Id && t.Booked && t.Splitted != SplitState.Child)
+            var booked = await db.Transactions.Where(t => t.AccountId == account.Id && t.Booked && t.Splitted != SplitState.Parent)
                 .SumAsync(t => (long?)t.Amount, ct) ?? 0;
             if (account.InitialBalance + booked != (long)Math.Round(balance * 100m)) return floor;
         }
