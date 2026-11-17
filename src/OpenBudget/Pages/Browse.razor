@@ -520,7 +520,7 @@
                                         @if (row.CanEdit && string.IsNullOrEmpty(row.CategoryName) && row.Amount != 0
                                              && _suggestions.TryGetValue(row.Id, out var suggestion) && suggestion.Confidence >= SuggestionChip.InlineConfidence)
                                         {
-                                            <SuggestionChip Suggestion="suggestion" OnAccept="() => AcceptSuggestionAsync(row, suggestion)"
+                                            <SuggestionChip Suggestion="suggestion" Labels="categoryLabels" OnAccept="() => AcceptSuggestionAsync(row, suggestion)"
                                                             Rule="_suggestionRules.GetValueOrDefault(row.Id)" OnAcceptWithRule="r => AcceptWithRuleAsync(row, suggestion, r)"
                                                             OnReject="() => RejectSuggestionAsync(row)" />
                                         }
