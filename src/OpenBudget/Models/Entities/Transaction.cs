@@ -201,4 +201,7 @@ public static class TransactionCategorySource
 
     /// <summary>Taken from the booking a zero-amount booking belongs to (see <c>ZeroCompanions</c>).</summary>
     public const string Follow = "follow";
+
+    /// <summary>The one category all items of the booking's receipt are in; follows the items while nobody changes it.</summary>
+    public const string Receipt = "receipt";
 }

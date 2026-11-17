@@ -308,7 +308,7 @@ public sealed class ReceiptStore
     /// <summary>
     /// Brings one matched receipt's booking up to date: the lines' categories, the split (see the class remarks; with
     /// <paramref name="force"/> also over a split or category the owner set by hand) and the item texts.
-    /// True when the booking was split or re-split.
+    /// True when the booking was split, re-split or took the receipt's one category.
     /// </summary>
     public async Task<bool> ApplyAsync(BudgetDbContext db, ReceiptInvoice invoice, bool force, CancellationToken ct) =>
         (await ApplyAllAsync(db, invoice.OwnerUserId, await SharedAccountsAsync(db, invoice.OwnerUserId, ct), [invoice], force, ct)).Contains(invoice.Id);
@@ -333,7 +333,7 @@ public sealed class ReceiptStore
     /// <summary>
     /// Applies the owner's matched receipts (see <see cref="ApplyAsync"/>): bookings, projects, rules and memory are read
     /// once for all of them, and the AI gets the open lines of all receipts with the same choices in one request. Returns
-    /// the ids of the receipts whose booking was split or re-split. Only bookings of the owner and on
+    /// the ids of the receipts whose booking was split, re-split or categorized. Only bookings of the owner and on
     /// <paramref name="shared"/> are written; categories, projects, rules and memory are those of the booking's owner.
     /// </summary>
     private async Task<HashSet<long>> ApplyAllAsync(
@@ -445,7 +445,7 @@ public sealed class ReceiptStore
 
     /// <summary>
     /// Assigns one receipt's lines and writes its booking's item texts and split (the caller saves). True when the
-    /// booking was split or re-split.
+    /// booking was split, re-split or took the receipt's one category.
     /// </summary>
     private static async Task<bool> WriteAsync(BudgetDbContext db, Pending p, CancellationToken ct)
     {
@@ -475,14 +475,27 @@ public sealed class ReceiptStore
             invoice.SplitSignature = signature;
             return true;
         }
-        if (!p.Ours) return false;
-        // Everything is in one category again: the receipt's split goes.
-        db.Transactions.RemoveRange(p.Children);
-        parent.Splitted = SplitState.Normal;
-        parent.SplitOriginalAmount = null;
-        parent.SplitCheck = false;
-        invoice.SplitSignature = null;
-        return true;
+        var changed = false;
+        if (p.Ours)
+        {
+            // Everything is in one category again: the receipt's split goes.
+            db.Transactions.RemoveRange(p.Children);
+            parent.Splitted = SplitState.Normal;
+            parent.SplitOriginalAmount = null;
+            parent.SplitCheck = false;
+            invoice.SplitSignature = null;
+            changed = true;
+        }
+        // All items in one category: an uncategorized booking takes it, and one that took it before follows the items.
+        if (parts.Count == 1 && parts[0].CategoryId is { } only && only != parent.CategoryId
+            && (parent.CategoryId == null || parent.CategorySetBy == TransactionCategorySource.Receipt))
+        {
+            parent.CategoryId = only;
+            parent.CategorySetBy = TransactionCategorySource.Receipt;
+            parent.RuleId = null;
+            changed = true;
+        }
+        return changed;
     }
 
     /// <summary>The owner's categories by id with their paths ("Group › Category").</summary>

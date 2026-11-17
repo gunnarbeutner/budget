@@ -143,6 +143,74 @@ public sealed class ReceiptStoreTests
         }
     }
 
+    /// <summary>A receipt with only drugstore items (4,40 €) and Alice's uncategorized debit for it.</summary>
+    private static async Task<TestDb> DrugstoreOnlyAsync(string setBy = TransactionCategorySource.Import)
+    {
+        var t = await WorldAsync();
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            db.Transactions.Add(new Transaction
+            {
+                Id = Debit,
+                OwnerUserId = ReceiptWorld.Alice,
+                AccountId = ReceiptWorld.Account,
+                Amount = -440,
+                Timestamp = new DateTimeOffset(ReceiptWorld.Delivered.AddDays(3)).ToUnixTimeSeconds(),
+                Name = "REWE Markt GmbH",
+                Purpose = "48466003261102300881",
+                CategorySetBy = setBy,
+            });
+            await db.SaveChangesAsync();
+        }
+        return t;
+    }
+
+    private static ParsedReceipt DrugstoreReceipt() => ReweInvoice.Parse(SyntheticInvoice.Pdf(
+    [
+        SyntheticInvoice.Item("Musterdeo Roll-On Fresh 50ml", "1", "A", 2.95m, 2.95m),
+        SyntheticInvoice.Item("Spülmittel Zitrone 450ml", "1", "A", 1.45m, 1.45m),
+    ]));
+
+    [Fact]
+    public async Task An_uncategorized_booking_takes_the_one_category_of_its_receipt_and_follows_its_items()
+    {
+        await using var t = await DrugstoreOnlyAsync();
+        var store = new ReceiptStore();
+        await AddAndMatchAsync(t, store, DrugstoreReceipt());
+
+        Assert.Empty(await PartsAsync(t, Debit));
+        var row = await RowAsync(t, Debit);
+        Assert.Equal((ReceiptWorld.Drugstore, TransactionCategorySource.Receipt), (row.CategoryId!.Value, row.CategorySetBy));
+
+        // The owner moves both items: the booking follows.
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            foreach (var item in await db.ReceiptItems.ToListAsync())
+            {
+                item.CategoryId = ReceiptWorld.Drinks;
+                item.CategorySource = ReceiptCategorySource.Manual;
+            }
+            await db.SaveChangesAsync();
+            await store.MatchAsync(db, ReceiptWorld.Alice, default);
+        }
+        Assert.Equal(ReceiptWorld.Drinks, (await RowAsync(t, Debit)).CategoryId);
+    }
+
+    [Fact]
+    public async Task A_category_chosen_by_hand_is_not_replaced_by_the_receipts()
+    {
+        await using var t = await DrugstoreOnlyAsync(TransactionCategorySource.Manual);
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            (await db.Transactions.SingleAsync(x => x.Id == Debit)).CategoryId = ReceiptWorld.Groceries;
+            await db.SaveChangesAsync();
+        }
+        await AddAndMatchAsync(t, new ReceiptStore(), DrugstoreReceipt());
+
+        var row = await RowAsync(t, Debit);
+        Assert.Equal((ReceiptWorld.Groceries, TransactionCategorySource.Manual), (row.CategoryId!.Value, row.CategorySetBy));
+    }
+
     [Fact]
     public async Task The_same_invoice_is_stored_once()
     {
