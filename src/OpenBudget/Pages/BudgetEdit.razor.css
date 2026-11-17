@@ -23,9 +23,16 @@
     position: sticky;
     left: 0;
     z-index: 1;
-    box-shadow: inset -1px 0 0 var(--bs-border-color, #dee2e6);
+    /* Opaque, so nothing shows through when the table scrolls sideways: the row's colour over the page background,
+       Bootstrap's state and stripe tint on top, and the column's right edge. */
+    background: linear-gradient(var(--bs-table-bg), var(--bs-table-bg)), var(--bs-body-bg);
+    box-shadow: inset -1px 0 0 var(--bs-border-color, #dee2e6),
+        inset 0 0 0 9999px var(--bs-table-bg-state, var(--bs-table-bg-type, var(--bs-table-accent-bg, transparent)));
 }
-.budget-table-wrap thead th:first-child { z-index: 3; }
+.budget-table-wrap thead th:first-child {
+    z-index: 3;
+    box-shadow: inset -1px 0 0 var(--bs-border-color, #dee2e6), inset 0 -1px 0 var(--bs-border-color, #dee2e6);
+}
 
 /* Compact cells, like a spreadsheet: twelve months, the total and the category fit beside the sidebar on a laptop
    screen. The inputs show their border on hover and focus; digits have equal widths so the columns line up. */

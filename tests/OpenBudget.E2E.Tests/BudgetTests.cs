@@ -122,6 +122,14 @@ public sealed class BudgetTests : EndToEndTestBase
         await wrap.EvaluateAsync("e => e.scrollTo(e.scrollWidth, 0)");
         var category = (await wrap.Locator("thead th").First.BoundingBoxAsync())!;
         Assert.That(category.X, Is.EqualTo((await wrap.BoundingBoxAsync())!.X).Within(1), "the category column stays on the left");
+        // Nothing scrolls visibly beneath the column, in either theme: every cell of it has an opaque background.
+        foreach (var theme in new[] { "light", "dark" })
+        {
+            await Page.EvaluateAsync("t => document.documentElement.setAttribute('data-bs-theme', t)", theme);
+            var seeThrough = await wrap.EvaluateAsync<string[]>(
+                "e => [...e.querySelectorAll('tr > :first-child:not([colspan])')].map(c => getComputedStyle(c).backgroundColor).filter(c => /rgba\\(.*, 0(\\.\\d+)?\\)$/.test(c) || c === 'transparent')");
+            Assert.That(seeThrough, Is.Empty, $"opaque category cells ({theme})");
+        }
 
         await Page.SetViewportSizeAsync(1600, 300);
         Assert.That(await wrap.EvaluateAsync<bool>("e => e.scrollHeight <= e.clientHeight + 1"), Is.True, "the card does not scroll vertically");
