@@ -808,7 +808,7 @@ public sealed class BankSyncRunner
     /// First sync after linking: the day of the newest BOOKED transaction (pending rows ignored); null when the
     /// account has none (full history). Later syncs reach back a week, but never before that first boundary.
     /// </summary>
-    private static async Task<DateOnly?> ComputeSinceAsync(BudgetDbContext db, BankLoginAccount link, Account account, CancellationToken ct)
+    internal static async Task<DateOnly?> ComputeSinceAsync(BudgetDbContext db, BankLoginAccount link, Account account, CancellationToken ct)
     {
         var newest = await db.Transactions.Where(t => t.AccountId == account.Id && t.Booked).MaxAsync(t => (long?)t.Timestamp, ct);
         DateOnly? newestDay = newest is { } n ? DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(n).UtcDateTime) : null;
@@ -816,8 +816,15 @@ public sealed class BankSyncRunner
         if (initial) return newestDay;
 
         var floor = link.SyncFloorUtc is { } f ? DateOnly.FromDateTime(f) : (DateOnly?)null;
+        if (floor == null) return newestDay?.AddDays(-7);
+        // Bookings that do not add up to the bank's balance miss some: everything since the floor is compared again.
+        if (account.CurrentBalance is { } balance && account.Kind != AccountType.Depot)
+        {
+            var booked = await db.Transactions.Where(t => t.AccountId == account.Id && t.Booked && t.Splitted != SplitState.Child)
+                .SumAsync(t => (long?)t.Amount, ct) ?? 0;
+            if (account.InitialBalance + booked != (long)Math.Round(balance * 100m)) return floor;
+        }
         var overlap = newestDay?.AddDays(-7);
-        if (floor == null) return overlap;
         return overlap is { } o && o > floor ? o : floor;
     }
 
