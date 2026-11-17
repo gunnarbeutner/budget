@@ -42,13 +42,34 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         // Ordinary links stay in the streamed tab without replacing native browser functions or identity properties.
         await page.EvaluateFunctionOnNewDocumentAsync("() => { " + SameTabLinks + " }");
         page.DefaultNavigationTimeout = options.NavigationTimeoutMs;
-        var native = await page.EvaluateFunctionAsync<JsonElement>("() => ({ userAgent: navigator.userAgent, width: innerWidth, height: innerHeight })");
+        var native = await NativeAsync(page);
         return new PuppeteerBrowserSession(context, page, cdp, options, onClosed, close)
         {
             UserAgent = native.GetProperty("userAgent").GetString()!,
             ViewportWidth = native.GetProperty("width").GetInt32(),
             ViewportHeight = native.GetProperty("height").GetInt32(),
         };
+    }
+
+    /// <summary>
+    /// The browser's user agent and window size. A kept profile reopens its last page at start, and reading during that
+    /// navigation fails, so the read waits for the page to settle and tries again.
+    /// </summary>
+    private static async Task<JsonElement> NativeAsync(IPage page)
+    {
+        const string Script = "() => ({ userAgent: navigator.userAgent, width: innerWidth, height: innerHeight })";
+        for (var attempt = 1; attempt < 10; attempt++)
+        {
+            try
+            {
+                return await page.EvaluateFunctionAsync<JsonElement>(Script);
+            }
+            catch (EvaluationFailedException)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250));
+            }
+        }
+        return await page.EvaluateFunctionAsync<JsonElement>(Script);
     }
 
     public string UserAgent { get; private init; } = "";
