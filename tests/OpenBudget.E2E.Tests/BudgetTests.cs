@@ -106,11 +106,11 @@ public sealed class BudgetTests : EndToEndTestBase
     }
 
     /// <summary>
-    /// The amounts table scrolls inside its card: the page never scrolls sideways (which moved the page header off
-    /// screen), the month row stays visible below the page header and the category column stays on the left.
+    /// Only the page scrolls vertically. On a narrow screen the amounts table scrolls sideways inside its card (the page
+    /// never does) with the category column on the left; where it fits, the month row stays below the page header.
     /// </summary>
     [Test]
-    public async Task The_amounts_table_scrolls_inside_its_card()
+    public async Task Only_the_page_scrolls_vertically_and_the_month_row_stays_visible()
     {
         await Page.SetViewportSizeAsync(1100, 700);
         await GoToAsync(EditUrl);
@@ -118,16 +118,21 @@ public sealed class BudgetTests : EndToEndTestBase
         await Expect(wrap).ToBeVisibleAsync();
         Assert.That(await Page.Locator(".shell-page").EvaluateAsync<bool>("e => e.scrollWidth <= e.clientWidth + 1"), Is.True, "the page does not scroll sideways");
         Assert.That(await wrap.EvaluateAsync<bool>("e => e.scrollWidth > e.clientWidth"), Is.True, "the table scrolls sideways in its card");
-
-        await Page.Locator(".shell-page").EvaluateAsync("e => e.scrollTo(0, e.scrollHeight)");
-        await wrap.EvaluateAsync("e => e.scrollTo(e.scrollWidth, e.scrollHeight)");
-        var head = (await wrap.Locator("thead th").Nth(1).BoundingBoxAsync())!;
-        var wrapBox = (await wrap.BoundingBoxAsync())!;
-        var toolbar = (await Page.Locator(".shell-page .page-toolbar").First.BoundingBoxAsync())!;
-        Assert.That(head.Y, Is.EqualTo(wrapBox.Y).Within(1), "the month row stays at the top of the table");
-        Assert.That(head.Y, Is.GreaterThanOrEqualTo(toolbar.Y + toolbar.Height - 1), "the month row is not under the page header");
+        Assert.That(await wrap.EvaluateAsync<bool>("e => e.scrollHeight <= e.clientHeight + 1"), Is.True, "the card does not scroll vertically");
+        await wrap.EvaluateAsync("e => e.scrollTo(e.scrollWidth, 0)");
         var category = (await wrap.Locator("thead th").First.BoundingBoxAsync())!;
-        Assert.That(category.X, Is.EqualTo(wrapBox.X).Within(1), "the category column stays on the left");
+        Assert.That(category.X, Is.EqualTo((await wrap.BoundingBoxAsync())!.X).Within(1), "the category column stays on the left");
+
+        await Page.SetViewportSizeAsync(1600, 300);
+        Assert.That(await wrap.EvaluateAsync<bool>("e => e.scrollHeight <= e.clientHeight + 1"), Is.True, "the card does not scroll vertically");
+        var toolbar = (await Page.Locator(".shell-page .page-toolbar").First.BoundingBoxAsync())!;
+        // Scroll the page until the table's top is 40px under the page header: its first rows are hidden there.
+        var top = (await wrap.BoundingBoxAsync())!.Y;
+        await wrap.HoverAsync();
+        await Page.Mouse.WheelAsync(0, top - (toolbar.Y + toolbar.Height) + 40);
+        Assert.That((await wrap.BoundingBoxAsync())!.Y, Is.LessThan(toolbar.Y + toolbar.Height - 20), "the page scrolled the table under its header");
+        var head = (await wrap.Locator("thead th").Nth(1).BoundingBoxAsync())!;
+        Assert.That(head.Y, Is.EqualTo(toolbar.Y + toolbar.Height).Within(2), "the month row stays below the page header");
     }
 
     /// <summary>On a laptop-sized window the twelve months, the total and the categories fit beside the sidebar.</summary>

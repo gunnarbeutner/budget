@@ -6,13 +6,16 @@
     box-shadow: inset 0 -1px 0 var(--bs-border-color, #dee2e6);
 }
 
-/* The table scrolls inside the card, both ways, so the page itself never scrolls sideways: the month row stays on top
-   and the category column on the left. Table cells carry their own background (Bootstrap), which covers what scrolls
-   beneath them. */
+/* Only the page scrolls up and down. Where the table is wider than its card, it scrolls sideways inside the card, so
+   the page itself never does, and the category column stays on the left. Where it fits, the card does not clip it and
+   the month row stays below the page header while the page scrolls. Table cells carry their own background
+   (Bootstrap), which covers what scrolls beneath them. */
 .budget-table-wrap {
-    overflow: auto;
-    max-height: calc(100dvh - var(--ob-topbar-h) - 9rem);
-    overscroll-behavior: contain;
+    overflow-x: auto;
+}
+@media (min-width: 1440px) {
+    .budget-table-wrap { overflow: visible; }
+    .budget-table-wrap thead th { top: var(--ob-toolbar-h); }
 }
 .budget-table-wrap td:first-child,
 .budget-table-wrap thead th:first-child,
