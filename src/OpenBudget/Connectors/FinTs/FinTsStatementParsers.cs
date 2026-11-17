@@ -276,7 +276,7 @@ internal static partial class Mt940Parser
         return new RemoteTransaction(signed, currency, bookingDate, valueDate, i.Name, i.Purpose, booked, bankReference,
             i.Iban ?? i.Tags.GetValueOrDefault("IBAN"), i.Bic ?? i.Tags.GetValueOrDefault("BIC"), i.BookingText,
             sepa == new SepaDetails() ? null : sepa)
-        { KeyPurpose = i.KeyPurpose == i.Purpose ? null : i.KeyPurpose };
+        { KeyPurpose = i.KeyPurpose == i.Purpose ? null : i.KeyPurpose, IdIsUnique = false };
     }
 
     /// <summary>The parts of a :86: field: ?00 booking text, ?10 primanota, ?20-29/?60-63 purpose, ?30 BIC/BLZ, ?31 IBAN/account, ?32-33 name, ?34 return reason; the GVC precedes the first '?'.

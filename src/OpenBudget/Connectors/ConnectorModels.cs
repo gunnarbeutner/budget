@@ -40,6 +40,10 @@ public sealed record RemoteTransaction(
     /// <summary>The purpose as the booking's identity key reads it, when that differs from <see cref="Purpose"/>: MT940
     /// purposes were keyed with their lines run together, and keep that key so known bookings are recognised.</summary>
     public string? KeyPurpose { get; init; }
+
+    /// <summary>Whether <see cref="BankTransactionId"/> names this one booking. MT940's bank reference does not: banks fill
+    /// it with codes many bookings share (ING: the booking type), so such bookings are told apart by their contents.</summary>
+    public bool IdIsUnique { get; init; } = true;
 }
 
 /// <summary>SEPA / bank detail fields of a booking, when the source reports them.</summary>

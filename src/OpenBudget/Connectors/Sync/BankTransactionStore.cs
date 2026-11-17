@@ -233,7 +233,7 @@ public sealed class BankTransactionStore
             var key = $"{r.BookingDate:yyyyMMdd}|{cents.ToString(CultureInfo.InvariantCulture)}|{Normalize(r.Name)}|{Normalize(r.KeyPurpose ?? r.Purpose)}";
             var occurrence = occurrences.GetValueOrDefault(key);
             occurrences[key] = occurrence + 1;
-            var externalId = !string.IsNullOrEmpty(r.BankTransactionId)
+            var externalId = r.IdIsUnique && !string.IsNullOrEmpty(r.BankTransactionId)
                 ? "id:" + r.BankTransactionId
                 : $"k:{Hash(key)}#{occurrence.ToString(CultureInfo.InvariantCulture)}";
             plan.Add(new PlannedRow(r, cents, ts, externalId, !knownIds.Add(externalId)));
