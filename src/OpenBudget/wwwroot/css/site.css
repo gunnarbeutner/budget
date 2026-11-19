@@ -2376,7 +2376,5 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 .cat-pill .cat-pill-amount { margin-left: 0.35em; opacity: 0.8; font-variant-numeric: tabular-nums; }
 .cat-pill.cat-pill-current { outline: 2px solid var(--ob-accent); outline-offset: 1px; }
 
-/* The remote browser's view: its height comes from the layout, not from the streamed frames (see remote-browser.js). */
-.rb-canvas { height: min(70dvh, 800px); min-height: 320px; }
 /* The browser sidecar's stream: its screen is 16:9, so the frame keeps that shape. */
 .rb-stream { aspect-ratio: 16 / 9; max-height: 75dvh; }

@@ -141,21 +141,6 @@ public sealed class WebLoginTests
         Assert.False(session.Completion.IsCompleted);
     }
 
-    [Fact]
-    public async Task Streamed_input_uses_the_native_viewport_instead_of_the_configured_window_size()
-    {
-        var page = new FakeBrowserSession(null) { ViewportWidth = 1600, ViewportHeight = 1000 };
-        await using var view = new RemoteViewSession(page, new BrowserOptions(), NullLogger.Instance, _ => Task.CompletedTask);
-        await view.StartAsync(1600, 1);
-        view.Post("""{"t":"m","k":"down","x":1450,"y":950,"b":"left","bs":1,"c":1}""");
-        for (var i = 0; i < 100; i++)
-        {
-            lock (page.Mouse) { if (page.Mouse.Count > 0) break; }
-            await Task.Delay(10);
-        }
-        lock (page.Mouse) Assert.Equal(("mousePressed", 1450d, 950d), Assert.Single(page.Mouse));
-    }
-
     private async Task<List<CookieState>> StoredCookiesAsync(BankWorld world, int loginId)
     {
         await using var db = await world.T.System.CreateDbContextAsync();
@@ -669,85 +654,12 @@ public sealed class WebLoginTests
         Assert.Equal(expected, spec.Matches(Cookie("c", "v", null, cookieDomain)));
     }
 
-    [Fact]
-    public void Input_from_the_view_is_clamped_and_unknown_messages_are_dropped()
-    {
-        Assert.Null(new RemoteInput { T = "eval", Text = "alert(1)" }.Sanitize(1280, 800));
-        Assert.Null(new RemoteInput { T = "k", K = "down", Key = new string('x', 100) }.Sanitize(1280, 800));
-        Assert.Null(new RemoteInput { T = "m", K = "teleport" }.Sanitize(1280, 800));
-        Assert.Null(new RemoteInput { T = "text", Text = "" }.Sanitize(1280, 800));
-
-        var mouse = new RemoteInput { T = "m", K = "move", X = 1e9, Y = -5, Buttons = 255, Mod = 255, Button = "evil", Clicks = 99, Dx = double.NaN }.Sanitize(1280, 800)!;
-        Assert.Equal(1280, mouse.X);
-        Assert.Equal(0, mouse.Y);
-        Assert.Equal(7, mouse.Buttons);
-        Assert.Equal(15, mouse.Mod);
-        Assert.Equal("left", mouse.Button);
-        Assert.Equal(3, mouse.Clicks);
-        Assert.Equal(0, mouse.Dx);
-
-        Assert.Equal(2000, new RemoteInput { T = "text", Text = new string('a', 5000) }.Sanitize(1280, 800)!.Text!.Length);
-        Assert.Equal(3, new RemoteInput { T = "v", W = 800, Dpr = 9 }.Sanitize(1280, 800)!.Dpr);
-    }
-
-    [Fact]
-    public void Mouse_moves_and_view_sizes_collapse_and_wheel_deltas_add_up()
-    {
-        var input = new List<RemoteInput>
-        {
-            new() { T = "m", K = "move", X = 1 }, new() { T = "m", K = "move", X = 2 },
-            new() { T = "m", K = "down", X = 2 },
-            new() { T = "m", K = "wheel", Dy = 10 }, new() { T = "m", K = "wheel", Dy = 5 },
-            new() { T = "v", W = 1 }, new() { T = "v", W = 2 },
-            new() { T = "k", K = "down", Key = "a" },
-        };
-        var result = InputCoalescer.Coalesce(input);
-        Assert.Equal(["move", "down", "wheel", "v", "down"], result.Select(m => m.K ?? m.T).ToArray());
-        Assert.Equal(2, result[0].X);
-        Assert.Equal(15, result[2].Dy);
-        Assert.Equal(2, result[3].W);
-    }
-
-    [Fact]
-    public void Drag_moves_keep_their_path_and_original_timestamps()
-    {
-        var drag = new[]
-        {
-            new RemoteInput { T = "m", K = "down", Buttons = 1, X = 10, Timestamp = 1000 },
-            new RemoteInput { T = "m", K = "move", Buttons = 1, X = 20, Timestamp = 1000.01 },
-            new RemoteInput { T = "m", K = "move", Buttons = 1, X = 40, Timestamp = 1000.03 },
-            new RemoteInput { T = "m", K = "up", Buttons = 0, X = 40, Timestamp = 1000.05 },
-        };
-        var forwarded = InputCoalescer.Coalesce(drag);
-        Assert.Equal(drag, forwarded);
-        Assert.Equal([1000d, 1000.01d, 1000.03d, 1000.05d], forwarded.Select(m => m.Timestamp!.Value));
-        Assert.Null(new RemoteInput { T = "m", K = "move", Timestamp = double.NaN }.Sanitize(1280, 800)!.Timestamp);
-    }
-
-    [Fact]
-    public async Task Streamed_drag_timestamps_reach_the_browser_without_being_replaced_by_queue_time()
-    {
-        var page = new FakeBrowserSession(null);
-        await using var view = new RemoteViewSession(page, new BrowserOptions(), NullLogger.Instance, _ => Task.CompletedTask);
-        await view.StartAsync(1280, 1);
-        view.Post("""{"t":"m","k":"down","x":10,"y":10,"bs":1,"ts":1000}""");
-        view.Post("""{"t":"m","k":"move","x":20,"y":10,"bs":1,"ts":1000.01}""");
-        view.Post("""{"t":"m","k":"move","x":40,"y":10,"bs":1,"ts":1000.03}""");
-        view.Post("""{"t":"m","k":"up","x":40,"y":10,"bs":0,"ts":1000.05}""");
-        for (var i = 0; i < 100; i++)
-        {
-            lock (page.Mouse) { if (page.Mouse.Count == 4) break; }
-            await Task.Delay(10);
-        }
-        lock (page.Mouse) Assert.Equal(new double?[] { 1000, 1000.01, 1000.03, 1000.05 }, page.MouseTimestamps);
-    }
-
     [Theory]
     [InlineData("https://app.example", "app.example", true)]
     [InlineData("https://APP.example", "app.example", true)]
     [InlineData("https://evil.example", "app.example", false)]
     [InlineData("not a url", "app.example", false)]
-    public void The_websocket_origin_must_be_the_apps_own(string origin, string host, bool expected)
+    public void The_stream_origin_must_be_the_apps_own(string origin, string host, bool expected)
     {
         var ctx = new Microsoft.AspNetCore.Http.DefaultHttpContext();
         ctx.Request.Host = new Microsoft.AspNetCore.Http.HostString(host);

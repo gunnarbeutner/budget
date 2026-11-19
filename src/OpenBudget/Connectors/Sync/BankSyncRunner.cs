@@ -473,7 +473,7 @@ public sealed class BankSyncRunner
         (ChallengeAnswer?, string?) Failed(string message) =>
             spec.ReportFailure ? (new ChallengeAnswer(challenge, null) { Failure = message }, null) : throw new ConnectorException(message);
         if (_webLogins is not { IsAvailable: true })
-            return Failed("Signing in on the bank's web page needs a browser, which is not available on this server (Chromium is not installed).");
+            return Failed(BrowserService.NotConfiguredMessage);
         WebLoginSession session;
         var attached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         async Task<ChallengeAnswer?> AskForCodeAsync(ConnectorChallenge code, CancellationToken token)
@@ -546,7 +546,7 @@ public sealed class BankSyncRunner
         var mode = context.Unattended!.Value;
         const string expired = "The stored session has expired; sync it once yourself.";
         if (mode == WebLoginUnattended.ResumeOnly && spec.ResumeUrl == null) return (null, null, expired);
-        if (_webLogins is not { IsAvailable: true }) return (null, null, "No browser is available on this server for the background sync.");
+        if (_webLogins is not { IsAvailable: true }) return (null, null, BrowserService.NotConfiguredMessage);
         WebLoginSession session;
         try
         {

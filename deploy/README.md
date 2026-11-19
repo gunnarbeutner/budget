@@ -19,5 +19,7 @@ not to deploy from here. Background: `docs/browser-sidecar.md`.
 
    Keep tokens out of logs: the stream page carries its token in the URL fragment (never sent), but avoid logging
    query strings and cookies for this path.
-6. Deploy the browser first, then the app. Rollback: remove the `Browser__Remote__*` settings; web logins run in-process
-   again. Kept profiles stay in `data/browser-profiles/` either way; nothing to migrate.
+6. Deploy the browser first, then the app: the app has no other way to run web logins, so without a working sidecar
+   (or without the `Browser__Remote__*` settings) every web login fails with an error; FinTS, API connectors and the
+   rest of the app keep working. Rollback: deploy the previous app and browser images together. Kept profiles stay
+   in `data/browser-profiles/` either way; nothing to migrate.

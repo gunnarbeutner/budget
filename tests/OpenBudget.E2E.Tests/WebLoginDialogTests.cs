@@ -1,14 +1,17 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 using OpenBudget.Connectors.FakeBank;
 
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// The whole WebLogin path in the real app: the fake bank asks for a web login, the dialog streams a real Chromium
-/// (WebSocket, canvas), the test clicks on the streamed page like a user, the login completes and the sync goes on.
-/// The "bank" page is a local one; nothing leaves the machine. Skipped without a Chromium.
+/// The whole WebLogin path in the real app: the fake bank asks for a web login, which runs in a real Chromium that a
+/// local stand-in for the sidecar's launcher started (<see cref="LocalChromeLauncher"/>); the dialog puts it on the
+/// shared screen and shows the stream's frame (selkies itself is stubbed), the test clicks on the page like a user would
+/// through the stream, the login completes and the sync goes on. The "bank" page is a local one; nothing leaves the
+/// machine. Skipped without a Chromium.
 /// </summary>
 #pragma warning disable CA1001 // the listener is closed in TearDown
 [TestFixture]
@@ -51,7 +54,6 @@ public sealed class WebLoginDialogTests : EndToEndTestBase
     {
         var chrome = ChromiumLocator.Find();
         if (chrome == null) Assert.Ignore("No Chromium found (set CHROME_PATH or run `playwright install chromium`).");
-        Environment.SetEnvironmentVariable("CHROME_PATH", chrome);
 
         (_listener, var baseUrl) = LocalHttpListener.Start();
         _serving = Task.Run(() => ServeAsync(_listener));
@@ -67,23 +69,24 @@ public sealed class WebLoginDialogTests : EndToEndTestBase
         await Page.Locator("#new-login-pin").FillAsync("1234");
         await Page.Locator("#new-login-add").ClickAsync();
 
-        // The dialog shows the remote page; the first frame replaces the spinner.
+        // The dialog shows the stream of the login's browser, which is now on the (stubbed) shared screen.
         var challenge = Page.GetByTestId("bank-challenge");
         await Expect(challenge).ToHaveAttributeAsync("data-kind", "WebLogin", new() { Timeout = 60000 });
-        var canvas = Page.Locator("[data-testid=remote-browser] canvas");
-        await Expect(canvas).ToBeVisibleAsync(new() { Timeout = 60000 });
+        var stream = Page.Locator("[data-testid=remote-browser] iframe.rb-stream");
+        await Expect(stream).ToBeVisibleAsync(new() { Timeout = 60000 });
+        Assert.That(await stream.GetAttributeAsync("src"), Does.StartWith(OpenBudget.Browser.RemoteBrowserOptions.StreamPath + "#token="));
+        var screen = (NoStreamScreenBackend)Factory.BrowserHostServices.GetRequiredService<OpenBudget.Browser.IRemoteScreenBackend>();
+        var launcher = (LocalChromeLauncher)Factory.BrowserHostServices.GetRequiredService<OpenBudget.Browser.IBrowserLauncher>();
+        Assert.That(screen.Shown, Is.Not.Null);
 
-        // A frame of another shape does not resize the view it is drawn into (which would resize the page again).
-        await Task.Delay(1500);
-        var heights = await canvas.EvaluateAsync<double[]>(@"c => {
-            const before = c.getBoundingClientRect().height;
-            c.width = 1000; c.height = 3000;
-            return [before, c.getBoundingClientRect().height];
-        }");
-        Assert.That(heights[1], Is.EqualTo(heights[0]).Within(0.5));
-
-        // Click on the streamed page (the whole page is the sign-in link).
-        await canvas.ClickAsync();
+        // Click on the shown page like the user would through the stream (the whole page is the sign-in link).
+        using (var user = await PuppeteerSharp.Puppeteer.ConnectAsync(new PuppeteerSharp.ConnectOptions { BrowserURL = $"http://127.0.0.1:{launcher.PortOf(screen.Shown!)}" }))
+        {
+            var page = (await user.PagesAsync()).First(p => p.Url.StartsWith(baseUrl, StringComparison.Ordinal));
+            await page.WaitForSelectorAsync("a");
+            await page.ClickAsync("a");
+            user.Disconnect();
+        }
 
         await Expect(Page.GetByTestId("bank-challenge")).ToHaveCountAsync(0, new() { Timeout = 60000 });
         var card = Page.Locator("[data-bank-login='Web fake bank']");

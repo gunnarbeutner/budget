@@ -1,4 +1,3 @@
-using System.Net.WebSockets;
 using OpenBudget.Connectors;
 
 namespace OpenBudget.Browser;
@@ -107,7 +106,7 @@ public sealed class UnattendedStopException : Exception
 /// <summary>Starts web logins and lets only their owner attach a viewer.</summary>
 public interface IWebLoginService
 {
-    /// <summary>False when no browser is installed.</summary>
+    /// <summary>False when the browser sidecar is not configured.</summary>
     bool IsAvailable { get; }
 
     /// <summary>
@@ -145,11 +144,11 @@ public sealed class WebLoginService : IWebLoginService
         Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? askForCode = null, WebLoginUnattended unattended = WebLoginUnattended.None,
         string? profile = null)
     {
-        if (!_host.IsAvailable) throw new BrowserActionException("No browser is available on this server.");
+        if (!_host.IsAvailable) throw new BrowserActionException(BrowserService.NotConfiguredMessage);
         var browser = await _host.OpenSessionAsync(profile, ct);
         var now = _clock.GetUtcNow();
         var session = new WebLoginSession(
-            ownerUserId, spec, browser, _host.Options, _options, now.UtcDateTime + _options.Timeout,
+            ownerUserId, spec, browser, _options, now.UtcDateTime + _options.Timeout,
             _loggers.CreateLogger<WebLoginSession>(), s => _sessions.TryRemove(s.Id, out _))
         {
             Clock = _clock,
@@ -175,19 +174,11 @@ public sealed class WebLoginSession : IAsyncDisposable
 {
     private readonly WebLoginSpec _spec;
     private readonly IBrowserSession _browser;
-    private readonly BrowserOptions _browserOptions;
     private readonly WebLoginOptions _options;
     private readonly ILogger _logger;
     private readonly Action<WebLoginSession> _onEnded;
     private readonly TaskCompletionSource<WebLoginResult> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _cts = new();
-    private readonly Lock _viewerGate = new();
-    private Action? _cancelViewer;
-
-    // Completes when the current viewer has stopped its screencast; a newer viewer waits for it first, since the
-    // browser allows one screencast at a time.
-    private Task _viewerDone = Task.CompletedTask;
     private Task? _run;
     private int _ended;
 #pragma warning disable CA2213 // disposed in DisposeAsync unless taken; whoever took it disposes it
@@ -208,25 +199,24 @@ public sealed class WebLoginSession : IAsyncDisposable
     public KeptBrowser? TakeBrowser() => Interlocked.Exchange(ref _kept, null);
 
     internal WebLoginSession(
-        string ownerUserId, WebLoginSpec spec, IBrowserSession browser, BrowserOptions browserOptions, WebLoginOptions options,
+        string ownerUserId, WebLoginSpec spec, IBrowserSession browser, WebLoginOptions options,
         DateTime expiresAt, ILogger logger, Action<WebLoginSession> onEnded)
     {
         OwnerUserId = ownerUserId;
         _spec = spec;
         _browser = browser;
-        _browserOptions = browserOptions;
         _options = options;
         ExpiresAt = expiresAt;
         _logger = logger;
         _onEnded = onEnded;
     }
 
-    /// <summary>Unguessable (128 random bits); together with the owner check it authorises the viewer's WebSocket.</summary>
+    /// <summary>Unguessable (128 random bits); together with the owner check it authorises the view of the stream.</summary>
     public string Id { get; } = Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
 
     public string OwnerUserId { get; }
 
-    /// <summary>The login's browser on the sidecar's shared screen (see <see cref="RemoteScreen"/>); null when it runs in-process.</summary>
+    /// <summary>The login's browser on the sidecar's shared screen (see <see cref="RemoteScreen"/>).</summary>
     public string? ScreenId => _browser.ScreenId;
 
     public DateTime ExpiresAt { get; }
@@ -277,16 +267,13 @@ public sealed class WebLoginSession : IAsyncDisposable
             if (_spec.CaptureRedirect is { Length: > 0 } capture)
                 await _browser.ObserveRedirectsAsync(capture, url => Interlocked.CompareExchange(ref _captured, url, null));
             await _browser.SetCookiesAsync(seed);
-            _ready.TrySetResult(); // a viewer may attach now and watch the page load
             if (seed.Count > 0 && _spec.ResumeUrl != null && await ResumeAsync(_spec.ResumeUrl, ct) is { } resumed)
             {
-                _ready.TrySetCanceled();
                 await EndAsync(resumed);
                 return;
             }
             if (Unattended == WebLoginUnattended.ResumeOnly || (Unattended == WebLoginUnattended.SignIn && _spec.Autofill == null))
             {
-                _ready.TrySetCanceled();
                 await EndAsync(WebLoginResult.ForUser("The stored session has expired; sync it once yourself."));
                 return;
             }
@@ -318,7 +305,6 @@ public sealed class WebLoginSession : IAsyncDisposable
             _logger.LogWarning(ex, "A web login failed unexpectedly.");
             result = WebLoginResult.Fail("The browser stopped working during the web login.");
         }
-        _ready.TrySetCanceled();
         await EndAsync(result);
     }
 
@@ -778,7 +764,6 @@ public sealed class WebLoginSession : IAsyncDisposable
     {
         if (Interlocked.Exchange(ref _ended, 1) == 1) return;
         _onEnded(this);
-        lock (_viewerGate) _cancelViewer?.Invoke();
         if (!result.Success)
         {
             try
@@ -795,7 +780,7 @@ public sealed class WebLoginSession : IAsyncDisposable
         }
         if (result.Success && _spec.KeepBrowser)
         {
-            // nobody can attach a viewer any more (the login is gone from the service); the page stays signed in
+            // nobody can view it any more (the login is gone from the service); the page stays signed in
             _kept = new KeptBrowser(_browser, _options.KeptBrowserLifetime, Clock, _logger);
         }
         else
@@ -820,39 +805,5 @@ public sealed class WebLoginSession : IAsyncDisposable
         await _cts.CancelAsync();
         if (_run != null) await _run;
         else await EndAsync(WebLoginResult.Fail("The web login was cancelled."));
-    }
-
-    /// <summary>Streams the page to a viewer until the socket closes or the login ends. A newer viewer replaces an older one.</summary>
-    public async Task ServeAsync(WebSocket socket, CancellationToken ct)
-    {
-        using var viewer = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        Action cancel = viewer.Cancel;
-        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task previous;
-        lock (_viewerGate)
-        {
-            _cancelViewer?.Invoke();
-            _cancelViewer = cancel;
-            previous = _viewerDone;
-            _viewerDone = done.Task;
-        }
-        try
-        {
-            await previous.WaitAsync(TimeSpan.FromSeconds(10), viewer.Token).ConfigureAwait(false);
-            await _ready.Task.WaitAsync(viewer.Token);
-            await RemoteViewSession.ServeAsync(_browser, _browserOptions, _logger, socket, viewer.Token);
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or WebSocketException or TimeoutException) { /* login ended or viewer replaced */ }
-        finally
-        {
-            lock (_viewerGate) { if (_cancelViewer == cancel) _cancelViewer = null; }
-            done.TrySetResult();
-            try
-            {
-                if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
-                    await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
-            }
-            catch (WebSocketException) { /* already gone */ }
-        }
     }
 }

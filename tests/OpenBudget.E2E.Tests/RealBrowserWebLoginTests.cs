@@ -9,7 +9,7 @@ using OpenBudget.Connectors;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// The embedded browser against a real Chromium (CHROME_PATH, or the one Playwright installed) and a tiny local page
+/// Browser sessions in a real Chromium (CHROME_PATH, or the one Playwright installed; started by <see cref="LocalChromeLauncher"/>) and a tiny local page
 /// that "signs in" by setting a cookie. Skipped when no Chromium is present. No bank is contacted.
 /// </summary>
 #pragma warning disable CA1001 // the listener is closed in TearDown
@@ -179,10 +179,9 @@ public sealed class RealBrowserWebLoginTests
     [Test]
     public async Task Browser_keeps_its_native_identity_and_cookies_survive_a_fresh_context()
     {
-        // The identity of the headed browser that web logins use. A headed browser is only invisible under Xvfb (Linux
-        // without a display); elsewhere the test runs when OPENBUDGET_TEST_HEADED=1 asks for the window.
-        if (!(OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
-            && Environment.GetEnvironmentVariable("OPENBUDGET_TEST_HEADED") != "1")
+        // The identity of the headed browser that web logins use (the sidecar's Chrome); it opens a window, so the test
+        // runs only when OPENBUDGET_TEST_HEADED=1 asks for it.
+        if (Environment.GetEnvironmentVariable("OPENBUDGET_TEST_HEADED") != "1")
             Assert.Ignore("Opens a browser window; set OPENBUDGET_TEST_HEADED=1 to run it here.");
         await using var browser = NewBrowser(headless: false);
         IReadOnlyList<CookieState> cookies;
@@ -305,7 +304,7 @@ public sealed class RealBrowserWebLoginTests
         Assert.That(result.Cookies.Select(c => c.Name), Has.Member("sid"));
     }
 
-    private BrowserService NewBrowser(bool headless = true) => new(NullLogger<BrowserService>.Instance, new BrowserOptions { ExecutablePath = _chrome, IdleShutdown = TimeSpan.FromSeconds(1), Headless = headless });
+    private BrowserService NewBrowser(bool headless = true) => new(NullLogger<BrowserService>.Instance, new LocalChromeLauncher(_chrome, headless));
 
     [Test]
     public async Task A_logins_browser_profile_keeps_its_site_data_for_the_next_session_only()
@@ -315,7 +314,7 @@ public sealed class RealBrowserWebLoginTests
         {
             var store = new BrowserProfileStore(dir, new SecretsProtector(SecretsProtector.GenerateKey()), NullLogger<BrowserProfileStore>.Instance);
             await using var browser = new BrowserService(NullLogger<BrowserService>.Instance,
-                new BrowserOptions { ExecutablePath = _chrome, IdleShutdown = TimeSpan.FromSeconds(1), Headless = true }, store);
+                new LocalChromeLauncher(_chrome), profiles: store);
             var mine = BrowserProfileStore.ForLogin(1);
             const string read = "() => ({ ok: localStorage.getItem('seen') === 'yes', reason: String(localStorage.getItem('seen')) })";
             await using (var first = await browser.OpenSessionAsync(mine, CancellationToken.None))
@@ -382,24 +381,27 @@ public sealed class RealBrowserWebLoginTests
     }
 
     [Test]
-    public async Task The_page_is_streamed_as_jpeg_frames_and_input_is_accepted()
+    public async Task A_session_runs_in_the_launchers_chrome_and_names_it_for_the_screen()
     {
-        await using var browser = NewBrowser();
+        var launcher = new LocalChromeLauncher(_chrome);
+        await using var browser = new BrowserService(NullLogger<BrowserService>.Instance, launcher);
         await using var session = await browser.OpenSessionAsync(CancellationToken.None);
-        var frame = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await session.StartScreencastAsync(f =>
-        {
-            frame.TrySetResult(f.Data);
-            return Task.CompletedTask;
-        }, 640, 400, 60);
         await session.NavigateAsync(new Uri(_baseUrl + "login"), CancellationToken.None);
 
-        var jpeg = await frame.Task.WaitAsync(TimeSpan.FromSeconds(30));
-        Assert.That(jpeg[0], Is.EqualTo(0xFF));
-        Assert.That(jpeg[1], Is.EqualTo(0xD8));
-        Assert.DoesNotThrowAsync(() => session.DispatchMouseAsync("mouseMoved", 10, 10, "left", 0, 0, 0, 0, 0));
+        Assert.That(session.ScreenId, Is.Not.Null);
+        Assert.That(launcher.PortOf(session.ScreenId!), Is.GreaterThan(0), "the screen id is the launcher's id of that Chrome");
         Assert.DoesNotThrowAsync(() => session.DispatchKeyAsync("keyDown", "a", "KeyA", "a", 0, null));
-        Assert.DoesNotThrowAsync(() => session.InsertTextAsync("hello"));
-        Assert.That(await session.CaptureStillAsync(80, 1), Is.Not.Null);
+    }
+
+    [Test]
+    public async Task Without_the_browser_sidecar_a_web_login_fails_with_a_clear_message()
+    {
+        await using var browser = new BrowserService(NullLogger<BrowserService>.Instance, launcher: null);
+        var service = new WebLoginService(browser, new WebLoginOptions(), TimeProvider.System, NullLoggerFactory.Instance);
+        var spec = new WebLoginSpec(new Uri(_baseUrl + "login"), ["127.0.0.1"], new Uri(_baseUrl + "home"));
+
+        Assert.That(service.IsAvailable, Is.False);
+        var ex = Assert.ThrowsAsync<BrowserActionException>(() => service.StartAsync("user-1", spec, [], CancellationToken.None));
+        Assert.That(ex!.Message, Is.EqualTo(BrowserService.NotConfiguredMessage));
     }
 }

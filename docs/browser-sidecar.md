@@ -1,9 +1,9 @@
 # Browser sidecar (selkies)
 
-Web logins (Amazon, PayPal and other banks that need a real browser) can run on a separate container instead of an
-in-process headless Chromium. The user then sees the real, headed Chrome through a [selkies](https://github.com/selkies-project/selkies)
-video stream, popups and dialogs included, with native keyboard and mouse input. Without the sidecar everything works as
-before: Chromium in-process, page screencast into a canvas.
+Web logins (Amazon, PayPal and other banks that need a real browser) run on a separate container. The user sees the
+real, headed Chrome through a [selkies](https://github.com/selkies-project/selkies) video stream, popups and dialogs
+included, with native keyboard and mouse input. The sidecar is the only way web logins run: without it configured they
+fail with a message naming the missing settings, and everything else in the app works as usual.
 
 ## Pieces
 
@@ -15,19 +15,19 @@ before: Chromium in-process, page screencast into a canvas.
   - `seccomp_profile.json` (see `SECCOMP.md`) — lets Chrome's sandbox work without `privileged` or `SYS_ADMIN`.
   - `compose.yaml` — a local run for development (ports on loopback only).
 - App side (`src/OpenBudget/Browser/`):
-  - `RemoteBrowserOptions` — configuration; remote mode is on only when all three values are set.
-  - `BrowserLauncherClient` — talks to the launcher and connects PuppeteerSharp over CDP. Chrome refuses a DevTools
-    Host header that is a name, so the client resolves the sidecar to its IP address first.
-  - `BrowserService` — in remote mode every session (ephemeral or kept profile) asks the launcher for a Chrome
-    instead of launching one. Connectors still see the same `IBrowserSession`.
+  - `RemoteBrowserOptions` — configuration; the sidecar counts as configured only when all three values are set.
+  - `BrowserLauncherClient` (`IBrowserLauncher`) — talks to the launcher. Chrome refuses a DevTools Host header that
+    is a name, so the client resolves the sidecar to its IP address first.
+  - `BrowserService` — every session (ephemeral or kept profile) asks the launcher for a Chrome and connects
+    PuppeteerSharp to it over CDP. Connectors see an `IBrowserSession`.
   - `RemoteScreen` — the one screen is shown to one web login at a time (a queue). See the security model below.
   - `DesktopProxy` + `WebLoginEndpoints` — `/weblogin/desktop/...` is proxied to selkies (same path; `SELKIES_SUBFOLDER`).
   - `Shared/RemoteBrowser.razor` — shows the stream in an iframe, or "another sign-in is using the browser" while waiting.
 
 ## Profiles
 
-Kept browser profiles stay where they always were: encrypted in `data/browser-profiles/` (`BrowserProfileStore`), so
-**there is nothing to migrate**, and switching the sidecar on or off keeps them. When a session starts, the app decrypts
+Kept browser profiles live encrypted in the app's `data/browser-profiles/` (`BrowserProfileStore`), so
+**the sidecar holds none of them**. When a session starts, the app decrypts
 the login's profile and sends it as a zip to the launcher, which unpacks it into a fresh directory (removing stale
 `Singleton*` locks). When the session ends, the app closes Chrome over CDP (so it flushes its data), the launcher packs the
 directory and deletes it, and the app stores it encrypted again (with the usual cache filtering and size limit). Every

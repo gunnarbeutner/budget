@@ -56,29 +56,8 @@ public sealed class BrowserProfileStore
     public bool Exists(string key) => File.Exists(PathOf(key));
 
     /// <summary>
-    /// Unpacks the stored profile of <paramref name="key"/> into the empty directory <paramref name="target"/>; false (and
-    /// <paramref name="target"/> left empty) when none is stored or it cannot be read.
-    /// </summary>
-    public bool Restore(string key, string target)
-    {
-        var zip = ReadArchive(key);
-        if (zip == null) return false;
-        try
-        {
-            Extract(zip, target);
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or NotSupportedException)
-        {
-            _logger.LogWarning(ex, "The stored browser profile {Key} could not be restored; the browser starts with a fresh profile.", key);
-            Empty(target);
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// The stored profile of <paramref name="key"/> as a plain zip of its user-data directory (for a browser that runs
-    /// elsewhere); null when none is stored or it cannot be read.
+    /// The stored profile of <paramref name="key"/> as a plain zip of its user-data directory (for the sidecar's launcher);
+    /// null when none is stored or it cannot be read.
     /// </summary>
     public byte[]? ReadArchive(string key)
     {
@@ -100,7 +79,7 @@ public sealed class BrowserProfileStore
     }
 
     /// <summary>
-    /// Stores the zip <paramref name="archive"/> of a user-data directory (from a browser that ran elsewhere) as the profile
+    /// Stores the zip <paramref name="archive"/> of a user-data directory (from the sidecar's launcher) as the profile
     /// of <paramref name="key"/>, with the same filtering and size limit as <see cref="Save"/>. False when nothing was stored.
     /// </summary>
     public bool SaveArchive(string key, byte[] archive)
@@ -209,19 +188,6 @@ public sealed class BrowserProfileStore
                 catch (FileNotFoundException) { /* removed while being read */ }
             }
         }
-    }
-
-    private static void Empty(string dir)
-    {
-        try
-        {
-            foreach (var entry in new DirectoryInfo(dir).EnumerateFileSystemInfos())
-            {
-                if (entry is DirectoryInfo d) d.Delete(recursive: true);
-                else entry.Delete();
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* a fresh directory is used next time */ }
     }
 
     private static string Purpose(string key) => "browser-profile:" + key;

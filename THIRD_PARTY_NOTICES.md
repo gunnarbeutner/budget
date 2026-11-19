@@ -21,8 +21,7 @@ loads the third-party components below, each under its own license.
 
 | Component | Version | License | Copyright |
 | --- | --- | --- | --- |
-| [Chromium](https://www.chromium.org/) (Debian `chromium` package, started only for web logins) | as packaged by Debian trixie | [BSD-3-Clause](https://source.chromium.org/chromium/chromium/src/+/main:LICENSE) and the licenses of its bundled components (listed in the package's `/usr/share/doc/chromium/copyright` and at `chrome://credits`) | Copyright 2015 The Chromium Authors |
-| [Debian GNU/Linux](https://www.debian.org/) base system, `fonts-liberation` (SIL OFL 1.1), `fonts-dejavu-core` (Bitstream Vera / public domain) | trixie | various, see `/usr/share/doc/*/copyright` in the image | the respective authors |
+| [Debian GNU/Linux](https://www.debian.org/) base system | trixie | various, see `/usr/share/doc/*/copyright` in the image | the respective authors |
 
 SQLCipher's license requires that binary redistributions reproduce its copyright notice and disclaimer, so include
 this file with any distributed build of the app or its Docker image.

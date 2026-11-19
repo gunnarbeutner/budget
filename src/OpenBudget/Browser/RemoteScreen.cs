@@ -17,11 +17,11 @@ public interface IRemoteScreenBackend
 /// <summary>The browser sidecar: its launcher shows windows, selkies' control API holds the viewer tokens.</summary>
 public sealed class SidecarScreenBackend : IRemoteScreenBackend
 {
-    private readonly BrowserLauncherClient _launcher;
+    private readonly IBrowserLauncher _launcher;
     private readonly HttpClient _http;
     private readonly RemoteBrowserOptions _options;
 
-    public SidecarScreenBackend(BrowserLauncherClient launcher, HttpClient http, RemoteBrowserOptions options)
+    public SidecarScreenBackend(IBrowserLauncher launcher, HttpClient http, RemoteBrowserOptions options)
     {
         _launcher = launcher;
         _http = http;

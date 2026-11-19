@@ -4,62 +4,54 @@ using OpenBudget.Connectors;
 
 namespace OpenBudget.Browser;
 
-/// <summary>One incognito-style Chromium context with a single tab, driven over CDP.</summary>
+/// <summary>One Chrome on the browser sidecar with a single tab, driven over CDP.</summary>
 internal sealed class PuppeteerBrowserSession : IBrowserSession
 {
     private const string SameTabLinks =
         "document.addEventListener('click', e => { const a = e.target && e.target.closest && e.target.closest('a[target]'); if (a && a.target !== '_self') a.target = '_self'; }, true);";
 
-    private readonly IBrowserContext _context;
     private readonly IPage _page;
     private readonly ICDPSession _cdp;
     private readonly BrowserOptions _options;
     private readonly Action _onClosed;
-    private readonly Func<Task>? _close;
-    private LatestPump<ScreencastFrame>? _pump;
-    private int _castW, _castH, _castQuality;
+    private readonly Func<Task> _close;
     private int _disposed;
 
-    private PuppeteerBrowserSession(IBrowserContext context, IPage page, ICDPSession cdp, BrowserOptions options, Action onClosed, Func<Task>? close)
+    private PuppeteerBrowserSession(IPage page, ICDPSession cdp, BrowserOptions options, Action onClosed, Func<Task> close)
     {
-        _context = context;
         _close = close;
         _page = page;
         _cdp = cdp;
         _options = options;
         _onClosed = onClosed;
-        _cdp.MessageReceived += OnCdpMessage;
     }
 
     /// <summary>
-    /// A session on <paramref name="page"/>; disposing it closes <paramref name="context"/>, or runs <paramref name="close"/>
-    /// instead (a browser of its own, whose default context cannot be closed), then <paramref name="onClosed"/>.
-    /// <paramref name="screenId"/> names a browser on the sidecar's shared screen.
+    /// A session on <paramref name="page"/>; disposing it runs <paramref name="close"/> (which ends the browser), then
+    /// <paramref name="onClosed"/>. <paramref name="screenId"/> names the browser on the sidecar's shared screen.
     /// </summary>
     public static async Task<PuppeteerBrowserSession> CreateAsync(
-        IBrowserContext context, IPage page, BrowserOptions options, Action onClosed, Func<Task>? close = null, string? screenId = null)
+        IPage page, BrowserOptions options, Action onClosed, Func<Task> close, string screenId)
     {
         var cdp = await page.CreateCDPSessionAsync();
-        // Ordinary links stay in the streamed tab without replacing native browser functions or identity properties.
+        // Ordinary links stay in the shown tab without replacing native browser functions or identity properties.
         await page.EvaluateFunctionOnNewDocumentAsync("() => { " + SameTabLinks + " }");
         page.DefaultNavigationTimeout = options.NavigationTimeoutMs;
         var native = await NativeAsync(page);
-        return new PuppeteerBrowserSession(context, page, cdp, options, onClosed, close)
+        return new PuppeteerBrowserSession(page, cdp, options, onClosed, close)
         {
             ScreenId = screenId,
             UserAgent = native.GetProperty("userAgent").GetString()!,
-            ViewportWidth = native.GetProperty("width").GetInt32(),
-            ViewportHeight = native.GetProperty("height").GetInt32(),
         };
     }
 
     /// <summary>
-    /// The browser's user agent and window size. A kept profile reopens its last page at start, and reading during that
+    /// The browser's user agent. A kept profile reopens its last page at start, and reading during that
     /// navigation fails, so the read waits for the page to settle and tries again.
     /// </summary>
     private static async Task<JsonElement> NativeAsync(IPage page)
     {
-        const string Script = "() => ({ userAgent: navigator.userAgent, width: innerWidth, height: innerHeight })";
+        const string Script = "() => ({ userAgent: navigator.userAgent })";
         for (var attempt = 1; attempt < 10; attempt++)
         {
             try
@@ -78,10 +70,6 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
 
     public string? ScreenId { get; private init; }
 
-    public int? ViewportWidth { get; private set; }
-
-    public int? ViewportHeight { get; private set; }
-
     public Uri Url => Uri.TryCreate(_page.Url, UriKind.Absolute, out var u) ? u : new Uri("about:blank");
 
     public async Task NavigateAsync(Uri url, CancellationToken ct)
@@ -95,12 +83,6 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
             throw new BrowserActionException("The page could not be opened.", ex);
         }
     }
-
-    public Task GoBackAsync() =>
-        TryAsync(() => _page.GoBackAsync(new NavigationOptions { Timeout = _options.NavigationTimeoutMs, WaitUntil = [WaitUntilNavigation.DOMContentLoaded] }));
-
-    public Task ReloadAsync() =>
-        TryAsync(() => _page.ReloadAsync(_options.NavigationTimeoutMs, [WaitUntilNavigation.DOMContentLoaded]));
 
     // ---- form filling (autofill of the sign-in form) ----
 
@@ -548,119 +530,7 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         return list;
     }
 
-    // ---- screencast ----
-
-    public async Task StartScreencastAsync(Func<ScreencastFrame, Task> onFrame, int maxWidth, int maxHeight, int quality)
-    {
-        await StopScreencastAsync();
-        _pump = new LatestPump<ScreencastFrame>(onFrame);
-        await SendCastAsync(maxWidth, maxHeight, quality);
-    }
-
-    private async Task SendCastAsync(int w, int h, int q)
-    {
-        _castW = w;
-        _castH = h;
-        _castQuality = q;
-        await _cdp.SendAsync("Page.startScreencast", new { format = "jpeg", quality = q, maxWidth = w, maxHeight = h, everyNthFrame = 1 });
-    }
-
-    public async Task ResizeScreencastAsync(int maxWidth, int maxHeight, int quality)
-    {
-        if (_pump == null || (maxWidth == _castW && maxHeight == _castH && quality == _castQuality)) return;
-        await _cdp.SendAsync("Page.stopScreencast");
-        await SendCastAsync(maxWidth, maxHeight, quality);
-    }
-
-    public async Task StopScreencastAsync()
-    {
-        if (_pump == null) return;
-        _pump = null;
-        await TryAsync(() => _cdp.SendAsync("Page.stopScreencast"));
-    }
-
-    private void OnCdpMessage(object? sender, MessageEventArgs e)
-    {
-        if (e.MessageID != "Page.screencastFrame") return;
-        var pump = _pump;
-        if (pump == null) return;
-        try
-        {
-            var p = e.MessageData;
-            var sessionId = p.GetProperty("sessionId").GetInt32();
-            _ = AckAsync(sessionId); // ack first, before anything is sent to the client: keeps frames flowing
-            var m = p.GetProperty("metadata");
-            double D(string n) => m.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0;
-            var data = Convert.FromBase64String(p.GetProperty("data").GetString()!);
-            var width = (int)Math.Round(D("deviceWidth"));
-            var height = (int)Math.Round(D("deviceHeight"));
-            if (width > 0) ViewportWidth = width;
-            if (height > 0) ViewportHeight = height;
-            pump.Post(new ScreencastFrame(data, width, height, false));
-        }
-        catch (Exception ex) when (ex is JsonException or FormatException or KeyNotFoundException or InvalidOperationException)
-        {
-            // a broken frame is simply skipped; the next one repairs the picture
-        }
-    }
-
-    private Task AckAsync(int sessionId) => TryAsync(() => _cdp.SendAsync("Page.screencastFrameAck", new { sessionId }));
-
-    public async Task<ScreencastFrame?> CaptureStillAsync(int quality, double scale)
-    {
-        if (_pump == null) return null;
-        object args = new { format = "jpeg", quality };
-        int w = 0, h = 0;
-        try
-        {
-            var lm = (await _cdp.SendAsync("Page.getLayoutMetrics"))!.Value;
-            var vv = lm.GetProperty("cssVisualViewport");
-            double V(string n) => vv.GetProperty(n).GetDouble();
-            w = (int)Math.Round(V("clientWidth"));
-            h = (int)Math.Round(V("clientHeight"));
-            args = new { format = "jpeg", quality, clip = new { x = V("pageX"), y = V("pageY"), width = V("clientWidth"), height = V("clientHeight"), scale } };
-        }
-        catch (Exception ex) when (ex is PuppeteerException or JsonException or KeyNotFoundException or InvalidOperationException)
-        {
-            // plain screenshot at scale 1
-        }
-        var r = (await _cdp.SendAsync("Page.captureScreenshot", args))!.Value;
-        var data = Convert.FromBase64String(r.GetProperty("data").GetString()!);
-        return new ScreencastFrame(data, w > 0 ? w : ViewportWidth ?? _options.ViewportWidth, h > 0 ? h : ViewportHeight ?? _options.ViewportHeight, true);
-    }
-
     // ---- input ----
-
-    public Task InsertTextAsync(string text) => _cdp.SendAsync("Input.insertText", new { text });
-
-    public Task DispatchMouseAsync(string type, double x, double y, string button, int clickCount, double deltaX, double deltaY, int buttons, int modifiers, double? timestamp = null)
-    {
-        var args = new Dictionary<string, object>(StringComparer.Ordinal)
-        {
-            ["type"] = type,
-            ["x"] = x,
-            ["y"] = y,
-            ["modifiers"] = modifiers,
-        };
-        if (timestamp is { } time) args["timestamp"] = time;
-        if (type == "mouseWheel")
-        {
-            args["deltaX"] = deltaX;
-            args["deltaY"] = deltaY;
-        }
-        else if (type == "mouseMoved")
-        {
-            args["buttons"] = buttons;
-            args["button"] = (buttons & 1) != 0 ? "left" : (buttons & 4) != 0 ? "middle" : (buttons & 2) != 0 ? "right" : "none";
-        }
-        else
-        {
-            args["button"] = button;
-            args["buttons"] = buttons;
-            args["clickCount"] = Math.Max(1, clickCount);
-        }
-        return _cdp.SendAsync("Input.dispatchMouseEvent", args);
-    }
 
     public Task DispatchKeyAsync(string type, string key, string? code, string? text, int modifiers, string[]? commands) =>
         _cdp.SendAsync("Input.dispatchKeyEvent", new
@@ -684,9 +554,7 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-        _cdp.MessageReceived -= OnCdpMessage;
-        _pump = null;
-        try { await (_close?.Invoke() ?? _context.CloseAsync()); }
+        try { await _close(); }
         catch (Exception ex) when (ex is PuppeteerException or ObjectDisposedException or InvalidOperationException) { /* browser already gone */ }
         _onClosed();
     }

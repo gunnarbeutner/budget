@@ -17,8 +17,6 @@ namespace OpenBudget.Connectors;
 public static class BankConnectorsRegistration
 {
     public const string StatementsDirVariable = "OPENBUDGET_STATEMENTS_DIR";
-    /// <summary>"true" runs the web-login browser headless (automated tests; no windows).</summary>
-    public const string BrowserHeadlessVariable = "OPENBUDGET_BROWSER_HEADLESS";
 
     private const string BrowserLauncherClientName = "browser-launcher";
 
@@ -58,31 +56,29 @@ public static class BankConnectorsRegistration
             sp.GetRequiredService<IConfiguration>()[StatementsDirVariable] is { Length: > 0 } custom
                 ? custom
                 : Path.Combine(OpenBudgetPaths.DataDir(contentRoot), "statements")));
-        // Web logins: one lazily started Chromium (when installed), an isolated context per login.
-        services.AddSingleton(sp => new BrowserOptions
-        {
-            // Test hosts never open browser windows.
-            Headless = string.Equals(sp.GetRequiredService<IConfiguration>()[BrowserHeadlessVariable], "true", StringComparison.OrdinalIgnoreCase)
-                || sp.GetRequiredService<Microsoft.Extensions.Hosting.IHostEnvironment>().IsEnvironment("Test"),
-        });
+        // Web logins: one Chrome per login on the browser sidecar.
+        services.AddSingleton(new BrowserOptions());
         // Long-lived browser profiles of bank logins, encrypted on the data volume.
         services.AddSingleton(sp => new BrowserProfileStore(Path.Combine(OpenBudgetPaths.DataDir(contentRoot), "browser-profiles"),
             sp.GetRequiredService<SecretsProtector>(), sp.GetRequiredService<ILogger<BrowserProfileStore>>()));
-        // The browser sidecar, when configured: web logins run there and are shown through its stream.
-        // Without it these services resolve to null (GetService) and web logins run in-process.
+        // The browser sidecar: web logins run there and are shown through its stream. Without it the launcher and the
+        // screen resolve to null (GetService) and web logins fail with BrowserService.NotConfiguredMessage.
         services.AddSingleton(sp => sp.GetRequiredService<IConfiguration>().GetSection(RemoteBrowserOptions.Section).Get<RemoteBrowserOptions>()
             ?? new RemoteBrowserOptions());
         services.AddHttpClient(BrowserLauncherClientName, c => c.Timeout = TimeSpan.FromMinutes(2));
         services.AddHttpClient(DesktopProxy.HttpClientName, c => c.Timeout = Timeout.InfiniteTimeSpan);
-        services.AddSingleton(sp => sp.GetRequiredService<RemoteBrowserOptions>() is { IsEnabled: true } remote
+        services.AddSingleton<IBrowserLauncher>(sp => sp.GetRequiredService<RemoteBrowserOptions>() is { IsEnabled: true } remote
             ? new BrowserLauncherClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient(BrowserLauncherClientName), remote)
             : null!);
-        services.AddSingleton(sp => sp.GetService<BrowserLauncherClient>() is { } launcher
-            ? new RemoteScreen(new SidecarScreenBackend(launcher, sp.GetRequiredService<IHttpClientFactory>().CreateClient(BrowserLauncherClientName),
-                sp.GetRequiredService<RemoteBrowserOptions>()), sp.GetRequiredService<ILogger<RemoteScreen>>())
+        services.AddSingleton<IRemoteScreenBackend>(sp => sp.GetService<IBrowserLauncher>() is { } launcher
+            ? new SidecarScreenBackend(launcher, sp.GetRequiredService<IHttpClientFactory>().CreateClient(BrowserLauncherClientName),
+                sp.GetRequiredService<RemoteBrowserOptions>())
             : null!);
-        services.AddSingleton(sp => new BrowserService(sp.GetRequiredService<ILogger<BrowserService>>(), sp.GetRequiredService<BrowserOptions>(),
-            sp.GetRequiredService<BrowserProfileStore>(), sp.GetService<BrowserLauncherClient>()));
+        services.AddSingleton(sp => sp.GetService<IRemoteScreenBackend>() is { } backend
+            ? new RemoteScreen(backend, sp.GetRequiredService<ILogger<RemoteScreen>>())
+            : null!);
+        services.AddSingleton(sp => new BrowserService(sp.GetRequiredService<ILogger<BrowserService>>(), sp.GetService<IBrowserLauncher>(),
+            sp.GetRequiredService<BrowserOptions>(), sp.GetRequiredService<BrowserProfileStore>()));
         services.AddSingleton<IBrowserHost>(sp => sp.GetRequiredService<BrowserService>());
         services.AddSingleton(new WebLoginOptions());
         services.AddSingleton<IWebLoginService, WebLoginService>();

@@ -1,6 +1,6 @@
 namespace OpenBudget.E2E.Tests;
 
-/// <summary>Finds a Chromium for the tests that drive the app's embedded browser: CHROME_PATH, else the one Playwright installed.</summary>
+/// <summary>Finds a Chromium for the tests that run web logins (<see cref="LocalChromeLauncher"/>): CHROME_PATH, else the one Playwright installed.</summary>
 internal static class ChromiumLocator
 {
     public static string? Find()

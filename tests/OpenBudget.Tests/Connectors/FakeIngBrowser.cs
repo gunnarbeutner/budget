@@ -322,26 +322,10 @@ internal sealed partial class FakeIngBrowserSession : IBrowserSession
         lock (_cookies) return Task.FromResult<IReadOnlyList<CookieState>>([.. _cookies]);
     }
 
-    public Task GoBackAsync() => Task.CompletedTask;
-
-    public Task ReloadAsync() => Task.CompletedTask;
-
     public Task<bool> HasVisibleTextAsync(string selector, IReadOnlyList<string> texts) =>
         Task.FromResult(_loginError && _phase == Phase.Form && selector == IngWebClient.CredentialsErrorSelector && texts.Contains("falsch", StringComparer.Ordinal));
 
-    public Task StartScreencastAsync(Func<ScreencastFrame, Task> onFrame, int maxWidth, int maxHeight, int quality) => Task.CompletedTask;
-
-    public Task ResizeScreencastAsync(int maxWidth, int maxHeight, int quality) => Task.CompletedTask;
-
-    public Task StopScreencastAsync() => Task.CompletedTask;
-
-    public Task<ScreencastFrame?> CaptureStillAsync(int quality, double scale) => Task.FromResult<ScreencastFrame?>(null);
-
-    public Task DispatchMouseAsync(string type, double x, double y, string button, int clickCount, double deltaX, double deltaY, int buttons, int modifiers, double? timestamp = null) => Task.CompletedTask;
-
     public Task DispatchKeyAsync(string type, string key, string? code, string? text, int modifiers, string[]? commands) => Task.CompletedTask;
-
-    public Task InsertTextAsync(string text) => Task.CompletedTask;
 
     public ValueTask DisposeAsync()
     {

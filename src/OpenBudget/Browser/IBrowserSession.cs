@@ -2,10 +2,10 @@ using OpenBudget.Connectors;
 
 namespace OpenBudget.Browser;
 
-/// <summary>Creates isolated browser sessions. The real one drives Chromium; tests use a fake.</summary>
+/// <summary>Creates isolated browser sessions. The real one runs them on the browser sidecar; tests use fakes.</summary>
 public interface IBrowserHost
 {
-    /// <summary>False when no Chromium is installed: web logins then report "browser not available" and nothing else is affected.</summary>
+    /// <summary>False when the browser sidecar is not configured: web logins then fail and nothing else is affected.</summary>
     bool IsAvailable { get; }
 
     BrowserOptions Options { get; }
@@ -28,17 +28,12 @@ public interface IBrowserSession : IAsyncDisposable
 
     /// <summary>
     /// The id of this browser on the browser sidecar's shared screen (see <see cref="RemoteScreen"/>); null for a browser
-    /// that runs in-process and is shown as a screencast.
+    /// that cannot be shown.
     /// </summary>
     string? ScreenId => null;
 
     /// <summary>The User-Agent the page sees; requests that continue the session should send the same.</summary>
     string UserAgent => "";
-
-    /// <summary>The native page dimensions, when available, for streamed frames and input coordinates.</summary>
-    int? ViewportWidth => null;
-
-    int? ViewportHeight => null;
 
     Task NavigateAsync(Uri url, CancellationToken ct);
 
@@ -51,26 +46,8 @@ public interface IBrowserSession : IAsyncDisposable
     /// <summary>Every cookie of the context, with expiry, flags and SameSite.</summary>
     Task<IReadOnlyList<CookieState>> GetCookiesAsync();
 
-    Task StartScreencastAsync(Func<ScreencastFrame, Task> onFrame, int maxWidth, int maxHeight, int quality);
-
-    Task ResizeScreencastAsync(int maxWidth, int maxHeight, int quality);
-
-    Task StopScreencastAsync();
-
-    Task<ScreencastFrame?> CaptureStillAsync(int quality, double scale);
-
-    /// <summary>type: mousePressed | mouseReleased | mouseMoved | mouseWheel; coordinates in CSS px of the page.</summary>
-    Task DispatchMouseAsync(string type, double x, double y, string button, int clickCount, double deltaX, double deltaY, int buttons, int modifiers, double? timestamp = null);
-
     /// <summary>type: keyDown | keyUp | rawKeyDown | char.</summary>
     Task DispatchKeyAsync(string type, string key, string? code, string? text, int modifiers, string[]? commands);
-
-    Task InsertTextAsync(string text);
-
-    /// <summary>One step back in the page's history; nothing happens when there is none.</summary>
-    Task GoBackAsync();
-
-    Task ReloadAsync();
 
     /// <summary>Waits up to <paramref name="timeout"/> for a visible element, then replaces its text by typing <paramref name="value"/>. False when none appeared.</summary>
     Task<bool> FillAsync(string selector, string value, TimeSpan timeout);

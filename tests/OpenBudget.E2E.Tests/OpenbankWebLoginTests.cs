@@ -189,7 +189,7 @@ public sealed class OpenbankWebLoginTests
             spec = new OpenbankConnector(new ConnectorContext(http, TimeProvider.System, NullLogger.Instance), options)
                 .WebLogin(new ConnectorCredentials("alice@example.com", code));
         var logs = new Logs();
-        var browser = new BrowserService(NullLogger<BrowserService>.Instance, new BrowserOptions { ExecutablePath = _chrome, IdleShutdown = TimeSpan.FromSeconds(1), Headless = true });
+        var browser = new BrowserService(NullLogger<BrowserService>.Instance, new LocalChromeLauncher(_chrome));
 #pragma warning disable CA2000 // the factory lives as long as the test
         var factory = LoggerFactory.Create(b => b.AddProvider(logs));
 #pragma warning restore CA2000

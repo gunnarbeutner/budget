@@ -41,7 +41,6 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
         builder.UseEnvironment("Test");
         // Bank connectors need a secrets key.
         builder.UseSetting("OPENBUDGET_SECRETS_KEY", Convert.ToBase64String(new byte[32].Select((_, i) => (byte)(i + 1)).ToArray()));
-        builder.UseSetting(OpenBudget.Connectors.BankConnectorsRegistration.BrowserHeadlessVariable, "true");
         // Every app start clears the MoneyMoney upload staging, so each host has its own: a shared one would lose the
         // upload of an import running in another host.
         builder.UseSetting("OPENBUDGET_UPLOAD_STAGING_DIR", Path.Combine(Path.GetTempPath(), $"mmb-e2e-uploads-{Guid.NewGuid():N}"));
@@ -71,6 +70,12 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
             // SystemDbContextFactory for seeding.
             services.AddOpenBudgetDatabase(_dbPath);
             OpenBudget.Connectors.BankConnectorsRegistration.AddFakeBank(services);
+            // Web logins run in a local headless Chrome instead of on the browser sidecar, whose stream is left out.
+            if (ChromiumLocator.Find() is { } chrome)
+            {
+                services.AddSingleton<OpenBudget.Browser.IBrowserLauncher>(_ => new LocalChromeLauncher(chrome));
+                services.AddSingleton<OpenBudget.Browser.IRemoteScreenBackend>(new NoStreamScreenBackend());
+            }
         });
     }
 

@@ -3,8 +3,8 @@ namespace OpenBudget.Browser;
 /// <summary>
 /// The browser sidecar (docker/browser): a launcher that starts one headed Chrome per web login on a shared X display,
 /// and selkies, which streams that display. Configured from the "Browser:Remote" section
-/// (Browser__Remote__LauncherUrl, Browser__Remote__StreamUrl, Browser__Remote__Token). Unset, web logins launch Chromium
-/// in-process and show the page as a screencast.
+/// (Browser__Remote__LauncherUrl, Browser__Remote__StreamUrl, Browser__Remote__Token). Web logins need it: without all
+/// three they fail with <see cref="BrowserService.NotConfiguredMessage"/>; everything else works without the sidecar.
 /// </summary>
 public sealed class RemoteBrowserOptions
 {
@@ -13,7 +13,7 @@ public sealed class RemoteBrowserOptions
     /// <summary>The path the stream is served under, by selkies (SELKIES_SUBFOLDER) and by the app's proxy alike.</summary>
     public const string StreamPath = "/weblogin/desktop/";
 
-    /// <summary>The shortest token accepted; a shorter one leaves remote mode off.</summary>
+    /// <summary>The shortest token accepted; a shorter one leaves the sidecar unconfigured.</summary>
     public const int MinTokenLength = 32;
 
     /// <summary>The sidecar's launcher, e.g. http://browser:9300.</summary>

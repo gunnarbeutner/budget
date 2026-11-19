@@ -49,6 +49,14 @@ public sealed class BrowserProfileStoreTests : IDisposable
         return dir;
     }
 
+    /// <summary>Unpacks the stored profile of <paramref name="key"/> into <paramref name="target"/>, as the sidecar's launcher does.</summary>
+    private static bool Restore(BrowserProfileStore store, string key, string target)
+    {
+        if (store.ReadArchive(key) is not { } zip) return false;
+        System.IO.Compression.ZipFile.ExtractToDirectory(new MemoryStream(zip), target);
+        return true;
+    }
+
     [Fact]
     public void A_profile_comes_back_with_its_site_data_but_without_caches()
     {
@@ -58,7 +66,7 @@ public sealed class BrowserProfileStoreTests : IDisposable
         Assert.True(store.Exists(key));
 
         var target = Dir("target");
-        Assert.True(store.Restore(key, target));
+        Assert.True(Restore(store, key, target));
         Assert.Equal("site-data-marker", File.ReadAllText(Path.Combine(target, "Default/Local Storage/leveldb/000003.log")));
         Assert.True(File.Exists(Path.Combine(target, "Local State")));
         Assert.True(File.Exists(Path.Combine(target, "Default/IndexedDB/https_bank.example_0.indexeddb.leveldb/000001.log")));
@@ -94,7 +102,7 @@ public sealed class BrowserProfileStoreTests : IDisposable
         Assert.True(store.SaveArchive(key, returned.ToArray()));
 
         var target = Dir("target");
-        Assert.True(store.Restore(key, target));
+        Assert.True(Restore(store, key, target));
         Assert.Equal("changed-marker", File.ReadAllText(Path.Combine(target, "Default/Local Storage/leveldb/000003.log")));
         Assert.False(Directory.Exists(Path.Combine(target, "Default/Cache")));
         Assert.False(File.Exists(Path.Combine(target, "SingletonLock")));
@@ -143,11 +151,11 @@ public sealed class BrowserProfileStoreTests : IDisposable
         File.Copy(Path.Combine(storeDir, key + ".profile"), Path.Combine(storeDir, other + ".profile"));
 
         var target = Dir("other-key");
-        Assert.False(store.Restore(other, target));
+        Assert.False(Restore(store, other, target));
         Assert.Empty(Directory.EnumerateFileSystemEntries(target));
 
         var rotated = Dir("rotated");
-        Assert.False(Store(new SecretsProtector(SecretsProtector.GenerateKey())).Restore(key, rotated));
+        Assert.False(Restore(Store(new SecretsProtector(SecretsProtector.GenerateKey())), key, rotated));
         Assert.Empty(Directory.EnumerateFileSystemEntries(rotated));
     }
 
@@ -163,9 +171,9 @@ public sealed class BrowserProfileStoreTests : IDisposable
         File.WriteAllBytes(file, bytes);
 
         var target = Dir("damaged");
-        Assert.False(store.Restore(key, target));
+        Assert.False(Restore(store, key, target));
         Assert.Empty(Directory.EnumerateFileSystemEntries(target));
-        Assert.False(store.Restore(BrowserProfileStore.ForLogin(12), Dir("missing")));
+        Assert.False(Restore(store, BrowserProfileStore.ForLogin(12), Dir("missing")));
     }
 
     [Fact]

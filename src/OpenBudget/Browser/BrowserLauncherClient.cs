@@ -8,12 +8,32 @@ namespace OpenBudget.Browser;
 /// <summary>A Chrome the sidecar's launcher started: its id there and the port its DevTools endpoint is reachable on.</summary>
 public sealed record RemoteChrome(string Id, int Port);
 
+/// <summary>Starts and stops the Chromes web logins run in, one per login, and chooses which one the shared screen shows.</summary>
+public interface IBrowserLauncher
+{
+    /// <summary>Starts a Chrome on the user-data directory packed in <paramref name="profile"/> (a zip), or on an empty one.</summary>
+    Task<RemoteChrome> StartAsync(byte[]? profile, CancellationToken ct);
+
+    /// <summary>
+    /// Stops the Chrome <paramref name="id"/> (it may have closed already) and deletes its user-data directory; with
+    /// <paramref name="returnProfile"/> the directory comes back as a zip first (null when there is none).
+    /// </summary>
+    Task<byte[]?> StopAsync(string id, bool returnProfile, CancellationToken ct);
+
+    /// <summary>Shows the windows of Chrome <paramref name="id"/> on the shared screen and hides all others; null hides all.</summary>
+    Task ShowAsync(string? id, CancellationToken ct);
+
+    /// <summary>Stops every Chrome of the launcher (those of an earlier run of the app that nobody stops any more).</summary>
+    Task ResetAsync(CancellationToken ct);
+
+    /// <summary>The DevTools WebSocket of Chrome <paramref name="chrome"/>, as reachable from the app.</summary>
+    Task<Uri> DevToolsEndpointAsync(RemoteChrome chrome, CancellationToken ct);
+}
+
 /// <summary>
-/// Client of the browser sidecar's launcher (docker/browser/browser-launcher): starts and stops one Chrome per web login,
-/// each on a user-data directory of its own, and chooses which one the shared screen shows. Every request carries the
-/// shared token.
+/// Client of the browser sidecar's launcher (docker/browser/browser-launcher). Every request carries the shared token.
 /// </summary>
-public sealed class BrowserLauncherClient
+public sealed class BrowserLauncherClient : IBrowserLauncher
 {
     private readonly HttpClient _http;
     private readonly Uri _launcher;

@@ -52,14 +52,6 @@ internal sealed class FakeBrowserSession : IBrowserSession
 
     public string UserAgent { get; init; } = "";
 
-    public int? ViewportWidth { get; init; }
-
-    public int? ViewportHeight { get; init; }
-
-    public Task GoBackAsync() => Task.CompletedTask;
-
-    public Task ReloadAsync() => Task.CompletedTask;
-
     /// <summary>Selectors the fake page shows (a sign-in form, say); empty: no form.</summary>
     public HashSet<string> Visible { get; } = new(StringComparer.Ordinal);
 
@@ -156,10 +148,6 @@ internal sealed class FakeBrowserSession : IBrowserSession
 
     public List<(string Type, string Key)> Keys { get; } = [];
 
-    public List<(string Type, double X, double Y)> Mouse { get; } = [];
-
-    public List<double?> MouseTimestamps { get; } = [];
-
     public void SetCookie(CookieState cookie)
     {
         lock (_cookies)
@@ -234,31 +222,11 @@ internal sealed class FakeBrowserSession : IBrowserSession
         lock (_cookies) return [.. _cookies];
     }
 
-    public Task StartScreencastAsync(Func<ScreencastFrame, Task> onFrame, int maxWidth, int maxHeight, int quality) => Task.CompletedTask;
-
-    public Task ResizeScreencastAsync(int maxWidth, int maxHeight, int quality) => Task.CompletedTask;
-
-    public Task StopScreencastAsync() => Task.CompletedTask;
-
-    public Task<ScreencastFrame?> CaptureStillAsync(int quality, double scale) => Task.FromResult<ScreencastFrame?>(null);
-
-    public Task DispatchMouseAsync(string type, double x, double y, string button, int clickCount, double deltaX, double deltaY, int buttons, int modifiers, double? timestamp = null)
-    {
-        lock (Mouse)
-        {
-            Mouse.Add((type, x, y));
-            MouseTimestamps.Add(timestamp);
-        }
-        return Task.CompletedTask;
-    }
-
     public Task DispatchKeyAsync(string type, string key, string? code, string? text, int modifiers, string[]? commands)
     {
         lock (Keys) Keys.Add((type, key));
         return Task.CompletedTask;
     }
-
-    public Task InsertTextAsync(string text) => Task.CompletedTask;
 
     public ValueTask DisposeAsync()
     {

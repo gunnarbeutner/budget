@@ -1,83 +1,42 @@
 @implements IAsyncDisposable
-@inject IJSRuntime JS
 @inject IStringLocalizer<RemoteBrowser> L
 @inject IServiceProvider Services
 @inject OpenBudget.Browser.IWebLoginService Logins
 @inject OpenBudget.Services.ICurrentUser CurrentUser
-@* Live view of the isolated browser of a web login (bank sign-in page). A browser on the browser sidecar is shown through
-   its stream (selkies) in an iframe, once the sidecar's one screen is free for it (RemoteScreen); otherwise the server
-   streams the page as JPEG frames over a WebSocket into the canvas, and this component forwards mouse, keyboard and paste
-   input. Both only serve the signed-in owner of the session (see WebLoginEndpoints). Nothing typed or shown here is stored. *@
-@if (_remote)
-{
-    <div class="rb-screen position-relative border rounded bg-body-tertiary" data-testid="remote-browser" data-mode="stream">
-        @if (_stream != null)
-        {
-            <iframe @key="_stream.Token" class="rb-stream w-100 d-block border-0 rounded" title="@L["Label"]"
-                    src="@(OpenBudget.Browser.RemoteBrowserOptions.StreamPath + "#token=" + Uri.EscapeDataString(_stream.Token))"
-                    allow="clipboard-read; clipboard-write"></iframe>
-        }
-        else
-        {
-            <div class="p-5 text-center text-body-secondary" data-testid="rb-stream-status">
-                @if (_error != null)
-                {
-                    <span class="text-danger">@_error</span>
-                }
-                else
-                {
-                    <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
-                    <span>@(_queued ? L["Waiting"] : L["Connecting"])</span>
-                }
-            </div>
-        }
-    </div>
-}
-else
-{
-<div class="rb-screen position-relative border rounded bg-body-tertiary" data-testid="remote-browser">
-    <div class="d-flex align-items-center gap-1 p-1 border-bottom">
-        <button type="button" class="btn btn-sm btn-outline-secondary" title="@L["Back"]" aria-label="@L["Back"]" data-testid="rb-back" @onclick='() => NavAsync("back")'><i class="bi bi-arrow-left"></i></button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" title="@L["Reload"]" aria-label="@L["Reload"]" data-testid="rb-reload" @onclick='() => NavAsync("reload")'><i class="bi bi-arrow-clockwise"></i></button>
-        <input type="text" readonly class="form-control form-control-sm font-monospace" value="@_url" aria-label="@L["Address"]" data-testid="rb-url" />
-    </div>
-    <canvas @ref="_canvas" class="rb-canvas w-100 d-block" tabindex="0" width="1280" height="800" aria-label="@L["Label"]"
-            style="@(_hasFrame ? "" : "display:none"); outline: none; cursor: default;"></canvas>
-    @if (!_hasFrame)
+@* Live view of the browser of a web login (bank sign-in page) on the browser sidecar: its stream (selkies) in an iframe,
+   once the sidecar's one screen is free for it (RemoteScreen). The stream only serves the signed-in owner of the session
+   (see WebLoginEndpoints). Nothing typed or shown here is stored. *@
+<div class="rb-screen position-relative border rounded bg-body-tertiary" data-testid="remote-browser" data-mode="stream">
+    @if (_stream != null)
     {
-        <div class="p-5 text-center text-body-secondary">
-            @if (_error == null)
-            {
-                <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span><span>@L["Connecting"]</span>
-            }
-            else
+        <iframe @key="_stream.Token" class="rb-stream w-100 d-block border-0 rounded" title="@L["Label"]"
+                src="@(OpenBudget.Browser.RemoteBrowserOptions.StreamPath + "#token=" + Uri.EscapeDataString(_stream.Token))"
+                allow="clipboard-read; clipboard-write"></iframe>
+    }
+    else
+    {
+        <div class="p-5 text-center text-body-secondary" data-testid="rb-stream-status">
+            @if (_error != null)
             {
                 <span class="text-danger">@_error</span>
             }
+            else
+            {
+                <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+                <span>@(_queued ? L["Waiting"] : L["Connecting"])</span>
+            }
         </div>
     }
-    else if (_error != null)
-    {
-        <div class="alert alert-warning m-2" role="alert">@_error</div>
-    }
 </div>
-}
 
 @code {
-    /// <summary>The web login session whose browser to show (its owner is checked again by the WebSocket endpoint).</summary>
+    /// <summary>The web login session whose browser to show (its owner is checked again by the stream endpoint).</summary>
     [Parameter, EditorRequired] public string SessionId { get; set; } = "";
 
-    private ElementReference _canvas;
-    private IJSObjectReference? _module;
-    private IJSObjectReference? _view;
-    private DotNetObjectReference<RemoteBrowser>? _self;
-    private string? _attachedTo;
     private string? _error;
-    private bool _hasFrame;
     private bool _disposed;
 
-    // the sidecar's stream: whether this session's browser runs there, its view once on screen, and whether it waits
-    private bool _remote;
+    // the session shown, its view once on screen, and whether it waits for the screen
     private bool _queued;
     private string? _streamFor;
     private OpenBudget.Browser.ScreenView? _stream;
@@ -88,14 +47,17 @@ else
         if (_disposed || _streamFor == SessionId) return;
         _streamFor = SessionId;
         await ReleaseViewAsync();
-        _remote = false;
         _error = null;
-        if (Services.GetService<OpenBudget.Browser.RemoteScreen>() is not { } screen || string.IsNullOrEmpty(SessionId)) return;
-        var userId = await CurrentUser.GetUserIdAsync();
-        if (userId == null || Logins.Find(SessionId, userId) is not { ScreenId: { } screenId } session) return;
-        _remote = true;
-        var cts = _streamCts = new CancellationTokenSource();
         _queued = false;
+        if (string.IsNullOrEmpty(SessionId)) return;
+        var userId = await CurrentUser.GetUserIdAsync();
+        if (Services.GetService<OpenBudget.Browser.RemoteScreen>() is not { } screen || userId == null
+            || Logins.Find(SessionId, userId) is not { ScreenId: { } screenId } session)
+        {
+            _error = L["Unavailable"];
+            return;
+        }
+        var cts = _streamCts = new CancellationTokenSource();
         _ = ShowAsync(screen, session, userId, screenId, cts.Token);
     }
 
@@ -147,64 +109,10 @@ else
         if (view != null) await view.DisposeAsync();
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (_disposed || _remote || string.IsNullOrEmpty(SessionId) || _attachedTo == SessionId) return;
-        _attachedTo = SessionId;
-        try
-        {
-            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/remote-browser.js");
-            _self ??= DotNetObjectReference.Create(this);
-            if (_view != null) { await _view.InvokeVoidAsync("dispose"); await _view.DisposeAsync(); }
-            _view = await _module.InvokeAsync<IJSObjectReference>("attach", _canvas, _self, SessionId);
-            await _view.InvokeVoidAsync("focus");
-        }
-        catch (JSDisconnectedException) { /* circuit gone */ }
-        catch (JSException) { _attachedTo = null; /* the canvas left the page before it could be attached */ }
-    }
-
-    private string _url = "";
-
-    private async Task NavAsync(string kind)
-    {
-        if (_view == null) return;
-        try { await _view.InvokeVoidAsync("nav", kind); }
-        catch (JSDisconnectedException) { /* circuit gone */ }
-    }
-
-    [JSInvokable]
-    public void OnUrl(string url)
-    {
-        _url = url.Length > 500 ? url[..500] : url;
-        StateHasChanged();
-    }
-
-    [JSInvokable]
-    public void OnFirstFrame()
-    {
-        _hasFrame = true;
-        _ = InvokeAsync(StateHasChanged);
-    }
-
-    [JSInvokable]
-    public void OnSocketClosed(bool wasOpen)
-    {
-        // A closed socket after the login finished is normal (the dialog disappears with it); otherwise say so.
-        _error = L["Closed"];
-        _ = InvokeAsync(StateHasChanged);
-    }
-
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
         await ReleaseViewAsync();
-        try
-        {
-            if (_view != null) { await _view.InvokeVoidAsync("dispose"); await _view.DisposeAsync(); }
-            if (_module != null) await _module.DisposeAsync();
-        }
-        catch (Exception ex) when (ex is JSDisconnectedException or InvalidOperationException) { /* circuit gone */ }
-        _self?.Dispose();
     }
 }
