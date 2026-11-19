@@ -98,10 +98,14 @@ public sealed class BackgroundSyncService : BackgroundService
             if (started >= limit) break;
             if (_registry.Find(login.ConnectorType) is not { } registration || registration.Silent == SilentCapability.None) continue;
             if (registration.FinTsBlz is { } blz && revokedBanks.Contains(blz)) continue;
-            if (!IsDue(login, now.UtcDateTime, _options)) continue;
-            if (_coordinator.IsBusy(login.Id)) continue;
+            if (login.NextBackgroundAttemptAt is { } next && now.UtcDateTime < next) continue;
+            // Bookings and statements each follow their own schedule: a login whose bookings are not due (or never
+            // run automatically) still fetches its statements when they are.
+            var transactions = IsDue(login, now.UtcDateTime, _options);
             var statements = login.Accounts.Where(a => RefreshPolicy.StatementsDue(a, now.UtcDateTime)).Select(a => a.Id).ToList();
-            var request = new SyncRequest(login.Id, Transactions: true, statements.Count > 0, statements, Background: true);
+            if (!transactions && statements.Count == 0) continue;
+            if (_coordinator.IsBusy(login.Id)) continue;
+            var request = new SyncRequest(login.Id, transactions, statements.Count > 0, statements, Background: true);
             if (_coordinator.LaunchBackground(login.OwnerUserId, request, registration.FinTsBlz) == StartResult.Started)
             {
                 _logger.LogInformation("Background sync of bank login {LoginId} started.", login.Id);

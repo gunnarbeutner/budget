@@ -168,26 +168,6 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
         return started;
     }
 
-    /// <summary>
-    /// The page-load trigger: starts syncs for this user's logins whose transactions and/or statements are due
-    /// under their own intervals. Logins whose credentials were rejected are skipped (retrying could lock the account).
-    /// </summary>
-    public async Task<int> StartDueAsync(string userId, CancellationToken ct = default)
-    {
-        if (!IsEnabled) return 0;
-        var now = _clock.GetUtcNow().UtcDateTime;
-        var started = 0;
-        foreach (var login in await LoadLoginsAsync(userId, ct))
-        {
-            if (login.CredentialsInvalid) continue;
-            var transactions = RefreshPolicy.IsDue(login.RefreshInterval, login.LastSyncAt, now);
-            var statements = login.Accounts.Where(a => RefreshPolicy.StatementsDue(a, now)).Select(a => a.Id).ToList();
-            if (!transactions && statements.Count == 0) continue;
-            if (Launch(userId, new SyncRequest(login.Id, transactions, statements.Count > 0, statements)) == StartResult.Started) started++;
-        }
-        return started;
-    }
-
     private async Task<List<BankLogin>> LoadLoginsAsync(string userId, CancellationToken ct)
     {
         await using var db = await _system.CreateDbContextAsync(ct);

@@ -656,13 +656,6 @@ public class BankLoginService
     public async Task<int> SyncAllAsync(CancellationToken ct = default) =>
         await _coordinator.SyncAllAsync(await RequireUserAsync(), ct);
 
-    /// <summary>Called when the owner loads a page: starts what is due under each login's own intervals.</summary>
-    public async Task<int> StartDueAsync(CancellationToken ct = default)
-    {
-        var scope = await _access.GetAsync();
-        return scope.UserId == null ? 0 : await _coordinator.StartDueAsync(scope.UserId, ct);
-    }
-
     public async Task<IReadOnlyList<BankSyncStatus>> GetStatusesAsync()
     {
         var scope = await _access.GetAsync();

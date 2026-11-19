@@ -39,7 +39,6 @@ public sealed class BankSyncTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => svc.CreateLoginAsync("fake", "x", "u", "p"));
         Assert.Empty(await svc.GetLoginsAsync());
         Assert.Equal(StartResult.Disabled, await w.Coordinator.StartAsync(BankWorld.Alice, new SyncRequest(1, true, true)));
-        Assert.Equal(0, await svc.StartDueAsync());
         Assert.Equal(0, await svc.SyncAllAsync());
     }
 
@@ -58,8 +57,6 @@ public sealed class BankSyncTests
 
         var login = await w.For(BankWorld.Alice).GetLoginAsync(id);
         Assert.True(login!.CredentialsInvalid);
-        // No automatic retries while the credentials are flagged.
-        Assert.Equal(0, await w.Coordinator.StartDueAsync(BankWorld.Alice));
 
         await w.For(BankWorld.Alice).UpdateLoginAsync(id, "Fake", RefreshInterval.EveryTwoHours, "demo", "1234");
         Assert.False((await w.For(BankWorld.Alice).GetLoginAsync(id))!.CredentialsInvalid);
@@ -76,7 +73,6 @@ public sealed class BankSyncTests
         Assert.False(status.Succeeded);
         Assert.Contains("rejected", status.Error, StringComparison.OrdinalIgnoreCase);
         Assert.True((await w.For(BankWorld.Alice).GetLoginAsync(id))!.CredentialsInvalid);
-        Assert.Equal(0, await w.Coordinator.StartDueAsync(BankWorld.Alice));
     }
 
     // ---- owner-only ----
@@ -322,50 +318,6 @@ public sealed class BankSyncTests
 
     // ---- scheduling entry points ----
 
-    private static async Task SetLastSyncAsync(BankWorld w, int id, TimeSpan ago, RefreshInterval interval)
-    {
-        await using var db = await w.T.System.CreateDbContextAsync();
-        var login = await db.BankLogins.SingleAsync(l => l.Id == id);
-        login.LastSyncAt = w.Clock.GetUtcNow().UtcDateTime - ago;
-        login.RefreshInterval = interval;
-        await db.SaveChangesAsync();
-    }
-
-    [Theory]
-    [InlineData(RefreshInterval.EveryTwoHours, 3, 1)]
-    [InlineData(RefreshInterval.EveryTwoHours, 1, 0)]
-    [InlineData(RefreshInterval.FourTimesDaily, 5, 0)]
-    [InlineData(RefreshInterval.FourTimesDaily, 7, 1)]
-    [InlineData(RefreshInterval.Daily, 23, 0)]
-    [InlineData(RefreshInterval.Daily, 25, 1)]
-    [InlineData(RefreshInterval.Weekly, 24 * 6, 0)]
-    [InlineData(RefreshInterval.Weekly, 24 * 8, 1)]
-    [InlineData(RefreshInterval.ManualOnly, 24 * 400, 0)]
-    [InlineData(RefreshInterval.Never, 24 * 400, 0)]
-    public async Task Page_load_trigger_starts_only_what_is_due(RefreshInterval interval, int hoursAgo, int expectedStarts)
-    {
-        await using var w = await BankWorld.CreateAsync();
-        var id = await w.AddLoginAsync(BankWorld.Alice);
-        await SetLastSyncAsync(w, id, TimeSpan.FromHours(hoursAgo), interval);
-
-        Assert.Equal(expectedStarts, await w.For(BankWorld.Alice).StartDueAsync());
-        await w.Coordinator.WhenIdleAsync(id);
-        Assert.Equal(0, await w.For(BankWorld.Bob).StartDueAsync()); // never someone else's logins
-    }
-
-    [Fact]
-    public async Task Page_load_trigger_ignores_other_users_logins_and_running_syncs()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        var id = await w.AddLoginAsync(BankWorld.Alice, "demo+code");
-        Assert.Equal(1, await w.For(BankWorld.Alice).StartDueAsync());
-        await WaitForPhaseAsync(w, BankWorld.Alice, id, SyncPhase.WaitingForInput);
-        Assert.Equal(0, await w.For(BankWorld.Alice).StartDueAsync()); // already running
-        Assert.Equal(0, await w.For(BankWorld.Bob).StartDueAsync());
-        await w.For(BankWorld.Alice).CancelSyncAsync(id);
-        await w.Coordinator.WhenIdleAsync(id);
-    }
-
     [Fact]
     public async Task Sync_all_covers_manual_logins_but_skips_never_while_sync_now_always_runs()
     {
@@ -384,59 +336,5 @@ public sealed class BankSyncTests
         await w.Coordinator.WhenIdleAsync(never);
         Assert.True(w.Coordinator.GetStatus(BankWorld.Alice, never)!.Succeeded);
         Assert.NotNull((await w.For(BankWorld.Alice).GetLoginAsync(never))!.LastSyncAt);
-    }
-
-    [Fact]
-    public async Task Sync_all_and_page_load_decide_statements_independently_of_transactions()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        var id = await w.AddLoginAsync(BankWorld.Alice, "demo+statements", RefreshInterval.EveryTwoHours);
-        await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false));
-        await w.LinkAllAsync(BankWorld.Alice, id);
-        var giro = await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId);
-        await w.For(BankWorld.Alice).SetStatementsAsync(giro.Id, true, StatementsInterval.Monthly);
-        await SetLastSyncAsync(w, id, TimeSpan.FromMinutes(5), RefreshInterval.EveryTwoHours); // transactions NOT due
-
-        // Statements are due (never fetched) even though transactions are not: only statements run.
-        Assert.Equal(1, await w.For(BankWorld.Alice).StartDueAsync());
-        await w.Coordinator.WhenIdleAsync(id);
-        Assert.NotEmpty(await w.For(BankWorld.Alice).GetLoginStatementsAsync(id));
-        var login = await w.For(BankWorld.Alice).GetLoginAsync(id);
-        Assert.True(login!.LastSyncAt > w.Clock.GetUtcNow().UtcDateTime.AddMinutes(-30) && login.LastSyncAt < w.Clock.GetUtcNow().UtcDateTime.AddMinutes(-1));
-
-        // Now both are quiet until the clock moves.
-        Assert.Equal(0, await w.For(BankWorld.Alice).StartDueAsync());
-    }
-
-    [Fact]
-    public async Task Monthly_statement_schedule_end_to_end_with_a_controllable_clock()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        // No "statements" flag: the bank has nothing new, so the daily retry must kick in.
-        var id = await w.AddLoginAsync(BankWorld.Alice, "demo", RefreshInterval.Never);
-        await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false));
-        await w.LinkAllAsync(BankWorld.Alice, id);
-        var giro = await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId);
-        await w.For(BankWorld.Alice).SetStatementsAsync(giro.Id, true, StatementsInterval.Monthly);
-
-        Assert.Equal(1, await w.For(BankWorld.Alice).StartDueAsync()); // first try
-        await w.Coordinator.WhenIdleAsync(id);
-        Assert.Equal(0, await w.For(BankWorld.Alice).StartDueAsync()); // nothing arrived, but not again within a day
-        w.Clock.Offset += TimeSpan.FromHours(25);
-        Assert.Equal(1, await w.For(BankWorld.Alice).StartDueAsync()); // daily retry
-        await w.Coordinator.WhenIdleAsync(id);
-
-        // A statement for the current month arrives (the bank now has one): afterwards nothing is due until next month.
-        await using (var db = await w.T.System.CreateDbContextAsync())
-        {
-            var row = await db.BankLoginAccounts.SingleAsync(a => a.Id == giro.Id);
-            row.LastStatementAt = w.Clock.GetUtcNow().UtcDateTime;
-            await db.SaveChangesAsync();
-        }
-        w.Clock.Offset += TimeSpan.FromHours(30);
-        Assert.Equal(0, await w.For(BankWorld.Alice).StartDueAsync());
-        w.Clock.Offset += TimeSpan.FromDays(40);
-        Assert.Equal(1, await w.For(BankWorld.Alice).StartDueAsync()); // a new month began
-        await w.Coordinator.WhenIdleAsync(id);
     }
 }

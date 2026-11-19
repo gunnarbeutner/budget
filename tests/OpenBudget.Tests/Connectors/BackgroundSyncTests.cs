@@ -193,6 +193,40 @@ public sealed class BackgroundSyncTests
     }
 
     [Fact]
+    public async Task Statements_run_on_their_own_schedule_when_bookings_are_not_due()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        // No "statements" flag: the bank has nothing new, so the daily retry must kick in.
+        var id = await w.AddLoginAsync(BankWorld.Alice, "demo", RefreshInterval.Never);
+        await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false));
+        await w.LinkAllAsync(BankWorld.Alice, id);
+        var giro = await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId);
+        await w.For(BankWorld.Alice).SetStatementsAsync(giro.Id, true, StatementsInterval.Monthly);
+        var lastSync = (await StoredAsync(w, id)).LastSyncAt;
+
+        Assert.Equal(1, await Scheduler(w).TickAsync(default)); // statements only: bookings never run automatically
+        await w.Coordinator.WhenIdleAsync(id);
+        Assert.Equal(lastSync, (await StoredAsync(w, id)).LastSyncAt);
+        Assert.Equal(0, await Scheduler(w).TickAsync(default)); // nothing arrived, but not again within a day
+        w.Clock.Offset += TimeSpan.FromHours(25);
+        Assert.Equal(1, await Scheduler(w).TickAsync(default)); // daily retry
+        await w.Coordinator.WhenIdleAsync(id);
+
+        // A statement for the current month arrives: afterwards nothing is due until next month.
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            var row = await db.BankLoginAccounts.SingleAsync(a => a.Id == giro.Id);
+            row.LastStatementAt = w.Clock.GetUtcNow().UtcDateTime;
+            await db.SaveChangesAsync();
+        }
+        w.Clock.Offset += TimeSpan.FromHours(30);
+        Assert.Equal(0, await Scheduler(w).TickAsync(default));
+        w.Clock.Offset += TimeSpan.FromDays(40);
+        Assert.Equal(1, await Scheduler(w).TickAsync(default)); // a new month began
+        await w.Coordinator.WhenIdleAsync(id);
+    }
+
+    [Fact]
     public async Task No_runs_in_quiet_hours()
     {
         await using var w = await BankWorld.CreateAsync();

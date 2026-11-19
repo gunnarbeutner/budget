@@ -3,7 +3,6 @@
 @using OpenBudget.Connectors.Sync
 @using OpenBudget.Services
 @inject BankLoginService Bank
-@inject NavigationManager Navigation
 @inject IStringLocalizer<BankSyncHost> L
 
 @* Header-area host for bank syncs of the signed-in user, available on every page: starts what is due
@@ -253,7 +252,6 @@ else if (lastSync is { } last)
     private string answerText = "";
     private string? selectedOption;
     private string? error;
-    private bool subscribed;
     private bool enabled;
 
     private DateTime? lastSync;
@@ -285,29 +283,13 @@ else if (lastSync is { } last)
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Interactive only (not during prerender): the page-load trigger for this circuit.
+        // Interactive only (not during prerender). Opening the app starts no sync: background syncs run on their own
+        // schedule, and the sync button starts one by hand.
         if (!firstRender) return;
         enabled = Bank.IsEnabled;
         if (!enabled) return;
-        Navigation.LocationChanged += OnLocationChanged;
-        subscribed = true;
-        await StartDueSafeAsync();
         await RefreshAsync();
         StateHasChanged();
-    }
-
-    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
-        _ = InvokeAsync(async () =>
-        {
-            await StartDueSafeAsync();
-            await RefreshAsync();
-            StateHasChanged();
-        });
-
-    private async Task StartDueSafeAsync()
-    {
-        try { await Bank.StartDueAsync(); }
-        catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException) { /* not signed in / disabled */ }
     }
 
     private async Task RefreshAsync()
@@ -364,7 +346,6 @@ else if (lastSync is { } last)
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing && subscribed) Navigation.LocationChanged -= OnLocationChanged;
         if (disposing) elapsedTimer?.Dispose();
         base.Dispose(disposing);
     }
