@@ -151,7 +151,7 @@ def start(profile):
         args = [CHROME, "--password-store=basic", "--user-data-dir=" + browser.directory,
                 "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=%d" % browser.internal_port,
                 "--no-first-run", "--no-default-browser-check", "--disable-features=Translate,TranslateUI",
-                "--lang=" + LANG, "--disable-dev-shm-usage", "--ozone-platform=x11", "--start-maximized",
+                "--lang=" + LANG, "--disable-dev-shm-usage", "--ozone-platform=x11", "--kiosk",
                 "--window-position=0,0", "--window-size=%s,%s" % (WIDTH, HEIGHT),
                 # hidden (minimised) windows keep rendering, or clicks wait for a frame that never comes
                 "--disable-background-timer-throttling", "--disable-renderer-backgrounding",
