@@ -228,4 +228,28 @@ public sealed class ConnectorBasicsTests
         var accounts = await bank.ListAccountsAsync(CancellationToken.None);
         Assert.All(accounts.Where(a => a.Iban != null), a => Assert.StartsWith("DE00", a.Iban, StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Bookings_are_overdue_after_twice_their_interval_and_at_least_a_day()
+    {
+        Assert.False(RefreshPolicy.BookingsOverdue(RefreshInterval.EveryTwoHours, Now.AddHours(-20), null, Now, out _));
+        Assert.True(RefreshPolicy.BookingsOverdue(RefreshInterval.EveryTwoHours, Now.AddHours(-25), null, Now, out var last));
+        Assert.Equal(Now.AddHours(-25), last);
+        Assert.False(RefreshPolicy.BookingsOverdue(RefreshInterval.EveryTwoHours, Now.AddDays(-5), Now.AddHours(-1), Now, out _)); // background ran
+        Assert.False(RefreshPolicy.BookingsOverdue(RefreshInterval.Weekly, Now.AddDays(-13), null, Now, out _));
+        Assert.True(RefreshPolicy.BookingsOverdue(RefreshInterval.Weekly, Now.AddDays(-15), null, Now, out _));
+        Assert.True(RefreshPolicy.BookingsOverdue(RefreshInterval.Daily, null, null, Now, out _));
+        Assert.False(RefreshPolicy.BookingsOverdue(RefreshInterval.ManualOnly, Now.AddDays(-400), null, Now, out _));
+        Assert.False(RefreshPolicy.BookingsOverdue(RefreshInterval.Never, null, null, Now, out _));
+    }
+
+    [Fact]
+    public void Due_statements_are_overdue_when_nothing_tried_for_two_days()
+    {
+        Assert.True(RefreshPolicy.StatementsOverdue(StatementAccount(StatementsInterval.Monthly), Now));
+        Assert.False(RefreshPolicy.StatementsOverdue(StatementAccount(StatementsInterval.Monthly, attempt: Now.AddDays(-1.5)), Now));
+        Assert.True(RefreshPolicy.StatementsOverdue(StatementAccount(StatementsInterval.Monthly, attempt: Now.AddDays(-3)), Now));
+        Assert.False(RefreshPolicy.StatementsOverdue(StatementAccount(StatementsInterval.Monthly, attempt: Now.AddDays(-3), got: Now.AddDays(-3)), Now));
+        Assert.False(RefreshPolicy.StatementsOverdue(StatementAccount(StatementsInterval.ManualOnly), Now));
+    }
 }

@@ -30,6 +30,12 @@ public sealed record BankLoginView(
 
     public DateTime? LastBackgroundSyncAt { get; init; }
 
+    /// <summary>Its bookings have gone stale (see <see cref="RefreshPolicy.BookingsOverdue"/>).</summary>
+    public bool BookingsOverdue { get; init; }
+
+    /// <summary>The accounts whose due statements have gone unfetched.</summary>
+    public IReadOnlyList<string> StatementsOverdue { get; init; } = [];
+
     /// <summary>The bank code of a FinTS login, and whether background runs are allowed for that bank.</summary>
     public string? FinTsBlz { get; init; }
 
@@ -160,7 +166,7 @@ public class BankLoginService
     public async Task<List<BankLoginView>> GetLoginsAsync(CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var logins = await db.BankLogins.AsNoTracking().OrderBy(l => l.DisplayName).ThenBy(l => l.Id).ToListAsync(ct);
+        var logins = await db.BankLogins.AsNoTracking().Include(l => l.Accounts).OrderBy(l => l.DisplayName).ThenBy(l => l.Id).ToListAsync(ct);
         var revoked = await RevokedBanksAsync(db, ct);
         return logins.Select(l => ToView(l, revoked)).ToList();
     }
@@ -188,6 +194,8 @@ public class BankLoginService
             BackgroundEnabled = l.BackgroundEnabled,
             NeedsManualSync = l.NeedsManualSync,
             LastBackgroundSyncAt = l.LastBackgroundSyncAt,
+            BookingsOverdue = l.EncryptedCredentials != null && RefreshPolicy.BookingsOverdue(l.RefreshInterval, l.LastSyncAt, l.LastBackgroundSyncAt, _coordinator.Clock.GetUtcNow().UtcDateTime, out _),
+            StatementsOverdue = l.Accounts.Where(a => RefreshPolicy.StatementsOverdue(a, _coordinator.Clock.GetUtcNow().UtcDateTime)).Select(a => a.Name).ToList(),
             FinTsBlz = registration?.FinTsBlz,
             FinTsBankAllowed = registration?.FinTsBlz is { } blz && !revokedBanks.Contains(blz),
             Kind = registration?.Kind ?? SourceKind.Bank,

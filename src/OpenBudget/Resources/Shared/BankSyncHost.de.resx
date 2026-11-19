@@ -119,6 +119,9 @@
   <data name="Problem_Credentials" xml:space="preserve">
     <value>Die Bank hat die gespeicherten Anmeldedaten abgelehnt.</value>
   </data>
+  <data name="Problem_Overdue" xml:space="preserve"><value>Umsätze zuletzt abgeglichen {0}.</value></data>
+  <data name="Problem_NeverSynced" xml:space="preserve"><value>Noch nie abgeglichen.</value></data>
+  <data name="Problem_Statements" xml:space="preserve"><value>Kontoauszüge nicht abgerufen: {0}.</value></data>
   <data name="Problems_Sync" xml:space="preserve">
     <value>Jetzt synchronisieren</value>
   </data>

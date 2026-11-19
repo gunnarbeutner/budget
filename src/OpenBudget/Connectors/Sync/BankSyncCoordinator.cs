@@ -76,6 +76,9 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
     private readonly ChangeNotificationService _notifier;
     private readonly BankSyncOptions _options;
     private readonly TimeProvider _clock;
+
+    /// <summary>The clock the schedules run on.</summary>
+    public TimeProvider Clock => _clock;
     private readonly ILogger<BankSyncCoordinator> _logger;
     private readonly Lock _lock = new();
     private readonly Dictionary<int, Job> _jobs = [];

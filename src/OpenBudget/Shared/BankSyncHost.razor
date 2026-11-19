@@ -292,6 +292,13 @@ else if (lastSync is { } last)
         StateHasChanged();
     }
 
+    private string? OverdueText(BankLoginView l)
+    {
+        if (!l.BookingsOverdue) return null;
+        var last = l.LastSyncAt is { } a && l.LastBackgroundSyncAt is { } b ? (a > b ? a : b) : l.LastSyncAt ?? l.LastBackgroundSyncAt;
+        return last is { } t ? L["Problem_Overdue", FormatLastSync(t)].Value : L["Problem_NeverSynced"].Value;
+    }
+
     private async Task RefreshAsync()
     {
         if (!enabled) return;
@@ -306,6 +313,8 @@ else if (lastSync is { } last)
             {
                 l.CredentialsInvalid ? L["Problem_Credentials"].Value : l.LastError,
                 l.NeedsManualSync,
+                OverdueText(l),
+                l.StatementsOverdue.Count > 0 ? L["Problem_Statements", string.Join(", ", l.StatementsOverdue)].Value : null,
             }.Where(m => !string.IsNullOrEmpty(m)))))
             .Where(p => p.Message.Length > 0)
             .ToList();

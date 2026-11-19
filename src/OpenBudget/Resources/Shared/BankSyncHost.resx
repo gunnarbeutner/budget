@@ -119,6 +119,9 @@
   <data name="Problem_Credentials" xml:space="preserve">
     <value>The bank rejected the stored sign-in details.</value>
   </data>
+  <data name="Problem_Overdue" xml:space="preserve"><value>Bookings last synced {0}.</value></data>
+  <data name="Problem_NeverSynced" xml:space="preserve"><value>Never synced.</value></data>
+  <data name="Problem_Statements" xml:space="preserve"><value>Statements not fetched: {0}.</value></data>
   <data name="Problems_Sync" xml:space="preserve">
     <value>Sync now</value>
   </data>

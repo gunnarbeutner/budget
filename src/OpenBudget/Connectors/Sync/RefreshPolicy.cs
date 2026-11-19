@@ -15,7 +15,7 @@ public static class RefreshPolicy
         _ => null,
     };
 
-    /// <summary>Whether a page load should start a sync: only for automatic intervals whose last attempt is old enough.</summary>
+    /// <summary>Whether an automatic interval's next sync is due: its last sync is at least one period old.</summary>
     public static bool IsDue(RefreshInterval interval, DateTime? lastSyncAtUtc, DateTime nowUtc) =>
         Period(interval) is { } period && (lastSyncAtUtc is not { } last || nowUtc - last >= period);
 
@@ -47,4 +47,25 @@ public static class RefreshPolicy
                 return false;
         }
     }
+
+    /// <summary>
+    /// When a login's bookings have gone stale: an automatic interval whose last sync (by hand or in the background)
+    /// is more than twice its period old, and at least a day. Returns the last sync (null: never synced), or
+    /// <paramref name="overdue"/> false.
+    /// </summary>
+    public static bool BookingsOverdue(RefreshInterval interval, DateTime? lastSyncAtUtc, DateTime? lastBackgroundAtUtc, DateTime nowUtc, out DateTime? last)
+    {
+        last = lastSyncAtUtc is { } a && lastBackgroundAtUtc is { } b ? (a > b ? a : b) : lastSyncAtUtc ?? lastBackgroundAtUtc;
+        if (Period(interval) is not { } period) return false;
+        var limit = period * 2 < TimeSpan.FromDays(1) ? TimeSpan.FromDays(1) : period * 2;
+        return last is not { } l || nowUtc - l >= limit;
+    }
+
+    /// <summary>
+    /// Whether an account's due statements have gone unfetched: due, and no try for two days (background runs retry
+    /// daily, so this flags logins nothing syncs automatically).
+    /// </summary>
+    public static bool StatementsOverdue(BankLoginAccount account, DateTime nowUtc) =>
+        StatementsDue(account, nowUtc)
+        && (account.LastStatementsAttemptAt is not { } a || nowUtc - a >= TimeSpan.FromDays(2));
 }
