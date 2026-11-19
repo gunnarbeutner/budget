@@ -1,0 +1,357 @@
+#!/usr/bin/python3
+"""Starts and stops one Chrome per OpenBudget web login on the shared X display that selkies streams.
+
+Internal HTTP API (compose network only, every call but /health needs "Authorization: Bearer $SELKIES_MASTER_TOKEN"):
+  GET    /health             200 while the launcher runs
+  POST   /browsers           body: a zip of a user-data directory, or empty for a fresh one; answers {"id", "port"}
+  DELETE /browsers/<id>      stops that Chrome and deletes its directory; with ?profile=1 the directory comes back as a zip
+  POST   /front              body {"id": <id> or null}: the screen shows that Chrome's windows only (null: none)
+  POST   /reset              stops every Chrome
+
+Each Chrome gets its own user-data directory and DevTools port on 127.0.0.1; socat exposes that port on the compose
+network. A watcher keeps every window but those of the front Chrome minimised and gives the front Chrome the focus, so a
+viewer only ever sees (and types into) the browser of the web login they are shown.
+"""
+import hmac
+import io
+import json
+import os
+import re
+import secrets
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+import zipfile
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+TOKEN = os.environ.get("SELKIES_MASTER_TOKEN", "")
+ROOT = os.environ.get("BROWSER_ROOT", "/home/ubuntu/browsers")
+CHROME = os.environ.get("BROWSER_CHROME", "/opt/google/chrome/chrome")
+LISTEN_PORT = int(os.environ.get("BROWSER_LAUNCHER_PORT", "9300"))
+EXPOSED_BASE = int(os.environ.get("BROWSER_CDP_PORT_BASE", "9400"))
+INTERNAL_BASE = EXPOSED_BASE + 10000
+MAX_BROWSERS = int(os.environ.get("BROWSER_MAX", "6"))
+WIDTH = os.environ.get("SELKIES_MANUAL_WIDTH", "1280")
+HEIGHT = os.environ.get("SELKIES_MANUAL_HEIGHT", "720")
+LANG = os.environ.get("BROWSER_LANG", "de-DE")
+MAX_ARCHIVE = 128 * 1024 * 1024
+MAX_UNPACKED = 16 * MAX_ARCHIVE
+START_TIMEOUT = 30.0
+STOP_TIMEOUT = 15.0
+WATCH_INTERVAL = 0.2
+ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+# Caches and process guards: not worth carrying back (the app filters the profile again before storing it).
+SKIPPED = {"Cache", "Code Cache", "GPUCache", "ShaderCache", "GrShaderCache", "GraphiteDawnCache", "DawnCache",
+           "DawnGraphiteCache", "DawnWebGPUCache", "Crashpad", "Crash Reports", "component_crx_cache",
+           "extensions_crx_cache", "optimization_guide_model_store", "Safe Browsing", "screen_ai",
+           "SingletonLock", "SingletonSocket", "SingletonCookie", "lockfile", "RunningChromeVersion"}
+
+lock = threading.RLock()
+browsers = {}  # id -> Browser
+front = None   # id of the Chrome the screen shows
+
+
+def log(message):
+    print("[browser-launcher] " + message, file=sys.stderr, flush=True)
+
+
+class Browser:
+    def __init__(self, browser_id, slot, directory):
+        self.id = browser_id
+        self.slot = slot
+        self.directory = directory
+        self.chrome = None
+        self.bridge = None
+
+    @property
+    def internal_port(self):
+        return INTERNAL_BASE + self.slot
+
+    @property
+    def port(self):
+        return EXPOSED_BASE + self.slot
+
+
+def unpack(data, target):
+    """Unpacks a zip into target; refuses links and entries outside it."""
+    root = os.path.realpath(target) + os.sep
+    total = 0
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        for entry in archive.infolist():
+            if (entry.external_attr >> 16) & 0o170000 == 0o120000:
+                continue  # a symbolic link
+            dest = os.path.realpath(os.path.join(target, entry.filename))
+            if not dest.startswith(root):
+                raise ValueError("entry outside the profile")
+            if entry.is_dir():
+                os.makedirs(dest, mode=0o700, exist_ok=True)
+                continue
+            total += entry.file_size
+            if total > MAX_UNPACKED:
+                raise ValueError("profile too large")
+            os.makedirs(os.path.dirname(dest), mode=0o700, exist_ok=True)
+            with archive.open(entry) as source, open(dest, "wb") as sink:
+                shutil.copyfileobj(source, sink)
+
+
+def pack(directory):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for current, dirs, files in os.walk(directory, followlinks=False):
+            dirs[:] = [d for d in dirs if d not in SKIPPED and not os.path.islink(os.path.join(current, d))]
+            relative = os.path.relpath(current, directory)
+            if relative != ".":
+                archive.write(current, relative + "/")
+            for name in files:
+                path = os.path.join(current, name)
+                if name in SKIPPED or os.path.islink(path):
+                    continue
+                try:
+                    archive.write(path, os.path.relpath(path, directory))
+                except (FileNotFoundError, PermissionError):
+                    pass
+    return buffer.getvalue()
+
+
+def remove_locks(directory):
+    # A profile's process and socket guards do not survive the Chrome that made them.
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        try:
+            os.unlink(os.path.join(directory, name))
+        except FileNotFoundError:
+            pass
+
+
+def devtools_ready(port):
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:%d/json/version" % port, timeout=1) as response:
+            return response.status == 200
+    except OSError:
+        return False
+
+
+def start(profile):
+    with lock:
+        used = {b.slot for b in browsers.values()}
+        free = [s for s in range(MAX_BROWSERS) if s not in used]
+        if not free:
+            return None
+        browser = Browser(secrets.token_hex(16), free[0], None)
+        browser.directory = os.path.join(ROOT, browser.id)
+        browsers[browser.id] = browser
+    try:
+        os.makedirs(browser.directory, mode=0o700)
+        if profile:
+            unpack(profile, browser.directory)
+        remove_locks(browser.directory)
+        args = [CHROME, "--password-store=basic", "--user-data-dir=" + browser.directory,
+                "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=%d" % browser.internal_port,
+                "--no-first-run", "--no-default-browser-check", "--disable-features=Translate,TranslateUI",
+                "--lang=" + LANG, "--disable-dev-shm-usage", "--ozone-platform=x11", "--start-maximized",
+                "--window-position=0,0", "--window-size=%s,%s" % (WIDTH, HEIGHT),
+                # hidden (minimised) windows keep rendering, or clicks wait for a frame that never comes
+                "--disable-background-timer-throttling", "--disable-renderer-backgrounding",
+                "--disable-backgrounding-occluded-windows", "about:blank"]
+        browser.chrome = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                          start_new_session=True)
+        browser.bridge = subprocess.Popen(
+            ["socat", "TCP-LISTEN:%d,bind=0.0.0.0,fork,reuseaddr" % browser.port,
+             "TCP:127.0.0.1:%d" % browser.internal_port],
+            stdin=subprocess.DEVNULL, start_new_session=True)
+        deadline = time.monotonic() + START_TIMEOUT
+        while not devtools_ready(browser.internal_port):
+            if browser.chrome.poll() is not None or time.monotonic() > deadline:
+                raise RuntimeError("Chrome did not start")
+            time.sleep(0.1)
+        apply_visibility()
+        log("started %s (port %d)" % (browser.id, browser.port))
+        return browser
+    except Exception:
+        stop(browser.id, False)
+        raise
+
+
+def end_process(process):
+    if process is None or process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+        process.wait(timeout=STOP_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+    except ProcessLookupError:
+        pass
+
+
+def stop(browser_id, want_profile):
+    global front
+    with lock:
+        browser = browsers.pop(browser_id, None)
+        if front == browser_id:
+            front = None
+    if browser is None:
+        return None, False
+    end_process(browser.chrome)
+    end_process(browser.bridge)
+    archive = None
+    try:
+        if want_profile and os.path.isdir(browser.directory):
+            archive = pack(browser.directory)
+    finally:
+        shutil.rmtree(browser.directory, ignore_errors=True)
+    log("stopped %s" % browser_id)
+    return archive, True
+
+
+def xdotool(*args):
+    try:
+        result = subprocess.run(["xdotool", *args], capture_output=True, text=True, timeout=5)
+        return result.stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+
+
+def windows(pid, visible_only):
+    """The browser windows (popups included) of a Chrome; not its helper windows."""
+    return xdotool("search", "--all", *(["--onlyvisible"] if visible_only else []), "--pid", str(pid),
+                   "--class", "^Google-chrome$")
+
+
+def apply_visibility():
+    """Minimises every window but the front Chrome's, and keeps the focus on the front Chrome."""
+    with lock:
+        shown = browsers.get(front)
+        others = [b for b in browsers.values() if b is not shown and b.chrome and b.chrome.poll() is None]
+    for browser in others:
+        for window in windows(browser.chrome.pid, True):
+            xdotool("windowminimize", window)
+    if shown is None or shown.chrome is None or shown.chrome.poll() is not None:
+        return
+    active = xdotool("getactivewindow", "getwindowpid")
+    if active == [str(shown.chrome.pid)]:
+        return
+    mine = windows(shown.chrome.pid, False)
+    if mine:
+        # the last one is the newest (a popup over its opener)
+        xdotool("windowactivate", mine[-1])
+
+
+def watch():
+    while True:
+        try:
+            apply_visibility()
+        except Exception as error:  # the watcher must keep running
+            log("watcher: %s" % error)
+        time.sleep(WATCH_INTERVAL)
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, format, *args):
+        pass
+
+    def reply(self, status, body=b"", content_type="application/json"):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if body:
+            self.wfile.write(body)
+
+    def authorised(self):
+        header = self.headers.get("Authorization", "")
+        if hmac.compare_digest(header.encode(), ("Bearer " + TOKEN).encode()):
+            return True
+        self.reply(401)
+        return False
+
+    def body(self, limit):
+        if "chunked" in self.headers.get("Transfer-Encoding", "").lower():
+            raise ValueError("chunked bodies are not supported; send Content-Length")
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length < 0 or length > limit:
+            raise ValueError("body too large")
+        return self.rfile.read(length) if length else b""
+
+    def do_GET(self):
+        if self.path == "/health":
+            self.reply(200, b'{"ok":true}')
+        else:
+            self.reply(404)
+
+    def do_POST(self):
+        global front
+        if not self.authorised():
+            return
+        try:
+            if self.path == "/browsers":
+                browser = start(self.body(MAX_ARCHIVE))
+                if browser is None:
+                    self.reply(503)
+                else:
+                    self.reply(200, json.dumps({"id": browser.id, "port": browser.port}).encode())
+            elif self.path == "/front":
+                request = json.loads(self.body(4096) or b"{}")
+                if not isinstance(request, dict) or "id" not in request:
+                    raise ValueError("front needs an id (or null)")
+                wanted = request["id"]
+                with lock:
+                    if wanted is not None and wanted not in browsers:
+                        self.reply(404)
+                        return
+                    front = wanted
+                log("front: %s" % (wanted or "none"))
+                apply_visibility()
+                self.reply(204)
+            elif self.path == "/reset":
+                for browser_id in list(browsers):
+                    stop(browser_id, False)
+                self.reply(204)
+            else:
+                self.reply(404)
+        except (ValueError, zipfile.BadZipFile, RuntimeError, OSError) as error:
+            log("request failed: %s" % error)
+            self.reply(400 if isinstance(error, (ValueError, zipfile.BadZipFile)) else 500)
+
+    def do_DELETE(self):
+        if not self.authorised():
+            return
+        path, _, query = self.path.partition("?")
+        browser_id = path[len("/browsers/"):] if path.startswith("/browsers/") else ""
+        if not ID_PATTERN.match(browser_id):
+            self.reply(404)
+            return
+        archive, found = stop(browser_id, query == "profile=1")
+        if not found:
+            self.reply(404)
+        elif archive is None:
+            self.reply(204)
+        else:
+            self.reply(200, archive, "application/zip")
+
+
+def main():
+    if len(TOKEN) < 32:
+        log("SELKIES_MASTER_TOKEN must be at least 32 characters")
+        sys.exit(1)
+    # Chrome silently drops its sandbox when user namespaces are unavailable; refuse to run without them instead.
+    probe = subprocess.run(["unshare", "--user", "--map-root-user", "--pid", "--net", "--fork", "true"])
+    if probe.returncode != 0:
+        log("user namespaces are unavailable (seccomp profile missing?); refusing to start Chrome without its sandbox")
+        sys.exit(1)
+    shutil.rmtree(ROOT, ignore_errors=True)
+    os.makedirs(ROOT, mode=0o700, exist_ok=True)
+    threading.Thread(target=watch, daemon=True).start()
+    server = ThreadingHTTPServer(("0.0.0.0", LISTEN_PORT), Handler)
+    log("listening on %d" % LISTEN_PORT)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
