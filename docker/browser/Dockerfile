@@ -1,6 +1,6 @@
 # The browser sidecar of OpenBudget's web logins: selkies streams a shared X display, and the launcher starts one Chrome
 # per web login on it (see docs/browser-sidecar.md). The base is pinned by digest; update it deliberately.
-ARG BROWSER_IMAGE=ghcr.io/selkies-project/selkies/desktop@sha256:5327eae2cf2a67382e6c5708d32e2460ef687c0d6126c2f3b82e76442142b4a1
+ARG BROWSER_IMAGE=ghcr.io/selkies-project/selkies/desktop:main-debiantrixie@sha256:8ab8f67ee6eebd23080fda6c4d20e610f3ec19c2bedb368f6cd34e4a0ae42bd6
 FROM ${BROWSER_IMAGE}
 USER root
 # socat exposes each Chrome's DevTools port; xdpyinfo (x11-utils) lets the service wait for the display; xdotool hides and
