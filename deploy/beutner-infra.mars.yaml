@@ -1,0 +1,52 @@
+---
+# REVIEW INPUT: merge these list entries into inventory/host_vars/mars.yml next to the existing budget deployment.
+# Names, paths and the public origin are assumptions to verify against the existing budget entries.
+compose_deployments:
+  - name: budget-browser
+    source_repository: git@git.beutner.name:gunnar/budget.git
+    directory: /docker/budget
+    compose_file: compose.yaml
+    compose_src: files/mars/docker/budget/compose.yaml
+    service: browser
+    build_context: docker/browser
+    build_file: Dockerfile
+    image_repository: git.beutner.name/gunnar/budget-browser
+    override_path: /docker/budget/compose.images.browser.yaml
+    metadata_path: /docker/budget/deployment.browser.metadata.yaml
+    health_retries: 30
+    health_delay: 5
+
+# Append: generated files must not be treated as drift.
+role_managed_destinations:
+  - /docker/budget/compose.images.browser.yaml
+  - /docker/budget/deployment.browser.metadata.yaml
+
+host_configuration_catalog:
+  - src: files/mars/docker/budget/seccomp_profile.json   # copy of docker/browser/seccomp_profile.json (see SECCOMP.md)
+    dest: /docker/budget/seccomp_profile.json
+    owner: root
+    group: root
+    mode: '0644'
+    status: managed
+    classification: browser_security_policy
+    validate: /usr/bin/python3 -m json.tool %s
+    activation: Install before the first browser deployment; permits Chrome's non-root user-namespace sandbox without SYS_ADMIN or an unconfined profile.
+
+secret_configuration_catalog:
+  # one value, two files: the app reads it as Browser__Remote__Token, the sidecar as SELKIES_MASTER_TOKEN
+  - src: secrets/mars/budget-browser.sops.yaml
+    dest: /docker/budget/secrets/browser.env
+    owner: root
+    group: root
+    mode: '0600'
+    status: encrypted_managed
+    validate: /usr/bin/test -s %s
+    activation: Contains Browser__Remote__Token; recreate app and browser together when rotating.
+  - src: secrets/mars/budget-browser-sidecar.sops.yaml
+    dest: /docker/budget/secrets/browser-sidecar.env
+    owner: root
+    group: root
+    mode: '0600'
+    status: encrypted_managed
+    validate: /usr/bin/test -s %s
+    activation: Contains SELKIES_MASTER_TOKEN (same value); recreate app and browser together when rotating.
