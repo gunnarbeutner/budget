@@ -262,7 +262,7 @@
         @if (RulesCategoryId is { } rulesCategory)
         {
             <RulesBar ProjectId="ProjectId" CategoryId="rulesCategory" CategoryName="@SelectionName"
-                      PrefillPayee="@_rulesPrefill" PrefillToken="_rulesPrefillToken"
+                      PrefillPayee="@_rulesPrefill" PrefillToken="_rulesPrefillToken" OnPrefillUsed="() => _rulesPrefill = null"
                       OnPreview="OnRulePreviewAsync" OnApplied="ReloadAsync" OnClose="CloseRulesAsync" />
         }
 

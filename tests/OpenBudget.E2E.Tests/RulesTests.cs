@@ -148,6 +148,15 @@ public sealed class RulesTests : EndToEndTestBase
 
         // The category's list now shows them.
         await Expect(Page.GetByTestId("tx-row").Filter(new() { HasText = "Example Grocer" })).ToHaveCountAsync(3);
+
+        // The prefilled payee is used once: another category's rules bar opens without that draft.
+        await bar.GetByTestId("rules-close").ClickAsync();
+        await Category("Salary").ClickAsync(new() { Button = MouseButton.Right });
+        await Page.GetByTestId("ctx-rules").ClickAsync();
+        await Expect(bar).ToContainTextAsync("Salary");
+        await Expect(bar.GetByTestId("rules-empty")).ToBeVisibleAsync();
+        await Expect(bar.GetByTestId("rule-payee")).ToHaveCountAsync(0);
+        await Expect(bar.GetByTestId("rules-preview-count")).ToHaveCountAsync(0);
     }
 
     [Test]

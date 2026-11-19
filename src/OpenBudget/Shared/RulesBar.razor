@@ -169,6 +169,8 @@
     /// <summary>A payee to start a new draft row with ("Create rule from this…"); a new draft is added each time <see cref="PrefillToken"/> changes.</summary>
     [Parameter] public string? PrefillPayee { get; set; }
     [Parameter] public int PrefillToken { get; set; }
+    /// <summary>The prefilled draft was added; the page drops the payee so a later bar does not add it again.</summary>
+    [Parameter] public EventCallback OnPrefillUsed { get; set; }
     /// <summary>The ids the draft being edited matches (live preview), or null for the normal list.</summary>
     [Parameter] public EventCallback<IReadOnlyCollection<long>?> OnPreview { get; set; }
     /// <summary>Rules were applied to existing transactions: the page reloads its list.</summary>
@@ -229,6 +231,7 @@
         if (loadedKey != (ProjectId, CategoryId))
         {
             loadedKey = (ProjectId, CategoryId);
+            await EndPreviewAsync();
             rows = null;
             status = null;
             accounts = await RuleService.GetAccountsAsync(ProjectId);
@@ -245,6 +248,7 @@
                 var row = NewDraft();
                 SetParts(row, new RuleParts { Payee = PrefillPayee.Trim() });
                 row.Dirty = true;
+                await OnPrefillUsed.InvokeAsync();
                 await SchedulePreviewAsync(row, immediate: true);
             }
         }
