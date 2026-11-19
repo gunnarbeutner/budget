@@ -59,9 +59,9 @@ public sealed class RuleValidationException : Exception
 /// </summary>
 public static class CategoryRuleEngine
 {
-    /// <summary>Whether a transaction is open for a rule.</summary>
+    /// <summary>Whether a transaction is open for a rule: any uncategorised one, also when its category was removed by hand.</summary>
     public static bool IsCandidate(Transaction t) =>
-        t.CategoryId == null && t.CategorySetBy != TransactionCategorySource.Manual && t.Splitted != SplitState.Parent;
+        t.CategoryId == null && t.Splitted != SplitState.Parent;
 
     /// <summary>
     /// Called by the bank sync on the rows it is about to insert (still unsaved, tracked by <paramref name="db"/>, a
@@ -298,7 +298,7 @@ public sealed class CategoryRuleService
         return plan.Count;
     }
 
-    /// <summary>Categorises the project's existing uncategorised (and never hand-categorised) transactions. Returns how many.</summary>
+    /// <summary>Categorises the project's existing uncategorised transactions. Returns how many.</summary>
     public async Task<int> ApplyExistingAsync(int projectId, long? categoryId = null, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
@@ -372,7 +372,7 @@ public sealed class CategoryRuleService
         {
             var part = chunk;
             var q = db.Transactions.AsNoTracking().Where(t => t.AccountId.HasValue && part.Contains(t.AccountId.Value) && (t.Splitted ?? 0) != SplitState.Parent);
-            if (onlyCandidates) q = q.Where(t => t.CategoryId == null && t.CategorySetBy != TransactionCategorySource.Manual);
+            if (onlyCandidates) q = q.Where(t => t.CategoryId == null);
             result.AddRange((await q.Select(t => new Transaction
             {
                 Id = t.Id,

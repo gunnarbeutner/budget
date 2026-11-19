@@ -64,7 +64,7 @@ public sealed class CategoryRuleTests
         db.Categories.Add(new Category { Id = Dining, OwnerUserId = AccessWorld.Alice, Name = "Dining", GroupId = AccessWorld.SharedGroup, Type = 1 });
         db.Transactions.Add(Row(20, AccessWorld.AccountWp, "Example Market"));
         db.Transactions.Add(Row(21, AccessWorld.AccountWp, "Example Market"));
-        // Set aside by hand: removed the category on purpose.
+        // Category removed by hand: still uncategorised, so open for a rule.
         var manual = Row(22, AccessWorld.AccountWp, "Example Market");
         manual.CategorySetBy = TransactionCategorySource.Manual;
         db.Transactions.Add(manual);
@@ -148,9 +148,9 @@ public sealed class CategoryRuleTests
 
         await AddRuleAsync(s, AccessWorld.Shared, "Example Market", Groceries);
         Assert.Equal(0, await s.PreviewApplyExistingAsync(AccessWorld.Shared, Dining));
-        Assert.Equal(2, await s.PreviewApplyExistingAsync(AccessWorld.Shared, Groceries));
+        Assert.Equal(3, await s.PreviewApplyExistingAsync(AccessWorld.Shared, Groceries));
         Assert.Equal(0, await s.ApplyExistingAsync(AccessWorld.Shared, Dining));
-        Assert.Equal(2, await s.ApplyExistingAsync(AccessWorld.Shared, Groceries));
+        Assert.Equal(3, await s.ApplyExistingAsync(AccessWorld.Shared, Groceries));
     }
 
     [Fact]
@@ -167,24 +167,23 @@ public sealed class CategoryRuleTests
     }
 
     [Fact]
-    public async Task Apply_existing_previews_then_categorizes_without_overwriting_manual_choices()
+    public async Task Apply_existing_categorizes_every_uncategorized_row_but_keeps_manual_choices()
     {
         await using var t = await WorldAsync();
         var s = ServiceFor(t, AccessWorld.Alice);
         var groceries = await AddRuleAsync(s, AccessWorld.Shared, "Example Market", Groceries);
         await AddRuleAsync(s, AccessWorld.Shared, "Example", Dining); // later rule: loses
 
-        Assert.Equal(2, await s.PreviewApplyExistingAsync(AccessWorld.Shared));
-        Assert.Equal(2, await s.ApplyExistingAsync(AccessWorld.Shared));
+        Assert.Equal(3, await s.PreviewApplyExistingAsync(AccessWorld.Shared));
+        Assert.Equal(3, await s.ApplyExistingAsync(AccessWorld.Shared));
 
-        foreach (var id in new long[] { 20, 21 })
+        foreach (var id in new long[] { 20, 21, 22 })
         {
             var row = await LoadAsync(t, id);
             Assert.Equal(Groceries, row.CategoryId);
             Assert.Equal(TransactionCategorySource.Rule, row.CategorySetBy);
             Assert.Equal(groceries, row.RuleId);
         }
-        Assert.Null((await LoadAsync(t, 22)).CategoryId);            // removed by hand
         Assert.Equal(Dining, (await LoadAsync(t, 23)).CategoryId);   // chosen by hand
         Assert.Null((await LoadAsync(t, 24)).CategoryId);            // no rule matches
         Assert.Equal(0, await s.PreviewApplyExistingAsync(AccessWorld.Shared));
@@ -202,7 +201,7 @@ public sealed class CategoryRuleTests
             Enabled = true,
             Expression = "(name:\"example market\" OR \"sample bakery\") AND amount<0 AND NOT comment:\"refund\"",
         });
-        Assert.Equal(3, await s.ApplyExistingAsync(AccessWorld.Shared));
+        Assert.Equal(4, await s.ApplyExistingAsync(AccessWorld.Shared));
         Assert.Equal(Groceries, (await LoadAsync(t, 20)).CategoryId);
     }
 
@@ -253,7 +252,7 @@ public sealed class CategoryRuleTests
         await using var t = await WorldAsync(ProjectRole.Editor);
         var bob = ServiceFor(t, AccessWorld.Bob);
         await AddRuleAsync(bob, AccessWorld.Shared, "Example Market", Groceries);
-        Assert.Equal(2, await bob.ApplyExistingAsync(AccessWorld.Shared));
+        Assert.Equal(3, await bob.ApplyExistingAsync(AccessWorld.Shared));
     }
 
     [Fact]

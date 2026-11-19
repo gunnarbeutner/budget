@@ -73,7 +73,7 @@
                  @onkeydown="e => OnKeyAsync(row, e)">
                 <input class="form-control form-control-sm font-monospace rules-expr @(row.SyntaxError != null ? "is-invalid" : "")" data-testid="rule-expression" maxlength="4000"
                        placeholder="@L["Field_Expression"]" aria-label="@L["Field_Expression"]" title="@L["Field_ExpressionTitle"]" spellcheck="false"
-                       value="@row.Draft.Expression" @oninput="e => EditExpression(row, e.Value?.ToString())" />
+                       value="@RuleExpressionNames.ToDisplay(row.Draft.Expression, restrictionTargets)" @oninput="e => EditExpression(row, e.Value?.ToString())" />
                 @if (row.Parts is { } parts)
                 {
                     <input class="form-control form-control-sm rules-text" data-testid="rule-payee" maxlength="500"
@@ -307,8 +307,13 @@
 
     private Task EditExpression(RowState row, string? text) => Edit(row, d =>
     {
-        d.Expression = text ?? "";
+        d.Expression = RuleExpressionNames.FromDisplay(text, restrictionTargets, out var nameError);
         Reparse(row);
+        if (nameError != null)
+        {
+            row.SyntaxError = nameError;
+            row.Parts = null;
+        }
     });
 
     private Task EditParts(RowState row, Func<RuleParts, RuleParts> change) =>
@@ -381,6 +386,7 @@
             row.Error = L["Error_InvalidAmountRange"];
             return;
         }
+        if (row.SyntaxError != null) { row.Error = L["Error_InvalidExpression"]; return; }
         row.Draft.CategoryId = CategoryId;
         try
         {
