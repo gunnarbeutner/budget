@@ -16,6 +16,9 @@ public sealed class BrowserProfileStore
     /// <summary>The largest profile archive that is kept; a larger one is not stored (the next run starts fresh).</summary>
     public const long MaxArchiveBytes = 64L * 1024 * 1024;
 
+    /// <summary>The most a profile archive may unpack to (guards against archives that expand enormously).</summary>
+    public const long MaxUnpackedBytes = 16 * MaxArchiveBytes;
+
     /// <summary>Directories of the profile that only hold caches, crash reports or downloaded components.</summary>
     private static readonly HashSet<string> SkippedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -58,28 +61,11 @@ public sealed class BrowserProfileStore
     /// </summary>
     public bool Restore(string key, string target)
     {
-        var path = PathOf(key);
-        if (!IsEnabled || !File.Exists(path)) return false;
+        var zip = ReadArchive(key);
+        if (zip == null) return false;
         try
         {
-            var info = new FileInfo(path);
-            if (info.Length > MaxArchiveBytes + 64) throw new InvalidDataException("The stored profile is too large.");
-            if (!_secrets.TryDecryptBytes(File.ReadAllBytes(path), Purpose(key), out var zip))
-                throw new InvalidDataException("The stored profile could not be decrypted.");
-            var root = Path.GetFullPath(target) + Path.DirectorySeparatorChar;
-            using var archive = new ZipArchive(new MemoryStream(zip), ZipArchiveMode.Read);
-            foreach (var entry in archive.Entries)
-            {
-                var dest = Path.GetFullPath(Path.Combine(target, entry.FullName));
-                if (!dest.StartsWith(root, StringComparison.Ordinal)) throw new InvalidDataException("The stored profile has an entry outside its directory.");
-                if (entry.FullName.EndsWith('/', StringComparison.Ordinal))
-                {
-                    Directory.CreateDirectory(dest);
-                    continue;
-                }
-                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-                entry.ExtractToFile(dest, overwrite: true);
-            }
+            Extract(zip, target);
             return true;
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or NotSupportedException)
@@ -87,6 +73,77 @@ public sealed class BrowserProfileStore
             _logger.LogWarning(ex, "The stored browser profile {Key} could not be restored; the browser starts with a fresh profile.", key);
             Empty(target);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// The stored profile of <paramref name="key"/> as a plain zip of its user-data directory (for a browser that runs
+    /// elsewhere); null when none is stored or it cannot be read.
+    /// </summary>
+    public byte[]? ReadArchive(string key)
+    {
+        var path = PathOf(key);
+        if (!IsEnabled || !File.Exists(path)) return null;
+        try
+        {
+            var info = new FileInfo(path);
+            if (info.Length > MaxArchiveBytes + 64) throw new InvalidDataException("The stored profile is too large.");
+            if (!_secrets.TryDecryptBytes(File.ReadAllBytes(path), Purpose(key), out var zip))
+                throw new InvalidDataException("The stored profile could not be decrypted.");
+            return zip;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "The stored browser profile {Key} could not be read; the browser starts with a fresh profile.", key);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Stores the zip <paramref name="archive"/> of a user-data directory (from a browser that ran elsewhere) as the profile
+    /// of <paramref name="key"/>, with the same filtering and size limit as <see cref="Save"/>. False when nothing was stored.
+    /// </summary>
+    public bool SaveArchive(string key, byte[] archive)
+    {
+        if (!IsEnabled) return false;
+        var dir = Path.Combine(Path.GetTempPath(), "openbudget-profile-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(dir);
+            Extract(archive, dir);
+            return Save(key, dir);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or NotSupportedException)
+        {
+            _logger.LogWarning(ex, "The browser profile {Key} could not be stored.", key);
+            return false;
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* a temp directory */ }
+        }
+    }
+
+    /// <summary>Unpacks <paramref name="zip"/> into <paramref name="target"/>, refusing entries that point outside it.</summary>
+    private static void Extract(byte[] zip, string target)
+    {
+        var root = Path.GetFullPath(target) + Path.DirectorySeparatorChar;
+        using var archive = new ZipArchive(new MemoryStream(zip), ZipArchiveMode.Read);
+        long total = 0;
+        foreach (var entry in archive.Entries)
+        {
+            var dest = Path.GetFullPath(Path.Combine(target, entry.FullName));
+            if (!dest.StartsWith(root, StringComparison.Ordinal)) throw new InvalidDataException("The stored profile has an entry outside its directory.");
+            if (entry.FullName.EndsWith('/', StringComparison.Ordinal))
+            {
+                Directory.CreateDirectory(dest);
+                continue;
+            }
+            total += entry.Length;
+            if (total > MaxUnpackedBytes) throw new InvalidDataException("The profile is too large when unpacked.");
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            entry.ExtractToFile(dest, overwrite: true);
         }
     }
 

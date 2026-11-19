@@ -26,6 +26,12 @@ public interface IBrowserSession : IAsyncDisposable
     /// <summary>Address of the page.</summary>
     Uri Url { get; }
 
+    /// <summary>
+    /// The id of this browser on the browser sidecar's shared screen (see <see cref="RemoteScreen"/>); null for a browser
+    /// that runs in-process and is shown as a screencast.
+    /// </summary>
+    string? ScreenId => null;
+
     /// <summary>The User-Agent the page sees; requests that continue the session should send the same.</summary>
     string UserAgent => "";
 

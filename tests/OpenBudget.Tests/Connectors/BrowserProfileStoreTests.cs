@@ -72,6 +72,54 @@ public sealed class BrowserProfileStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_profile_travels_as_a_zip_to_a_browser_elsewhere_and_back_without_caches()
+    {
+        var store = Store();
+        var key = BrowserProfileStore.ForLogin(8);
+        Assert.Null(store.ReadArchive(key));
+        Assert.True(store.Save(key, Profile()));
+
+        var zip = store.ReadArchive(key)!;
+        using (var archive = new System.IO.Compression.ZipArchive(new MemoryStream(zip)))
+            Assert.Contains(archive.Entries, e => e.FullName == "Default/Local Storage/leveldb/000003.log");
+
+        // the browser elsewhere hands back its whole directory, caches and guards included; only site data is kept
+        var returned = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(returned, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            Add(archive, "Default/Local Storage/leveldb/000003.log", "changed-marker");
+            Add(archive, "Default/Cache/Cache_Data/f_000002", "cached");
+            Add(archive, "SingletonLock", "host-2");
+        }
+        Assert.True(store.SaveArchive(key, returned.ToArray()));
+
+        var target = Dir("target");
+        Assert.True(store.Restore(key, target));
+        Assert.Equal("changed-marker", File.ReadAllText(Path.Combine(target, "Default/Local Storage/leveldb/000003.log")));
+        Assert.False(Directory.Exists(Path.Combine(target, "Default/Cache")));
+        Assert.False(File.Exists(Path.Combine(target, "SingletonLock")));
+    }
+
+    [Fact]
+    public void A_returned_archive_with_an_entry_outside_its_directory_is_not_stored()
+    {
+        var store = Store();
+        var key = BrowserProfileStore.ForLogin(9);
+        var returned = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(returned, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+            Add(archive, "../escaped", "x");
+        Assert.False(store.SaveArchive(key, returned.ToArray()));
+        Assert.False(store.Exists(key));
+        Assert.False(store.SaveArchive(key, [1, 2, 3]));
+    }
+
+    private static void Add(System.IO.Compression.ZipArchive archive, string name, string content)
+    {
+        using var writer = new StreamWriter(archive.CreateEntry(name).Open());
+        writer.Write(content);
+    }
+
+    [Fact]
     public void The_stored_file_is_encrypted()
     {
         var store = Store();

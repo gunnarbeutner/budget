@@ -76,4 +76,10 @@
   <data name="Address" xml:space="preserve">
     <value>Adresse</value>
   </data>
+  <data name="Waiting" xml:space="preserve">
+    <value>Gerade nutzt eine andere Anmeldung den Browser; diese wird angezeigt, sobald sie fertig ist.</value>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>Der Browser konnte nicht angezeigt werden. Brich die Synchronisierung ab und versuche es erneut.</value>
+  </data>
 </root>

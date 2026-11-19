@@ -226,6 +226,9 @@ public sealed class WebLoginSession : IAsyncDisposable
 
     public string OwnerUserId { get; }
 
+    /// <summary>The login's browser on the sidecar's shared screen (see <see cref="RemoteScreen"/>); null when it runs in-process.</summary>
+    public string? ScreenId => _browser.ScreenId;
+
     public DateTime ExpiresAt { get; }
 
     /// <summary>What the owner should see now; <see cref="ModeChanged"/> reports changes.</summary>

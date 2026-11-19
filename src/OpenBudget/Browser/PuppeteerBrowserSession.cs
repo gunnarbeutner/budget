@@ -34,9 +34,10 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
     /// <summary>
     /// A session on <paramref name="page"/>; disposing it closes <paramref name="context"/>, or runs <paramref name="close"/>
     /// instead (a browser of its own, whose default context cannot be closed), then <paramref name="onClosed"/>.
+    /// <paramref name="screenId"/> names a browser on the sidecar's shared screen.
     /// </summary>
     public static async Task<PuppeteerBrowserSession> CreateAsync(
-        IBrowserContext context, IPage page, BrowserOptions options, Action onClosed, Func<Task>? close = null)
+        IBrowserContext context, IPage page, BrowserOptions options, Action onClosed, Func<Task>? close = null, string? screenId = null)
     {
         var cdp = await page.CreateCDPSessionAsync();
         // Ordinary links stay in the streamed tab without replacing native browser functions or identity properties.
@@ -45,6 +46,7 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         var native = await NativeAsync(page);
         return new PuppeteerBrowserSession(context, page, cdp, options, onClosed, close)
         {
+            ScreenId = screenId,
             UserAgent = native.GetProperty("userAgent").GetString()!,
             ViewportWidth = native.GetProperty("width").GetInt32(),
             ViewportHeight = native.GetProperty("height").GetInt32(),
@@ -73,6 +75,8 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
     }
 
     public string UserAgent { get; private init; } = "";
+
+    public string? ScreenId { get; private init; }
 
     public int? ViewportWidth { get; private set; }
 

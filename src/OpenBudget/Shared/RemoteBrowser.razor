@@ -1,9 +1,40 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject IStringLocalizer<RemoteBrowser> L
-@* Live view of the isolated browser of a web login (bank sign-in page): the server streams the page as JPEG frames over a
-   WebSocket into the canvas, and this component forwards mouse, keyboard and paste input. The WebSocket only accepts the
-   signed-in owner of the session (see WebLoginEndpoints). Nothing typed or shown here is stored. *@
+@inject IServiceProvider Services
+@inject OpenBudget.Browser.IWebLoginService Logins
+@inject OpenBudget.Services.ICurrentUser CurrentUser
+@* Live view of the isolated browser of a web login (bank sign-in page). A browser on the browser sidecar is shown through
+   its stream (selkies) in an iframe, once the sidecar's one screen is free for it (RemoteScreen); otherwise the server
+   streams the page as JPEG frames over a WebSocket into the canvas, and this component forwards mouse, keyboard and paste
+   input. Both only serve the signed-in owner of the session (see WebLoginEndpoints). Nothing typed or shown here is stored. *@
+@if (_remote)
+{
+    <div class="rb-screen position-relative border rounded bg-body-tertiary" data-testid="remote-browser" data-mode="stream">
+        @if (_stream != null)
+        {
+            <iframe @key="_stream.Token" class="rb-stream w-100 d-block border-0 rounded" title="@L["Label"]"
+                    src="@(OpenBudget.Browser.RemoteBrowserOptions.StreamPath + "#token=" + Uri.EscapeDataString(_stream.Token))"
+                    allow="clipboard-read; clipboard-write"></iframe>
+        }
+        else
+        {
+            <div class="p-5 text-center text-body-secondary" data-testid="rb-stream-status">
+                @if (_error != null)
+                {
+                    <span class="text-danger">@_error</span>
+                }
+                else
+                {
+                    <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+                    <span>@(_queued ? L["Waiting"] : L["Connecting"])</span>
+                }
+            </div>
+        }
+    </div>
+}
+else
+{
 <div class="rb-screen position-relative border rounded bg-body-tertiary" data-testid="remote-browser">
     <div class="d-flex align-items-center gap-1 p-1 border-bottom">
         <button type="button" class="btn btn-sm btn-outline-secondary" title="@L["Back"]" aria-label="@L["Back"]" data-testid="rb-back" @onclick='() => NavAsync("back")'><i class="bi bi-arrow-left"></i></button>
@@ -30,6 +61,7 @@
         <div class="alert alert-warning m-2" role="alert">@_error</div>
     }
 </div>
+}
 
 @code {
     /// <summary>The web login session whose browser to show (its owner is checked again by the WebSocket endpoint).</summary>
@@ -44,9 +76,80 @@
     private bool _hasFrame;
     private bool _disposed;
 
+    // the sidecar's stream: whether this session's browser runs there, its view once on screen, and whether it waits
+    private bool _remote;
+    private bool _queued;
+    private string? _streamFor;
+    private OpenBudget.Browser.ScreenView? _stream;
+    private CancellationTokenSource? _streamCts;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_disposed || _streamFor == SessionId) return;
+        _streamFor = SessionId;
+        await ReleaseViewAsync();
+        _remote = false;
+        _error = null;
+        if (Services.GetService<OpenBudget.Browser.RemoteScreen>() is not { } screen || string.IsNullOrEmpty(SessionId)) return;
+        var userId = await CurrentUser.GetUserIdAsync();
+        if (userId == null || Logins.Find(SessionId, userId) is not { ScreenId: { } screenId } session) return;
+        _remote = true;
+        var cts = _streamCts = new CancellationTokenSource();
+        _queued = false;
+        _ = ShowAsync(screen, session, userId, screenId, cts.Token);
+    }
+
+    private async Task ShowAsync(OpenBudget.Browser.RemoteScreen screen, OpenBudget.Browser.WebLoginSession session, string userId, string screenId, CancellationToken ct)
+    {
+        try
+        {
+            var waiting = screen.ShowAsync(session.Id, userId, screenId, session.Completion, ct);
+            if (!waiting.IsCompleted)
+            {
+                _queued = screen.Position(session.Id) > 0;
+                await InvokeAsync(StateHasChanged);
+            }
+            var view = await waiting;
+            if (ct.IsCancellationRequested || _disposed)
+            {
+                await view.DisposeAsync();
+                return;
+            }
+            _stream = view;
+            _queued = false;
+            view.Ended.Register(() => _ = InvokeAsync(() =>
+            {
+                if (_stream != view) return;
+                _stream = null;
+                _error = L["Closed"];
+                StateHasChanged();
+            }));
+        }
+        catch (OperationCanceledException) { return; /* the dialog closed or the login ended */ }
+        catch (OpenBudget.Browser.BrowserActionException)
+        {
+            _error = L["Unavailable"];
+        }
+        try { await InvokeAsync(StateHasChanged); }
+        catch (ObjectDisposedException) { /* circuit gone */ }
+    }
+
+    private async Task ReleaseViewAsync()
+    {
+        if (_streamCts != null)
+        {
+            await _streamCts.CancelAsync();
+            _streamCts.Dispose();
+            _streamCts = null;
+        }
+        var view = _stream;
+        _stream = null;
+        if (view != null) await view.DisposeAsync();
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_disposed || string.IsNullOrEmpty(SessionId) || _attachedTo == SessionId) return;
+        if (_disposed || _remote || string.IsNullOrEmpty(SessionId) || _attachedTo == SessionId) return;
         _attachedTo = SessionId;
         try
         {
@@ -95,6 +198,7 @@
     {
         if (_disposed) return;
         _disposed = true;
+        await ReleaseViewAsync();
         try
         {
             if (_view != null) { await _view.InvokeVoidAsync("dispose"); await _view.DisposeAsync(); }

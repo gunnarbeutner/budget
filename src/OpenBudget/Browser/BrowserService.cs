@@ -12,7 +12,9 @@ namespace OpenBudget.Browser;
 /// incognito-style context, so bank sessions of different users can never mix. The process is closed again a
 /// minute after the last session ended. A session in a long-lived profile (<see cref="OpenSessionAsync(string?, CancellationToken)"/>)
 /// runs in a Chromium process of its own on that profile, restored from <see cref="BrowserProfileStore"/> and stored
-/// back when the session ends; one such session per profile runs at a time.
+/// back when the session ends; one such session per profile runs at a time. With the browser sidecar configured
+/// (<see cref="RemoteBrowserOptions"/>), every session instead runs in a Chrome of its own that the sidecar's launcher
+/// starts on its shared screen, on the stored profile or an empty one, and this service connects to it over CDP.
 /// </summary>
 public sealed class BrowserService : IBrowserHost, IAsyncDisposable
 {
@@ -28,10 +30,16 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
     private readonly BrowserProfileStore? _profiles;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> _profileGates = new(StringComparer.Ordinal);
 
-    public BrowserService(ILogger<BrowserService> logger, BrowserOptions? options = null, BrowserProfileStore? profiles = null)
+    private readonly BrowserLauncherClient? _launcher;
+    private readonly SemaphoreSlim _resetLock = new(1, 1);
+    private bool _launcherReset;
+
+    public BrowserService(ILogger<BrowserService> logger, BrowserOptions? options = null, BrowserProfileStore? profiles = null,
+        BrowserLauncherClient? launcher = null)
     {
         _logger = logger;
         _profiles = profiles;
+        _launcher = launcher;
         Options = options ?? new BrowserOptions();
         _slots = new SemaphoreSlim(Math.Max(1, Options.MaxConcurrentSessions));
     }
@@ -44,7 +52,10 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
         get { lock (_gate) return _open; }
     }
 
-    public bool IsAvailable => FindChrome(Options.ExecutablePath) != null;
+    public bool IsAvailable => _launcher != null || FindChrome(Options.ExecutablePath) != null;
+
+    /// <summary>Whether sessions run on the browser sidecar (<see cref="RemoteBrowserOptions"/>).</summary>
+    public bool IsRemote => _launcher != null;
 
     /// <summary>Resolved Chromium path, or null when none is installed.</summary>
     public static string? FindChrome(string? configured = null)
@@ -78,6 +89,7 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
                 _open++;
                 CancelIdleShutdown();
             }
+            if (_launcher != null) return await OpenRemoteAsync(_launcher, null, () => { }, ct);
             var browser = await EnsureBrowserAsync();
             var context = await browser.CreateBrowserContextAsync();
             try
@@ -129,6 +141,19 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
             _open++;
             CancelIdleShutdown();
         }
+        if (_launcher != null)
+        {
+            try
+            {
+                return await OpenRemoteAsync(_launcher, profile, ReleaseGate, ct);
+            }
+            catch
+            {
+                ReleaseGate();
+                OnSessionClosed();
+                throw;
+            }
+        }
         var dir = Path.Combine(Path.GetTempPath(), "openbudget-profile-" + Guid.NewGuid().ToString("N"));
         IBrowser? browser = null;
         try
@@ -161,6 +186,60 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
             OnSessionClosed();
             throw;
         }
+    }
+
+    /// <summary>
+    /// A session in a Chrome the sidecar starts on <paramref name="profile"/>'s stored profile (or an empty one). Closing
+    /// it ends Chrome, stores the profile back and then runs <paramref name="release"/>. On failure the caller releases.
+    /// </summary>
+    private async Task<IBrowserSession> OpenRemoteAsync(BrowserLauncherClient launcher, string? profile, Action release, CancellationToken ct)
+    {
+        await ResetLauncherOnceAsync(launcher, ct);
+        var archive = profile != null ? _profiles!.ReadArchive(profile) : null;
+        var chrome = await launcher.StartAsync(archive, ct);
+        IBrowser? browser = null;
+        try
+        {
+            var endpoint = await launcher.DevToolsEndpointAsync(chrome, ct);
+            browser = await Puppeteer.ConnectAsync(new ConnectOptions { BrowserWSEndpoint = endpoint.ToString(), DefaultViewport = null });
+            var page = (await browser.PagesAsync()).FirstOrDefault() ?? await browser.NewPageAsync();
+            var connected = browser;
+            async Task CloseAsync()
+            {
+                try
+                {
+                    // closing over CDP lets Chrome write its profile before the launcher packs it
+                    await CloseProcessAsync(connected);
+                    var saved = await launcher.StopAsync(chrome.Id, returnProfile: profile != null, CancellationToken.None);
+                    if (profile != null && saved != null) _profiles!.SaveArchive(profile, saved);
+                }
+                catch (BrowserActionException ex) { _logger.LogWarning(ex, "Stopping the sidecar's browser failed."); }
+                finally { release(); }
+            }
+            _logger.LogInformation("Connected to Chrome {Id} on the browser sidecar.", chrome.Id);
+            return await PuppeteerBrowserSession.CreateAsync(browser.DefaultContext, page, Options, OnSessionClosed, CloseAsync, chrome.Id);
+        }
+        catch
+        {
+            if (browser != null) await CloseProcessAsync(browser);
+            try { await launcher.StopAsync(chrome.Id, returnProfile: false, CancellationToken.None); }
+            catch (BrowserActionException ex) { _logger.LogDebug(ex, "Stopping the sidecar's browser failed."); }
+            throw;
+        }
+    }
+
+    /// <summary>Stops the browsers an earlier run of the app left on the sidecar, once, before the first new one.</summary>
+    private async Task ResetLauncherOnceAsync(BrowserLauncherClient launcher, CancellationToken ct)
+    {
+        if (Volatile.Read(ref _launcherReset)) return;
+        await _resetLock.WaitAsync(ct);
+        try
+        {
+            if (_launcherReset) return;
+            await launcher.ResetAsync(ct);
+            Volatile.Write(ref _launcherReset, true);
+        }
+        finally { _resetLock.Release(); }
     }
 
     private async Task CloseProcessAsync(IBrowser browser)
@@ -326,5 +405,6 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
         await CloseBrowserAsync();
         _slots.Dispose();
         _launchLock.Dispose();
+        _resetLock.Dispose();
     }
 }

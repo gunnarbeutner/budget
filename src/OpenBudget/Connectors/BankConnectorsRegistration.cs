@@ -20,6 +20,8 @@ public static class BankConnectorsRegistration
     /// <summary>"true" runs the web-login browser headless (automated tests; no windows).</summary>
     public const string BrowserHeadlessVariable = "OPENBUDGET_BROWSER_HEADLESS";
 
+    private const string BrowserLauncherClientName = "browser-launcher";
+
     /// <summary>Offers the made-up <see cref="FakeBankConnector"/> (Development runs, test hosts).</summary>
     public static IServiceCollection AddFakeBank(this IServiceCollection services) =>
         services.AddSingleton(FakeBankConnector.Registration);
@@ -66,7 +68,21 @@ public static class BankConnectorsRegistration
         // Long-lived browser profiles of bank logins, encrypted on the data volume.
         services.AddSingleton(sp => new BrowserProfileStore(Path.Combine(OpenBudgetPaths.DataDir(contentRoot), "browser-profiles"),
             sp.GetRequiredService<SecretsProtector>(), sp.GetRequiredService<ILogger<BrowserProfileStore>>()));
-        services.AddSingleton<BrowserService>();
+        // The browser sidecar, when configured: web logins run there and are shown through its stream.
+        // Without it these services resolve to null (GetService) and web logins run in-process.
+        services.AddSingleton(sp => sp.GetRequiredService<IConfiguration>().GetSection(RemoteBrowserOptions.Section).Get<RemoteBrowserOptions>()
+            ?? new RemoteBrowserOptions());
+        services.AddHttpClient(BrowserLauncherClientName, c => c.Timeout = TimeSpan.FromMinutes(2));
+        services.AddHttpClient(DesktopProxy.HttpClientName, c => c.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddSingleton(sp => sp.GetRequiredService<RemoteBrowserOptions>() is { IsEnabled: true } remote
+            ? new BrowserLauncherClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient(BrowserLauncherClientName), remote)
+            : null!);
+        services.AddSingleton(sp => sp.GetService<BrowserLauncherClient>() is { } launcher
+            ? new RemoteScreen(new SidecarScreenBackend(launcher, sp.GetRequiredService<IHttpClientFactory>().CreateClient(BrowserLauncherClientName),
+                sp.GetRequiredService<RemoteBrowserOptions>()), sp.GetRequiredService<ILogger<RemoteScreen>>())
+            : null!);
+        services.AddSingleton(sp => new BrowserService(sp.GetRequiredService<ILogger<BrowserService>>(), sp.GetRequiredService<BrowserOptions>(),
+            sp.GetRequiredService<BrowserProfileStore>(), sp.GetService<BrowserLauncherClient>()));
         services.AddSingleton<IBrowserHost>(sp => sp.GetRequiredService<BrowserService>());
         services.AddSingleton(new WebLoginOptions());
         services.AddSingleton<IWebLoginService, WebLoginService>();
