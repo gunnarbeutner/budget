@@ -47,6 +47,24 @@ public sealed class ProjectReceiptsTests : EndToEndTestBase
     };
 
     [Test]
+    public async Task A_sync_that_stores_a_receipt_shows_it_in_the_open_view()
+    {
+        await GoToAsync($"/projects/{Pid}/receipts");
+        var rows = Page.GetByTestId("receipt-row");
+        await Expect(rows).ToHaveCountAsync(3);
+
+        await using (var db = await Db.CreateDbContextAsync())
+        {
+            db.ReceiptInvoices.Add(Lidl("Sampletown Open C", 1999, new DateTime(2026, 2, 12, 0, 0, 0, DateTimeKind.Utc), ReceiptMatchState.Unmatched, null));
+            await db.SaveChangesAsync();
+        }
+        Factory.BrowserHostServices.GetRequiredService<ChangeNotificationService>().Publish(new DataChange(DataArea.ImportedData, OwnerUserId: E2ESeed.OwnerUserId));
+
+        await Expect(rows).ToHaveCountAsync(4);
+        await Expect(Page.GetByTestId("view-receipts").Locator(".shell-view-badge")).ToHaveTextAsync("3 to review");
+    }
+
+    [Test]
     public async Task The_view_lists_the_projects_receipts_and_the_badge_follows_a_review()
     {
         await GoToAsync($"/projects/{Pid}/browse");
