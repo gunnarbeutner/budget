@@ -61,6 +61,9 @@ html, body {
     line-height: 1.5;
 }
 
+/* No rubber-band bounce on the page itself: it would drag the pinned top bar down with the content. */
+html { overscroll-behavior-y: none; }
+
 h1, h2, h3, h4, h5, h6,
 .h1, .h2, .h3, .h4, .h5, .h6 {
     line-height: 1.25;
