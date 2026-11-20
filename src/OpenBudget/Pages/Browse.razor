@@ -1034,6 +1034,7 @@
         if (query.TryGetValue("cat", out var catRaw) && long.TryParse(catRaw, out var catFilterId)) categoryFilter = catFilterId;
         if (query.TryGetValue("payee", out var payeeRaw) && !string.IsNullOrWhiteSpace(payeeRaw)) payeeEquals = payeeRaw.ToString();
         _rulesOpen = query.TryGetValue("rules", out var rulesRaw) && rulesRaw.ToString() == "1" && selectionKind == "category";
+        if (_rulesOpen) CollapseChartForRules();
         if (query.TryGetValue("pin", out var pinRaw) && pinRaw.ToString() == "1") pinFilters = true;
         if (query.TryGetValue("g", out var g) && g.ToString() is var gv && (gv == "M" || gv == "Q" || gv == "Y" || gv == "D"))
         {

@@ -203,6 +203,24 @@ public sealed class RulesTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task Many_rules_and_the_chart_leave_most_of_the_pane_to_the_ledger()
+    {
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            for (var i = 0; i < 10; i++)
+                db.CategoryRules.Add(new CategoryRule { ProjectId = E2ESeed.ProjectId, SortOrder = i, CategoryId = 200, Expression = $"name:\"Shop {i}\"" });
+            await db.SaveChangesAsync();
+        }
+        await Page.SetViewportSizeAsync(1440, 900);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=cat-200&rules=1");
+        await Expect(Page.GetByTestId("rule-row")).ToHaveCountAsync(10);
+
+        var ledger = await Page.Locator(".browse-scroll").BoundingBoxAsync();
+        Assert.That(ledger!.Height, Is.GreaterThan(900 * 0.4), "the ledger keeps a usable share of the pane");
+    }
+
+    [Test]
     public async Task The_bar_stays_usable_at_phone_width()
     {
         await Page.SetViewportSizeAsync(390, 844);

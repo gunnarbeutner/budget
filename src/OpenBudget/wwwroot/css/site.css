@@ -1903,6 +1903,13 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 
 /* Rules bar (Transactions › category › Rules…): one inline form per rule; rows stack on phones. */
 .rules-bar { border-bottom: 1px solid var(--bs-border-color); padding: 0.5rem 1rem; background: var(--bs-tertiary-bg); display: flex; flex-direction: column; gap: 0.35rem; }
+/* On wider screens the rules leave most of the pane to the ledger: they scroll inside the bar, and the chart (collapsed
+   when the bar opens) stays small if expanded again. A phone scrolls the page as a whole instead. */
+.rules-list { display: flex; flex-direction: column; gap: 0.35rem; }
+@media (min-width: 768px) {
+    .rules-list { max-height: 30vh; overflow-y: auto; }
+    .browse-main:has(.rules-bar) .browse-head { max-height: 20vh; }
+}
 .rules-bar-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .rules-bar-preview { font-size: 0.8125rem; color: var(--bs-primary-text-emphasis, var(--bs-primary)); }
 .rules-row { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 1fr) auto auto auto auto; gap: 0.35rem 0.5rem; align-items: center; padding: 0.25rem; border-radius: 0.375rem; }

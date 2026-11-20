@@ -183,6 +183,7 @@ public partial class Browse
         ResetTransientFilters();
         CoerceChartGranularityForSelection();
         railOpen = false;
+        if (!_rulesOpen) CollapseChartForRules();
         _rulesOpen = true;
         if (prefillPayee != null)
         {
@@ -193,9 +194,20 @@ public partial class Browse
         if (reload) await ReloadTransactionsAsync();
     }
 
+    /// <summary>The rules bar takes the chart's room, so the chart collapses while it is open and comes back after.</summary>
+    private void CollapseChartForRules()
+    {
+        _chartCollapsedByRules = !chartCollapsed;
+        chartCollapsed = true;
+    }
+
+    private bool _chartCollapsedByRules;
+
     private async Task CloseRulesAsync()
     {
         _rulesOpen = false;
+        if (_chartCollapsedByRules && chartCollapsed) ToggleChartCollapsed();
+        _chartCollapsedByRules = false;
         UpdateUrl();
         if (_previewIds != null)
         {
