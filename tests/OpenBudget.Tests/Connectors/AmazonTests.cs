@@ -413,6 +413,28 @@ public sealed class AmazonTests
         Assert.Equal(0, shop.OddAnswers);
     }
 
+    [Fact]
+    public async Task A_wallet_served_without_its_list_is_loaded_again()
+    {
+        var shop = new ScriptedShop();
+        shop.Pages["/cpe/yourpayments/transactions"] = WalletHtml(false, Entry("-€10.60", "12 Nov 2026", OrderA, "Amazon Visa", "1111"));
+        var connector = await SignedInAsync(shop);
+        shop.BarePages = 1;
+
+        var step = await connector.FetchOrdersAsync(new DateOnly(2025, 11, 13), new HashSet<string>(StringComparer.Ordinal), [], null, CancellationToken.None);
+
+        Assert.Single(step.Value!.Charges);
+        Assert.Equal(2, shop.Requested.Count(r => r.StartsWith("/cpe/yourpayments/transactions", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void A_page_is_described_by_its_shape_without_its_content()
+    {
+        var shape = AmazonPages.DescribePage(new Uri("https://shop.test/cpe/yourpayments/transactions?x=secret"), WalletHtml(false));
+        Assert.DoesNotContain("secret", shape, StringComparison.Ordinal);
+        Assert.Contains("https://shop.test/cpe/yourpayments/transactions", shape, StringComparison.Ordinal);
+    }
+
     private static string KeyedAnswer(string? nextKey, params JsonObject[] entries) => new JsonObject
     {
         ["displayResponse"] = new JsonObject { ["transactionsList"] = new JsonArray(entries), ["lastEvaluatedKey"] = nextKey },
@@ -532,6 +554,9 @@ public sealed class AmazonTests
         /// <summary>How many further-page requests are answered with JSON that holds no payment list.</summary>
         public int OddAnswers { get; set; }
 
+        /// <summary>How many GETs are answered with a page that holds no data, as Amazon sometimes does right after a sign-in.</summary>
+        public int BarePages { get; set; }
+
         /// <summary>A further page as Amazon answers it: <c>displayResponse.transactionsList</c> and <c>lastEvaluatedKey</c>.</summary>
         public string? NextPageJson => NextPage == null ? null : NextPageAnswer(NextPage);
         public bool IsOpen => true;
@@ -558,6 +583,11 @@ public sealed class AmazonTests
                     return ByKey.TryGetValue(key, out var json) ? Answer(200, request.Url, json) : Answer(429, request.Url, "");
                 }
                 return Answer(NextPage == null ? 500 : 200, request.Url, NextPageJson ?? "");
+            }
+            if (BarePages > 0)
+            {
+                BarePages--;
+                return Answer(200, request.Url, "<html><head><title>Amazon.de</title></head><body></body></html>");
             }
             return Pages.TryGetValue(request.Url.AbsolutePath, out var html) ? Answer(200, request.Url, html) : Answer(404, request.Url, "");
         }

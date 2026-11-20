@@ -185,8 +185,21 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
         var response = await browser.GetAsync(walletUrl, "text/html", ct);
         if (AmazonPages.IsSignInPage(response.Url, response.Text)) return NeedSignIn(answer != null);
         if (!response.IsSuccess) throw new ConnectorException($"Amazon's payment list did not load (HTTP {response.Status}).");
-        var page = AmazonPages.ParseWalletHtml(response.Text)
-            ?? throw new ConnectorException("Amazon's payment list could not be read; the page may have changed.");
+        var page = AmazonPages.ParseWalletHtml(response.Text);
+        if (page == null)
+        {
+            // Right after a sign-in Amazon sometimes serves the wallet without its transaction list; a second load has it.
+            Log.LogWarning("Amazon: the payment list could not be read ({Shape}); loading it again.", AmazonPages.DescribePage(response.Url, response.Text));
+            await Task.Delay(_options.WalletPageDelay, _context.Clock, ct);
+            response = await browser.GetAsync(walletUrl, "text/html", ct);
+            if (AmazonPages.IsSignInPage(response.Url, response.Text)) return NeedSignIn(answer != null);
+            page = response.IsSuccess ? AmazonPages.ParseWalletHtml(response.Text) : null;
+            if (page == null)
+            {
+                Log.LogWarning("Amazon: the payment list could not be read again ({Shape}).", AmazonPages.DescribePage(response.Url, response.Text));
+                throw new ConnectorException("Amazon's payment list could not be read; the page may have changed.");
+            }
+        }
         var context = AmazonPages.WalletRequestContext(response.Text);
         var charges = new List<RemoteCharge>(page.Charges);
         var coveredFrom = page.HasMore ? NextDay(page.Oldest) ?? Today : since;

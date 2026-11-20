@@ -103,6 +103,22 @@ internal static partial class AmazonPages
         catch (JsonException) { return null; }
     }
 
+    /// <summary>
+    /// The shape of a page for the log, without its content: address, title, size and the keys of
+    /// <c>props.pageProps</c> when the page carries <c>__NEXT_DATA__</c>.
+    /// </summary>
+    public static string DescribePage(Uri? url, string? html)
+    {
+        html ??= "";
+        var title = TitleOf().Match(html) is { Success: true } t ? WebUtility.HtmlDecode(t.Groups["t"].Value).Trim() : "-";
+        var data = NextDataOf(html);
+        var keys = data?["props"]?["pageProps"] is JsonObject props ? string.Join(",", props.Select(kv => kv.Key)) : data == null ? "no data" : "no pageProps";
+        return $"{url?.GetLeftPart(UriPartial.Path)}, title \"{title}\", {html.Length} chars, {keys}";
+    }
+
+    [GeneratedRegex(@"<title[^>]*>(?<t>[^<]{0,200})", RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture, 1000)]
+    private static partial Regex TitleOf();
+
     /// <summary>The wallet's first page (from its <c>__NEXT_DATA__</c>); null when the page holds no transaction list.</summary>
     public static AmazonWalletPage? ParseWalletHtml(string html)
     {
