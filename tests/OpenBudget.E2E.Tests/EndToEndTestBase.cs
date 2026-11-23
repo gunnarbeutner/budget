@@ -35,6 +35,24 @@ public abstract class EndToEndTestBase : PageTest
         BaseURL = Factory.BaseUrl,
     };
 
+    /// <summary>Records a Playwright trace of every test; only a failed test's trace is kept (see <see cref="KeepTraceOnFailureAsync"/>).</summary>
+    [SetUp]
+    public async Task StartTraceAsync() =>
+        await Context.Tracing.StartAsync(new() { Screenshots = true, Snapshots = true, Sources = false });
+
+    /// <summary>
+    /// Saves a failed test's trace to OB_E2E_TRACE_DIR (default: the test output's e2e-traces folder) so a failure that
+    /// does not repeat can still be read with <c>playwright show-trace</c>.
+    /// </summary>
+    [TearDown]
+    public async Task KeepTraceOnFailureAsync()
+    {
+        var failed = TestContext.CurrentContext.Result.Outcome.Status == NUnit.Framework.Interfaces.TestStatus.Failed;
+        var dir = Environment.GetEnvironmentVariable("OB_E2E_TRACE_DIR") is { Length: > 0 } d ? d : Path.Combine(TestContext.CurrentContext.WorkDirectory, "e2e-traces");
+        if (failed) Directory.CreateDirectory(dir);
+        await Context.Tracing.StopAsync(failed ? new() { Path = Path.Combine(dir, TestContext.CurrentContext.Test.Name + ".zip") } : new());
+    }
+
     /// <summary>Most tests start signed in as the baseline world's owner; the login tests opt out.</summary>
     protected virtual bool SignInAsOwner => true;
 

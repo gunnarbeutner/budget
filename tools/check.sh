@@ -76,7 +76,7 @@ run unit tests/OpenBudget.Tests
 if ! $unit_only; then
     e2e_args=(tests/OpenBudget.E2E.Tests)
     [[ -n ${E2E_WORKERS:-} ]] && e2e_args+=(-- "NUnit.NumberOfTestWorkers=$E2E_WORKERS")
-    run e2e "${e2e_args[@]}"
+    OB_E2E_TRACE_DIR="$log_dir/e2e-traces" run e2e "${e2e_args[@]}"
 fi
 
 kill_tree() { # the suite's subshell, dotnet test and its testhost
