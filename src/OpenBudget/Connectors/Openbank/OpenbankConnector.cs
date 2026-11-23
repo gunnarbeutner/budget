@@ -183,7 +183,7 @@ public sealed class OpenbankConnector : IBankConnector
         CredentialsError = new WebLoginError(CredentialsErrorSelector, CredentialsErrorTexts, CredentialsRejectedMessage),
         // The SMS step stays on the login page: the app asks for the code and enters it there.
         CodePrompt = new WebLoginCodePrompt(LoginPage.AbsolutePath, SmsCodeSelector, SmsSubmitSelector,
-            "Enter the code Openbank sent you by SMS.", SmsCodeLength),
+            "Enter the code Openbank sent you by SMS (letters and digits).", SmsCodeLength, Numeric: false),
     };
 
     private bool IsSiteCookie(CookieState c) =>

@@ -274,6 +274,7 @@ public sealed class OpenbankConnectorTests
         Assert.Equal("[data-testid=otp--variant--input]", prompt.FieldSelector);
         Assert.Equal("#otp--variant--action-button", prompt.SubmitSelector);
         Assert.Equal(4, prompt.Length);
+        Assert.False(prompt.Numeric);   // codes such as 6BYW
     }
 
     [Fact]
