@@ -26,9 +26,18 @@ public sealed class ReceiptMoveTests : EndToEndTestBase
         booking!.OrderItems = "Example USB stick; Example paperback";
         var receipt = new ReceiptInvoice
         {
-            OwnerUserId = E2ESeed.OwnerUserId, Shop = ReceiptShops.Amazon, InvoiceNumber = "302-0000000-0000001", OrderNumber = "302-0000000-0000001",
-            OrderDate = new DateTime(2026, 3, 18, 0, 0, 0, DateTimeKind.Utc), TotalCents = 42_97, PaymentCents = 42_97, ReadAt = DateTime.UtcNow,
-            DetailsReadAt = DateTime.UtcNow, State = ReceiptMatchState.Matched, TransactionId = Booking, ManualMatch = true,
+            OwnerUserId = E2ESeed.OwnerUserId,
+            Shop = ReceiptShops.Amazon,
+            InvoiceNumber = "302-0000000-0000001",
+            OrderNumber = "302-0000000-0000001",
+            OrderDate = new DateTime(2026, 3, 18, 0, 0, 0, DateTimeKind.Utc),
+            TotalCents = 42_97,
+            PaymentCents = 42_97,
+            ReadAt = DateTime.UtcNow,
+            DetailsReadAt = DateTime.UtcNow,
+            State = ReceiptMatchState.Matched,
+            TransactionId = Booking,
+            ManualMatch = true,
         };
         // Both items sit in the wrong category: the stick under Groceries, the book under Energy.
         receipt.Items.Add(new ReceiptItem { OwnerUserId = E2ESeed.OwnerUserId, Position = 0, Name = "Example USB stick", TotalCents = 30_00, Kind = ReceiptItemKind.Product, CategoryId = 200, CategorySource = ReceiptCategorySource.Manual });
