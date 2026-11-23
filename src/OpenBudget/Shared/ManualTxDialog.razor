@@ -5,6 +5,7 @@
 @inject IStringLocalizer<ManualTxDialog> L
 @inject ClockService Clock
 @inject ILogger<ManualTxDialog> Logger
+@inject IJSRuntime JS
 
 @* Adding or editing a booking of a manual account (all fields), and deleting it. Opened from Transactions: the account
    header's "Add booking", a row's context menu and its detail panel. The service checks the account and the owner. *@
@@ -42,14 +43,17 @@
                 </div>
                 <div class="col-12">
                     <label class="form-label small mb-1" for="mtx-category">@L["Category"]</label>
-                    <select id="mtx-category" class="form-select form-select-sm" data-testid="manual-tx-category"
-                            value="@(_categoryId?.ToString(CultureInfo.InvariantCulture) ?? "")" @onchange="OnCategory">
-                        <option value="">@L["NoCategory"]</option>
-                        @foreach (var o in Categories?.Options ?? [])
+                    <button type="button" id="mtx-category" class="form-select form-select-sm text-start" data-testid="manual-tx-category" data-category="@_categoryId"
+                            aria-haspopup="dialog" aria-expanded="@_picking.ToString().ToLowerInvariant()" @ref="_categoryButton" @onclick="OpenPickerAsync">
+                        @if (_categoryId is { } cid && Categories != null)
                         {
-                            <option @key="o.Id" value="@o.Id">@o.Path</option>
+                            <CategoryPill CategoryId="cid" PickerData="Categories" />
                         }
-                    </select>
+                        else
+                        {
+                            <span class="text-body-secondary">@L["NoCategory"]</span>
+                        }
+                    </button>
                 </div>
                 <div class="col-12">
                     <label class="form-label small mb-1" for="mtx-note">@L["Note"]</label>
@@ -72,6 +76,11 @@
         <button type="button" class="btn btn-primary" data-testid="manual-tx-save" disabled="@(_busy || NameMissing)" @onclick="SaveAsync">@L["Save"]</button>
     </Footer>
 </Modal>
+@if (_picking && Open && Categories != null)
+{
+    <CategoryPicker Data="Categories" CurrentCategoryId="_categoryId" RemoveLabel="@L["NoCategory"]" AllowRemove="_categoryId != null"
+                    X="_pickerX" Y="_pickerY" OnPick="id => ClosePickerAsync(id, true)" OnClose="() => ClosePickerAsync(null, false)" />
+}
 
 @code {
     /// <summary>Whether the dialog shows.</summary>
@@ -141,8 +150,26 @@
         if (DateOnly.TryParseExact(e.Value?.ToString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) _date = d;
     }
 
-    private void OnCategory(ChangeEventArgs e) =>
-        _categoryId = long.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) ? id : null;
+    private ElementReference _categoryButton;
+    private bool _picking;
+    private double _pickerX, _pickerY;
+
+    /// <summary>Opens the category picker below the category button.</summary>
+    private async Task OpenPickerAsync()
+    {
+        if (Categories == null) return;
+        var box = await JS.TryInvokeAsync<double[]?>("obAnchorBelow", _categoryButton);
+        (_pickerX, _pickerY) = box is { Length: 2 } ? (box[0], box[1]) : (0, 0);
+        _picking = true;
+    }
+
+    /// <summary>Closes the picker, takes the picked category (null: none) and puts the focus back on the button.</summary>
+    private async Task ClosePickerAsync(long? id, bool picked)
+    {
+        if (picked) _categoryId = id;
+        _picking = false;
+        await JS.TryInvokeVoidAsync("obFocus", _categoryButton);
+    }
 
     /// <summary>Parses "-12,34", "-12.34" or "1.234,56" (the current culture first, then the invariant one).</summary>
     public static bool TryParseAmount(string? text, out decimal amount)

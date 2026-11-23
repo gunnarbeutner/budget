@@ -86,11 +86,19 @@ public sealed class ManualAccountTests : EndToEndTestBase
         await Page.GetByTestId("manual-tx-date").FillAsync("2026-03-20");
         await Page.GetByTestId("manual-tx-amount").FillAsync("-12,34");
         await Page.GetByTestId("manual-tx-name").FillAsync("Example Kiosk");
+        // The category comes from the shared category picker, searchable like everywhere else.
+        await Page.GetByTestId("manual-tx-category").ClickAsync();
+        await Page.GetByTestId("category-picker-search").FillAsync("Groceries");
+        await Page.GetByTestId("category-picker-option").Filter(new() { HasText = "Groceries" }).First.ClickAsync();
+        await Expect(Page.GetByTestId("category-picker")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("manual-tx-form")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("manual-tx-category")).ToHaveAttributeAsync("data-category", "200");
         await Page.GetByTestId("manual-tx-save").ClickAsync();
         await Expect(Page.GetByTestId("manual-tx-form")).ToHaveCountAsync(0);
 
         var kiosk = Page.GetByTestId("tx-row").Filter(new() { HasText = "Example Kiosk" });
         await Expect(kiosk).ToBeVisibleAsync();
+        await Expect(kiosk).ToContainTextAsync("Groceries");
         Assert.That((await AccountAsync(Cash)).CurrentBalance, Is.EqualTo(87.66m));
 
         // An imported history row: its amount is editable from the context menu.
