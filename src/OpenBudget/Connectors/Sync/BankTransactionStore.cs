@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using OpenBudget.Connectors.Receipts;
 using OpenBudget.Models;
 using OpenBudget.Services;
 
@@ -111,9 +112,13 @@ public sealed class BankTransactionStore
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
         // Pending rows are only ever a snapshot: drop them all, re-add what the bank reports now. The user's edits of
-        // them are kept aside and moved to the new rows below.
-        var pendingEdits = PendingCarryOver.Snapshot(await db.Transactions.AsNoTracking()
-            .Where(t => t.AccountId == accountId && !t.Booked).ToListAsync(ct));
+        // them, and the receipts linked to them, are kept aside and moved to the new rows below.
+        var pendingRows = await db.Transactions.AsNoTracking().Where(t => t.AccountId == accountId && !t.Booked).ToListAsync(ct);
+        var pendingIds = pendingRows.Where(t => t.Splitted != SplitState.Child).Select(t => t.Id).ToList();
+        var pendingReceipts = pendingIds.Count == 0 ? [] : await db.ReceiptInvoices
+            .Where(i => i.TransactionId != null && pendingIds.Contains(i.TransactionId.Value)).ToListAsync(ct);
+        var pendingEdits = PendingCarryOver.Snapshot(pendingRows, pendingReceipts.GroupBy(i => i.TransactionId!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(i => new PendingReceiptLink(i.Id, i.SplitSignature)).ToList()));
         await db.Transactions.Where(t => t.AccountId == accountId && !t.Booked).ExecuteDeleteAsync(ct);
 
         var lowerBound = LowerBound(since);
@@ -160,7 +165,7 @@ public sealed class BankTransactionStore
         }
 
         if (pendingEdits.Count > 0)
-            CarryOverPendingEdits(db, account, pendingEdits, added, () => ++nextId, nowUtc);
+            CarryOverPendingEdits(db, account, pendingEdits, pendingReceipts, added, () => ++nextId, nowUtc);
 
         // Categorisation rules of the account's projects categorise what arrived (new rows have no category yet, or
         // one the user chose on the pending booking; adopted rows keep theirs).
@@ -182,17 +187,35 @@ public sealed class BankTransactionStore
     }
 
     private static void CarryOverPendingEdits(
-        BudgetDbContext db, Account account, List<PendingEdit> edits, List<Transaction> added, Func<long> nextId, DateTime nowUtc)
+        BudgetDbContext db, Account account, List<PendingEdit> edits, List<ReceiptInvoice> receipts, List<Transaction> added, Func<long> nextId, DateTime nowUtc)
     {
         var candidates = added.Select(t => new CarryCandidate(t.Amount, t.Timestamp, t.Name, t.BankReference, t.EndToEndReference)).ToList();
         var match = PendingCarryOver.Match(edits, candidates);
+        // A receipt whose booking has no successor is matched afresh; its old id may be taken by a new row.
+        foreach (var receipt in receipts)
+        {
+            receipt.TransactionId = null;
+            receipt.SplitSignature = null;
+        }
         for (var i = 0; i < edits.Count; i++)
         {
             if (match[i] is { } c)
             {
-                db.Transactions.AddRange(PendingCarryOver.Apply(edits[i], added[c], nextId));
+                var target = added[c];
+                var parts = PendingCarryOver.Apply(edits[i], target, nextId);
+                db.Transactions.AddRange(parts);
+                foreach (var receipt in receipts.Where(r => edits[i].Receipts?.Contains(r.Id) == true))
+                {
+                    receipt.TransactionId = target.Id;
+                    receipt.SplitSignature = edits[i].ReceiptSplit ? ReceiptCategorizer.Signature(parts.Select(p => (p.Amount, p.CategoryId))) : null;
+                    // The same booking with another amount (a tip, a currency conversion) keeps its receipt.
+                    if (target.Amount != -receipt.PaymentCents) receipt.ManualMatch = true;
+                }
                 continue;
             }
+            if (edits[i].Receipts is { Count: > 0 } && !edits[i].ManualCategory && string.IsNullOrEmpty(edits[i].Note) && !edits[i].Checked
+                && (edits[i].Parts.Count == 0 || edits[i].ReceiptSplit))
+                continue;
             db.CancelledReservations.Add(new CancelledReservation
             {
                 OwnerUserId = account.OwnerUserId,

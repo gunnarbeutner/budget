@@ -165,7 +165,10 @@ public class ReceiptInvoice
     [MaxLength(2000)]
     public string? SplitSignature { get; set; }
 
-    /// <summary>The owner assigned <see cref="TransactionId"/> by hand: kept while the booking exists, whatever its amount.</summary>
+    /// <summary>
+    /// The owner assigned <see cref="TransactionId"/> by hand, or a sync moved it from a pending booking to the same
+    /// booking with another amount: kept while the booking exists, whatever its amount.
+    /// </summary>
     public bool ManualMatch { get; set; }
 
     /// <summary>The login that read it (Amazon: one receipt per charge of an order).</summary>

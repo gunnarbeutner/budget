@@ -23,9 +23,10 @@ public sealed record DatedReceiptLine(ReceiptLine Line, DateOnly Date, string Sh
 /// in <see cref="Transaction.OrderItems"/>; the booking itself carries all lines. Matching runs after every bank sync and
 /// mailbox read, so a receipt that arrived before its booking is placed once the booking is there.
 ///
-/// A booking is split automatically only when it is booked, not split yet and its category was not chosen by hand, or
-/// when it carries exactly the split this receipt wrote before (then the split follows the receipt, e.g. after the
-/// owner moved a line). A split the owner changed, and a booking they categorized by hand, keep what they have; the
+/// A booking, booked or pending, is split automatically only when it is not split yet and its category was not chosen by
+/// hand, or when it carries exactly the split this receipt wrote before (then the split follows the receipt, e.g. after
+/// the owner moved a line or the booking's amount changed). A sync that replaces a pending booking moves its receipt and
+/// the receipt's split to the new booking (see <see cref="Sync.PendingCarryOver"/>). A split the owner changed, and a booking they categorized by hand, keep what they have; the
 /// receipt only adds its lines. Running again changes nothing. Works on a system context.
 ///
 /// A receipt pairs with bookings of its owner and, for a payment method mapped to another user's account, with
@@ -88,7 +89,7 @@ public sealed class ReceiptStore
     /// <summary>
     /// (Re)matches every receipt of the owner and brings the matched bookings' splits and item texts up to date. Every
     /// matched receipt is applied again, since what it writes also follows things outside the receipt (the item memory,
-    /// the project's receipt categories, the booking becoming booked or being categorized by hand); the bookings, rules
+    /// the project's receipt categories, the booking being categorized by hand); the bookings, rules
     /// and memory are read in a few set-based queries, the AI is asked once per set of choices for the open lines of all
     /// receipts, and only receipts whose outcome differs write anything. One run per owner at a time: syncs finishing
     /// together wait for each other, and the later ones find the work done. A run also waits for the runs of the owners
@@ -365,7 +366,7 @@ public sealed class ReceiptStore
             if (!p.Ours) invoice.SplitSignature = null;
             p.MayWrite = force
                 ? parent.Splitted != SplitState.Remainder
-                : p.Ours || (parent.Booked && (parent.Splitted ?? SplitState.Normal) == SplitState.Normal && parent.CategorySetBy != TransactionCategorySource.Manual);
+                : p.Ours || ((parent.Splitted ?? SplitState.Normal) == SplitState.Normal && parent.CategorySetBy != TransactionCategorySource.Manual);
             if (!projects.TryGetValue((parent.AccountId, parent.CategoryId), out var project))
                 projects[(parent.AccountId, parent.CategoryId)] = project = await ReceiptProjects.ResolveAsync(db, parent.OwnerUserId, parent.AccountId, parent.CategoryId, ct);
             var source = ReceiptSources.Of(invoice.Shop);
