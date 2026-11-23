@@ -133,7 +133,7 @@ public sealed class OpenbankConnector : IBankConnector
           const key = Object.keys(field).find(k => k.startsWith('__reactProps$'));
           const props = key ? field[key] : null;
           if (!props || typeof props.onChange !== 'function') return { ok: false, reason: `the field holds ${field.value.length} characters and has no change handler` };
-          const target = Object.assign(Object.create(field), { value: code });
+          const target = { value: code, name: field.name, id: field.id };
           props.onChange({ target, currentTarget: target, type: 'change', preventDefault() {}, stopPropagation() {}, persist() {} });
           for (let i = 0; i < 20 && !ready(); i++) await tick();
           return ready() ? { ok: true, reason: '' }
