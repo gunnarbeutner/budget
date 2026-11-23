@@ -271,7 +271,7 @@ public sealed class OpenbankConnectorTests
         var connector = new OpenbankConnector(new ConnectorContext(http, TimeProvider.System, new CapturingLoggerFactory().CreateLogger("t")), Options());
         var prompt = connector.WebLogin(new ConnectorCredentials(FakeOpenbank.Username, FakeOpenbank.Password)).CodePrompt!;
         Assert.Equal("/amazon/login", prompt.PathPrefix);
-        Assert.Equal("[data-testid=otp--variant--input]", prompt.FieldSelector);
+        Assert.Equal("input[data-testid=otp--variant--input]", prompt.FieldSelector);
         Assert.Equal("#otp--variant--action-button", prompt.SubmitSelector);
         Assert.Equal(4, prompt.Length);
         Assert.False(prompt.Numeric);   // codes such as 6BYW

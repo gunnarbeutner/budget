@@ -113,7 +113,7 @@ public sealed class OpenbankConnector : IBankConnector
 
     internal static string AccessCodeBox(int i) => AccessCodeBoxFormat.Replace("{0}", i.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
 
-    internal const string SmsCodeSelector = "[data-testid=otp--variant--input]";
+    internal const string SmsCodeSelector = "input[data-testid=otp--variant--input]";
     internal const string SmsSubmitSelector = "#otp--variant--action-button";
     internal const int SmsCodeLength = 4;
 
@@ -124,7 +124,7 @@ public sealed class OpenbankConnector : IBankConnector
     internal const string SmsCodeFill = """
         async (entered) => {
           const code = entered.toUpperCase();
-          const field = document.querySelector('[data-testid=otp--variant--input]');
+          const field = document.querySelector('input[data-testid=otp--variant--input]');
           const button = document.querySelector('#otp--variant--action-button');
           if (!field) return { ok: false, reason: 'no SMS code field' };
           const tick = () => new Promise(r => setTimeout(r, 50));
