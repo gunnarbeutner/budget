@@ -970,13 +970,13 @@ public partial class Browse
         await RefreshAfterEditAsync();
     }
 
-    private ReceiptOpenRequest? openReceipt;
-    private int receiptVersion;
+    private ReceiptOpenRequest? _openReceipt;
+    private int _receiptVersion;
 
     /// <summary>Items moved in the receipt panel: the list and the expanded booking's receipt chips reload.</summary>
     private async Task ReceiptMovedAsync()
     {
-        receiptVersion++;
+        _receiptVersion++;
         await RefreshAfterEditAsync();
     }
 
