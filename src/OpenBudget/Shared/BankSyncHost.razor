@@ -192,10 +192,7 @@ else if (lastSync is { } last)
     /// long enough for the approval hint) is the job's phase, which the Bank logins card shows as well. A sign-in that
     /// runs by itself stays in the top bar's sync status.
     /// </summary>
-    private bool NeedsUser(BankSyncStatus c) =>
-        c.Challenge?.Kind != ChallengeKind.WebLogin
-        || c.Phase == SyncPhase.WaitingForInput
-        || showBrowser;
+    private bool NeedsUser(BankSyncStatus c) => SyncChallenges.WantsUser(c) || showBrowser;
 
     [Inject] private ClockService ClockSvc { get; set; } = default!;
 
@@ -319,7 +316,7 @@ else if (lastSync is { } last)
             .Where(p => p.Message.Length > 0)
             .ToList();
 
-        var open = statuses.FirstOrDefault(s => s.Challenge != null && s.Phase != SyncPhase.Finished);
+        var open = SyncChallenges.Pick(statuses, shownChallengeId, showBrowser);
         if (open?.ChallengeId != shownChallengeId)
         {
             shownChallengeId = open?.ChallengeId ?? Guid.Empty;
