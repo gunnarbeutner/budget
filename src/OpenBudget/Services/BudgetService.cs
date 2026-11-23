@@ -436,8 +436,13 @@ public class BudgetService
         long categoryId,
         CategoryItemType itemType,
         List<CategoryGroupWithChildCount> allCategories,
-        Dictionary<(long Id, CategoryItemType ItemType), bool> assignmentLookup)
+        Dictionary<(long Id, CategoryItemType ItemType), bool> assignmentLookup,
+        HashSet<long>? visitedGroups = null)
     {
+        // A group met twice closes a loop in the parent chain: stop there with the default.
+        if (itemType == CategoryItemType.Group && !(visitedGroups ??= []).Add(categoryId))
+            return false;
+
         // Check for explicit assignment on this specific item
         if (assignmentLookup.TryGetValue((categoryId, itemType), out bool isIncome))
         {
@@ -455,7 +460,8 @@ public class BudgetService
                     category.ParentCategoryGroupId.Value,
                     CategoryItemType.Group,
                     allCategories,
-                    assignmentLookup);
+                    assignmentLookup,
+                    visitedGroups);
             }
         }
         // For CategoryGroups, walk up the parent chain
@@ -475,7 +481,8 @@ public class BudgetService
                     categoryGroup.ParentCategoryGroupId.Value,
                     CategoryItemType.Group,
                     allCategories,
-                    assignmentLookup);
+                    assignmentLookup,
+                    visitedGroups);
             }
         }
 
@@ -858,7 +865,8 @@ public class CategoryGroupWithChildCount
     public static bool IsDescendantOf(CategoryGroupWithChildCount item, long ancestorId, List<CategoryGroupWithChildCount> allCategories)
     {
         var current = item;
-        while (current != null && current.ParentCategoryGroupId.HasValue)
+        var seen = new HashSet<long>();
+        while (current != null && current.ParentCategoryGroupId.HasValue && seen.Add(current.ParentCategoryGroupId.Value))
         {
             if (current.ParentCategoryGroupId.Value == ancestorId)
                 return true;
@@ -872,8 +880,8 @@ public class CategoryGroupWithChildCount
     }
 
     /// <summary>
-    /// Recursively collects all descendant IDs from a starting category.
-    /// Handles ID collision by properly filtering CategoryGroups vs Categories.
+    /// Collects all descendant IDs from a starting category; each group is expanded once, so a loop in the parent
+    /// chain ends the walk. Handles ID collision by properly filtering CategoryGroups vs Categories.
     /// </summary>
     public static void CollectDescendantIds(
         long categoryId,
@@ -881,32 +889,15 @@ public class CategoryGroupWithChildCount
         HashSet<long> result,
         bool includeLeafCategories = true)
     {
-        // Find all children of this category
-        var children = allCategories.Where(c => c.ParentCategoryGroupId == categoryId).ToList();
-
-        foreach (var child in children)
-        {
-            // Only CategoryGroups can have children (Categories are leaf nodes)
-            bool isGroup = child.ItemType == CategoryItemType.Group;
-
-            // Add to result if: it's a Group OR we're including leaf categories
-            if (isGroup || includeLeafCategories)
-            {
-                result.Add(child.Id);
-            }
-
-            // Only recurse into CategoryGroups (Categories can't have children)
-            if (isGroup)
-            {
-                CollectDescendantIds(child.Id, allCategories, result, includeLeafCategories);
-            }
-        }
+        foreach (var d in CollectDescendants(categoryId, allCategories, includeLeafCategories))
+            result.Add(d.Id);
     }
 
     /// <summary>
     /// Collects all descendants (both CategoryGroups and Categories) of a given category.
     /// Returns the actual CategoryGroupWithChildCount objects, not just IDs.
-    /// This avoids ID collision issues when filtering.
+    /// This avoids ID collision issues when filtering. Each group is expanded once and the start group is never
+    /// its own descendant, so a loop in the parent chain ends the walk.
     /// </summary>
     public static HashSet<CategoryGroupWithChildCount> CollectDescendants(
         long categoryId,
@@ -914,36 +905,23 @@ public class CategoryGroupWithChildCount
         bool includeLeafCategories = true)
     {
         var result = new HashSet<CategoryGroupWithChildCount>();
-        CollectDescendantsRecursive(categoryId, allCategories, result, includeLeafCategories);
-        return result;
-    }
-
-    private static void CollectDescendantsRecursive(
-        long categoryId,
-        List<CategoryGroupWithChildCount> allCategories,
-        HashSet<CategoryGroupWithChildCount> result,
-        bool includeLeafCategories)
-    {
-        // Find all children of this category
-        var children = allCategories.Where(c => c.ParentCategoryGroupId == categoryId).ToList();
-
-        foreach (var child in children)
+        var expanded = new HashSet<long> { categoryId };
+        var pending = new Stack<long>();
+        pending.Push(categoryId);
+        while (pending.Count > 0)
         {
-            // Only CategoryGroups can have children (Categories are leaf nodes)
-            bool isGroup = child.ItemType == CategoryItemType.Group;
-
-            // Add to result if: it's a Group OR we're including leaf categories
-            if (isGroup || includeLeafCategories)
+            var parentId = pending.Pop();
+            foreach (var child in allCategories.Where(c => c.ParentCategoryGroupId == parentId))
             {
-                result.Add(child);
-            }
-
-            // Only recurse into CategoryGroups (Categories can't have children)
-            if (isGroup)
-            {
-                CollectDescendantsRecursive(child.Id, allCategories, result, includeLeafCategories);
+                // Only CategoryGroups can have children (Categories are leaf nodes)
+                bool isGroup = child.ItemType == CategoryItemType.Group;
+                if (isGroup && child.Id == categoryId) continue;
+                if (isGroup || includeLeafCategories)
+                    result.Add(child);
+                if (isGroup && expanded.Add(child.Id))
+                    pending.Push(child.Id);
             }
         }
+        return result;
     }
 }
-

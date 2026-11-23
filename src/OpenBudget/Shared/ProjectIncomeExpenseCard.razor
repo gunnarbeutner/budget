@@ -118,7 +118,8 @@
         var allCats = Categories.Select(c => c.CategoryGroup).ToList();
         var currentItem = allCats.FirstOrDefault(c => c.Id == categoryId && c.ItemType == itemType);
 
-        while (currentItem != null && currentItem.ParentCategoryGroupId.HasValue)
+        var seen = new HashSet<long>();
+        while (currentItem != null && currentItem.ParentCategoryGroupId.HasValue && seen.Add(currentItem.ParentCategoryGroupId.Value))
         {
             // Parents are always CategoryGroups.
             var parentAssignment = TypeAssignments.FirstOrDefault(a => a.CategoryId == currentItem.ParentCategoryGroupId.Value && a.ItemType == CategoryItemType.Group);

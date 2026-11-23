@@ -536,7 +536,8 @@ else
 
             // Add all ancestors (for hierarchy display)
             var current = category;
-            while (current != null && current.ParentCategoryGroupId.HasValue)
+            var seen = new HashSet<long> { category.Id };
+            while (current != null && current.ParentCategoryGroupId.HasValue && seen.Add(current.ParentCategoryGroupId.Value))
             {
                 var parent = allCategories.FirstOrDefault(c => c.ItemType == CategoryItemType.Group && c.Id == current.ParentCategoryGroupId.Value);
                 if (parent != null)

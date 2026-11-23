@@ -27,7 +27,8 @@ public static class TrackedRowTree
             (long Id, CategoryItemType ItemType)? parent = null;
             byKey.TryGetValue(item, out var node);
             var walker = node?.ParentCategoryGroupId;
-            while (walker.HasValue)
+            var seen = new HashSet<long>();
+            while (walker.HasValue && seen.Add(walker.Value))
             {
                 var candidate = (walker.Value, CategoryItemType.Group);
                 if (itemSet.Contains(candidate))

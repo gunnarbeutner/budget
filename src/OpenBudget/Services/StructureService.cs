@@ -426,7 +426,8 @@ public sealed class StructureService
     private static async Task<bool> IsSelfOrBelowAsync(Task<Dictionary<long, long?>> parentsTask, long groupId, long candidate)
     {
         var parents = await parentsTask;
-        for (long? at = candidate; at is { } a; at = parents.GetValueOrDefault(a))
+        var seen = new HashSet<long>();
+        for (long? at = candidate; at is { } a && seen.Add(a); at = parents.GetValueOrDefault(a))
         {
             if (a == groupId) return true;
             if (!parents.ContainsKey(a)) break;

@@ -257,6 +257,23 @@ public sealed class StructureServiceTests
     }
 
     [Fact]
+    public async Task Moving_a_group_next_to_a_looped_group_ends_and_a_move_below_itself_is_rejected()
+    {
+        await using var t = await WorldAsync();
+        var alice = For(t, AccessWorld.Alice);
+        var looped = await alice.CreateCategoryGroupAsync(AccessWorld.SharedGroup, "Looped");
+        var other = await alice.CreateCategoryGroupAsync(AccessWorld.SharedGroup, "Other");
+        await using (var db = await t.System.CreateDbContextAsync())
+            await db.CategoryGroups.Where(g => g.Id == looped).ExecuteUpdateAsync(u => u.SetProperty(g => g.ParentGroupId, looped));
+
+        await alice.MoveAsync(StructureItemKind.CategoryGroup, other, looped, 0);
+        await Assert.ThrowsAsync<ArgumentException>(() => alice.MoveAsync(StructureItemKind.CategoryGroup, looped, other, 0));
+
+        await using var check = await t.System.CreateDbContextAsync();
+        Assert.Equal(looped, (await check.CategoryGroups.SingleAsync(g => g.Id == other)).ParentGroupId);
+    }
+
+    [Fact]
     public async Task A_source_moneymoney_never_uploaded_to_is_editable_right_away()
     {
         await using var t = await AccessWorld.BuildAsync();

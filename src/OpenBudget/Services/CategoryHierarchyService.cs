@@ -82,6 +82,11 @@ public sealed class CategoryHierarchyService : IDisposable
             .OrderBy(c => c.Name)
             .ToListAsync();
 
+        // A group whose parent chain loops back to itself is shown as if the edge closing the loop did not exist,
+        // so every walk over the hierarchy ends.
+        var loopEdges = LoopEdges(allCategoryGroups.Select(g => (g.Id, g.ParentGroupId)));
+        long? ParentOf(CategoryGroup g) => loopEdges.Contains(g.Id) ? null : g.ParentGroupId;
+
         var result = new List<CategoryGroupWithChildCount>();
 
         foreach (var categoryGroup in allCategoryGroups)
@@ -90,12 +95,13 @@ public sealed class CategoryHierarchyService : IDisposable
             if (categoryGroup.Id == sentinelRoot && string.IsNullOrEmpty(categoryGroup.Name))
                 continue;
 
-            var subGroupCount = allCategoryGroups.Count(cg => cg.ParentGroupId == categoryGroup.Id);
+            var parentId = ParentOf(categoryGroup);
+            var subGroupCount = allCategoryGroups.Count(cg => ParentOf(cg) == categoryGroup.Id);
             var categoryCount = allCategories.Count(c => c.GroupId == categoryGroup.Id);
 
-            var isRootCategory = categoryGroup.ParentGroupId == null
-                || categoryGroup.ParentGroupId == 0
-                || categoryGroup.ParentGroupId == sentinelRoot;
+            var isRootCategory = parentId == null
+                || parentId == 0
+                || parentId == sentinelRoot;
 
             result.Add(new CategoryGroupWithChildCount
             {
@@ -103,7 +109,7 @@ public sealed class CategoryHierarchyService : IDisposable
                 ItemType = CategoryItemType.Group,
                 DirectChildCount = subGroupCount + categoryCount,
                 IsRootCategory = isRootCategory,
-                ParentCategoryGroupId = categoryGroup.ParentGroupId
+                ParentCategoryGroupId = parentId
             });
         }
 
@@ -123,6 +129,29 @@ public sealed class CategoryHierarchyService : IDisposable
 
         _hierarchyByOwner[ownerId] = result;
         return result;
+    }
+
+    /// <summary>
+    /// The groups whose parent edge closes a loop in the parent chain (a group that is its own parent, or A → B → A).
+    /// Groups are taken in id order; a group's edge closes a loop when following the parents from it, ignoring the
+    /// edges already found, leads back to the group. Dropping these edges leaves a forest with every other edge intact.
+    /// </summary>
+    public static HashSet<long> LoopEdges(IEnumerable<(long Id, long? ParentId)> groups)
+    {
+        var parents = new Dictionary<long, long?>();
+        foreach (var g in groups) parents[g.Id] = g.ParentId;
+        var loopEdges = new HashSet<long>();
+        foreach (var id in parents.Keys.Order())
+        {
+            var seen = new HashSet<long>();
+            for (var at = parents[id]; at is { } a && seen.Add(a); at = loopEdges.Contains(a) ? null : parents.GetValueOrDefault(a))
+            {
+                if (a != id) continue;
+                loopEdges.Add(id);
+                break;
+            }
+        }
+        return loopEdges;
     }
 
     /// <summary>

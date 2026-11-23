@@ -143,7 +143,8 @@ public class BrowseService
                 var entry = hierarchy.FirstOrDefault(h => h.Id == key.Id && h.ItemType == key.ItemType);
                 if (entry == null) return false;
                 var parentId = entry.ParentCategoryGroupId;
-                while (parentId.HasValue)
+                var seen = new HashSet<long>();
+                while (parentId.HasValue && seen.Add(parentId.Value))
                 {
                     if (trackedSet.Contains((parentId.Value, CategoryItemType.Group))) return true;
                     var parentEntry = hierarchy.FirstOrDefault(h => h.Id == parentId.Value && h.ItemType == CategoryItemType.Group);

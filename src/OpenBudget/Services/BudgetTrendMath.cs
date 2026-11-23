@@ -64,7 +64,8 @@ public static class BudgetTrendMath
             walkUp = groupItem?.ParentCategoryGroupId;
         }
 
-        while (walkUp.HasValue)
+        var seen = new HashSet<long>();
+        while (walkUp.HasValue && seen.Add(walkUp.Value))
         {
             var parent = allCategories?.FirstOrDefault(c =>
                 c.ItemType == CategoryItemType.Group && c.Id == walkUp.Value);

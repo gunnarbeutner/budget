@@ -633,7 +633,8 @@
             parts.Add(c.Name ?? L["Picker_Unknown"]);
             walker = c.GroupId;
         }
-        while (walker.HasValue && groupById.TryGetValue(walker.Value, out var ancestor))
+        var seen = new HashSet<long>();
+        while (walker.HasValue && seen.Add(walker.Value) && groupById.TryGetValue(walker.Value, out var ancestor))
         {
             parts.Add(ancestor.Name ?? L["Picker_Unknown"]);
             walker = ancestor.ParentGroupId;
