@@ -633,10 +633,14 @@ public sealed class WebLoginSession : IAsyncDisposable
             } while (code.Length != form.Length || form.Numeric && !code.All(char.IsAsciiDigit));
         }
         if (IsCodePage(_browser.Url, form)) await TickAsync(form.Tick);
-        if (!IsCodePage(_browser.Url, form) || !await _browser.FillCodeAsync(form.FieldSelector, code) || !await ClickWhenReadyAsync(form.SubmitSelector, ct))
+        var failure = !IsCodePage(_browser.Url, form) ? "the page left the security-code form"
+            : !await FillCodeFieldAsync(form, code) ? "the security-code field did not take the code"
+            : !await ClickWhenReadyAsync(form.SubmitSelector, ct) ? "the security-code form's button could not be clicked"
+            : null;
+        if (failure != null)
         {
             _codePromptDisabled = true;
-            ShowPage("the security-code form could not be filled; showing the bank's page", notify: true);
+            ShowPage(failure + "; showing the bank's page", notify: true);
             return true;
         }
         _codeSubmittedAt = DateTime.UtcNow;
@@ -670,6 +674,16 @@ public sealed class WebLoginSession : IAsyncDisposable
             return true;
         }
         return false;
+    }
+
+    /// <summary>Types the code; when the page did not take it and the form has a <see cref="WebLoginCodePrompt.FillScript"/>, enters it through that.</summary>
+    private async Task<bool> FillCodeFieldAsync(WebLoginCodePrompt form, string code)
+    {
+        var typed = await _browser.FillCodeAsync(form.FieldSelector, code);
+        if (form.FillScript == null) return typed;
+        var result = await _browser.CheckAsync(form.FillScript, code);
+        if (!result.Ok) _logger.LogInformation("Web login: entering the security code through the page failed: {Reason}.", result.Reason);
+        return result.Ok;
     }
 
     private bool IsCodePage(Uri url, WebLoginCodePrompt form) =>

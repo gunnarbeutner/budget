@@ -116,6 +116,30 @@ public sealed class OpenbankConnector : IBankConnector
     internal const string SmsCodeSelector = "[data-testid=otp--variant--input]";
     internal const string SmsSubmitSelector = "#otp--variant--action-button";
     internal const int SmsCodeLength = 4;
+
+    /// <summary>
+    /// Makes sure the SMS field holds the code (in capitals, as Openbank sends it): when typing did not reach the page's state, calls the field's React
+    /// <c>onChange</c> as the browser event would, then waits for the send button to be enabled.
+    /// </summary>
+    internal const string SmsCodeFill = """
+        async (entered) => {
+          const code = entered.toUpperCase();
+          const field = document.querySelector('[data-testid=otp--variant--input]');
+          const button = document.querySelector('#otp--variant--action-button');
+          if (!field) return { ok: false, reason: 'no SMS code field' };
+          const tick = () => new Promise(r => setTimeout(r, 50));
+          const ready = () => field.value === code && !(button && (button.disabled || button.getAttribute('aria-disabled') === 'true'));
+          if (ready()) return { ok: true, reason: '' };
+          const key = Object.keys(field).find(k => k.startsWith('__reactProps$'));
+          const props = key ? field[key] : null;
+          if (!props || typeof props.onChange !== 'function') return { ok: false, reason: `the field holds ${field.value.length} characters and has no change handler` };
+          const target = Object.assign(Object.create(field), { value: code });
+          props.onChange({ target, currentTarget: target, type: 'change', preventDefault() {}, stopPropagation() {}, persist() {} });
+          for (let i = 0; i < 20 && !ready(); i++) await tick();
+          return ready() ? { ok: true, reason: '' }
+            : { ok: false, reason: `the field holds ${field.value.length} characters, button ${button ? (button.disabled ? 'disabled' : 'enabled') : 'missing'}` };
+        }
+        """;
     internal const string AccessTokenCookie = "accessToken";
     internal const string RefreshTokenCookie = "refreshToken";
     internal const string SessionExpiresCookie = "sessionExpiresAt";
@@ -183,7 +207,10 @@ public sealed class OpenbankConnector : IBankConnector
         CredentialsError = new WebLoginError(CredentialsErrorSelector, CredentialsErrorTexts, CredentialsRejectedMessage),
         // The SMS step stays on the login page: the app asks for the code and enters it there.
         CodePrompt = new WebLoginCodePrompt(LoginPage.AbsolutePath, SmsCodeSelector, SmsSubmitSelector,
-            "Enter the code Openbank sent you by SMS (letters and digits).", SmsCodeLength, Numeric: false),
+            "Enter the code Openbank sent you by SMS (letters and digits).", SmsCodeLength, Numeric: false)
+        {
+            FillScript = SmsCodeFill,
+        },
     };
 
     private bool IsSiteCookie(CookieState c) =>

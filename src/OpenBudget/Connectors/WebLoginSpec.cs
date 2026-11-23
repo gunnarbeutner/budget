@@ -153,6 +153,12 @@ public sealed record WebLoginCodePrompt(string PathPrefix, string FieldSelector,
     /// <summary>How long after submitting a TOTP code the form may still show before it counts as rejected.</summary>
     public TimeSpan TotpSettle { get; init; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// A JavaScript function run after typing, with the code as its argument, for fields whose page ignores typed input:
+    /// it makes sure the page holds the code and returns <c>{ ok, reason }</c> (the reason never contains the code).
+    /// </summary>
+    public string? FillScript { get; init; }
+
     /// <summary>Checkboxes ticked (when shown) before the code is submitted, such as "don't ask again on this browser".</summary>
     public IReadOnlyList<string> Tick { get; init; } = [];
 }
