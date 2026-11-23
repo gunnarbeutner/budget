@@ -265,6 +265,18 @@ public sealed class OpenbankConnectorTests
     }
 
     [Fact]
+    public void The_SMS_step_on_the_login_page_is_answered_through_the_app()
+    {
+        using var http = new FakeOpenbank().CreateClient();
+        var connector = new OpenbankConnector(new ConnectorContext(http, TimeProvider.System, new CapturingLoggerFactory().CreateLogger("t")), Options());
+        var prompt = connector.WebLogin(new ConnectorCredentials(FakeOpenbank.Username, FakeOpenbank.Password)).CodePrompt!;
+        Assert.Equal("/amazon/login", prompt.PathPrefix);
+        Assert.Equal("[data-testid=otp--variant--input]", prompt.FieldSelector);
+        Assert.Equal("#otp--variant--action-button", prompt.SubmitSelector);
+        Assert.Equal(4, prompt.Length);
+    }
+
+    [Fact]
     public async Task The_stored_refresh_token_is_reused_and_an_ended_session_signs_in_again()
     {
         await using var rig = await CreateAsync();

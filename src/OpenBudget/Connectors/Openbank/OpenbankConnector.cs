@@ -113,6 +113,9 @@ public sealed class OpenbankConnector : IBankConnector
 
     internal static string AccessCodeBox(int i) => AccessCodeBoxFormat.Replace("{0}", i.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
 
+    internal const string SmsCodeSelector = "[data-testid=otp--variant--input]";
+    internal const string SmsSubmitSelector = "#otp--variant--action-button";
+    internal const int SmsCodeLength = 4;
     internal const string AccessTokenCookie = "accessToken";
     internal const string RefreshTokenCookie = "refreshToken";
     internal const string SessionExpiresCookie = "sessionExpiresAt";
@@ -178,6 +181,9 @@ public sealed class OpenbankConnector : IBankConnector
         ]),
         ObservedRequests = [LoginRequestPath],
         CredentialsError = new WebLoginError(CredentialsErrorSelector, CredentialsErrorTexts, CredentialsRejectedMessage),
+        // The SMS step stays on the login page: the app asks for the code and enters it there.
+        CodePrompt = new WebLoginCodePrompt(LoginPage.AbsolutePath, SmsCodeSelector, SmsSubmitSelector,
+            "Enter the code Openbank sent you by SMS.", SmsCodeLength),
     };
 
     private bool IsSiteCookie(CookieState c) =>
