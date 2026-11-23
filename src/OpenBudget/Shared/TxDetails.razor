@@ -76,7 +76,7 @@
 
     @if (receipt != null)
     {
-        <TxReceipt Receipt="receipt" PickerData="PickerData" CanEdit="Row.CanEdit" BookingCategoryName="@receiptCategoryName" HighlightCategoryId="receiptShownCategory" OnChanged="ReceiptChangedAsync" />
+        <TxReceipt Receipt="receipt" PickerData="PickerData" CanEdit="Row.CanEdit" BookingCategoryName="@receiptCategoryName" HighlightCategoryId="receiptShownCategory" OnChanged="ReceiptChangedAsync" OnOpen="OnOpenReceipt" />
     }
     else if (!string.IsNullOrWhiteSpace(Row.OrderItems))
     {
@@ -204,6 +204,10 @@
     [Parameter] public EventCallback<long> OnCreateOffset { get; set; }
     /// <summary>A split or an offsetting entry was created: the page reloads its data.</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
+    /// <summary>Opens the booking's receipt in the page's panel (see <see cref="TxReceipt.OnOpen"/>); without it the receipt has its own.</summary>
+    [Parameter] public EventCallback<ReceiptOpenRequest> OnOpenReceipt { get; set; }
+    /// <summary>Raised by the page after its receipt panel moved items: the receipt chips reload.</summary>
+    [Parameter] public int ReceiptVersion { get; set; }
 
     /// <summary>Whether the details name the category: only when the list shows it nowhere else for this row.</summary>
     [Parameter] public bool ShowCategory { get; set; } = true;
@@ -222,6 +226,7 @@
     }
 
     private long ordersFor;
+    private int receiptVersion;
     private OpenBudget.Connectors.Receipts.BookingReceiptView? receipt;
     private string? receiptCategoryName;
     private long? receiptShownCategory;
@@ -239,8 +244,9 @@
             mainName = main == null ? null : main.Name ?? "";
         }
         else if (Row.Amount != 0) mainName = null;
-        if (string.IsNullOrWhiteSpace(Row.OrderItems) || ordersFor == Row.Id) return;
+        if (string.IsNullOrWhiteSpace(Row.OrderItems) || (ordersFor == Row.Id && receiptVersion == ReceiptVersion)) return;
         ordersFor = Row.Id;
+        receiptVersion = ReceiptVersion;
         await LoadReceiptAsync();
     }
 

@@ -543,7 +543,8 @@
                                                PickerData="pickerData" ProjectId="ProjectId"
                                                OffsetTargets="expandedOffsetTargets"
                                                OnCreateOffset="accountId => CreateOffsettingEntryAsync(row, accountId)"
-                                               OnChanged="RefreshAfterEditAsync" />
+                                               OnChanged="RefreshAfterEditAsync"
+                                               OnOpenReceipt="r => openReceipt = r" ReceiptVersion="receiptVersion" />
                                 }
                             </div>
                         </ItemContent>
@@ -570,6 +571,10 @@
     </ChildContent>
 </ProjectShell>
 
+@* The receipt panel lives on the page, not in the row: a move that takes the booking out of the list (a split booking
+   leaves "Uncategorized") keeps the panel open for the receipt's other items. *@
+<ReceiptPanel ReceiptId="openReceipt?.ReceiptId" PickerData="pickerData" CanEdit="openReceipt?.CanEdit ?? false"
+              BookingCategoryName="@openReceipt?.BookingCategoryName" OnClose="_ => openReceipt = null" OnMoved="ReceiptMovedAsync" />
 @if (popup == PopupKind.Picker && pickerData is { } pickerModel)
 {
     <CategoryPicker Data="pickerModel" CurrentCategoryId="popupCurrentCategory"

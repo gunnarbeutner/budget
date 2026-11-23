@@ -72,4 +72,5 @@
   <data name="Items_One" xml:space="preserve">
     <value>{0} item</value>
   </data>
+  <data name="Uncategorized" xml:space="preserve"><value>Uncategorized</value></data>
 </root>

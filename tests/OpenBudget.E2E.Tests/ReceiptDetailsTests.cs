@@ -34,11 +34,11 @@ public sealed class ReceiptDetailsTests : EndToEndTestBase
     }
 
     /// <summary>
-    /// A split part's receipt opens on that part: the footer sums the part's items, its share of the bonus and the part's
-    /// amount; "All" shows the whole receipt's total, bonus and payment again.
+    /// A split part's receipt opens on all its items with the whole receipt's total, bonus and payment; a part's filter
+    /// sums the part's items, its share of the bonus and the part's amount; "All" shows the whole receipt again.
     /// </summary>
     [Test]
-    public async Task A_parts_receipt_opens_on_the_part_with_its_own_totals()
+    public async Task A_parts_receipt_opens_on_all_items_and_a_part_shows_its_own_totals()
     {
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&q=REWE");
         var rows = Page.GetByTestId("tx-row");
@@ -48,7 +48,11 @@ public sealed class ReceiptDetailsTests : EndToEndTestBase
         await Expect(receipt.Locator(".cat-pill-current")).ToHaveCountAsync(1);
         await receipt.GetByTestId("tx-receipt-open").ClickAsync();
 
+        // The receipt opens on all its items, each with its category; a part's filter shows that part's totals.
         var panel = Page.GetByTestId("receipt-panel");
+        await Expect(panel.Locator("[data-testid=receipt-panel-part].btn-secondary")).ToHaveCountAsync(0);
+        await Expect(panel.GetByTestId("receipt-panel-paid")).ToHaveCountAsync(1);
+        await panel.GetByTestId("receipt-panel-part").First.ClickAsync();
         await Expect(panel.Locator("[data-testid=receipt-panel-part].btn-secondary")).ToHaveCountAsync(1);
         await Expect(panel.GetByTestId("receipt-panel-paid")).ToHaveCountAsync(0);
         var amount = await panel.GetByTestId("receipt-panel-part-amount").InnerTextAsync();

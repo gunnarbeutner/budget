@@ -54,7 +54,7 @@
                     var index = i;
                     var g = view.Groups[i];
                     <button type="button" class="btn btn-sm d-inline-flex align-items-center gap-1 @(part == index ? "btn-secondary" : "btn-outline-secondary")" data-testid="receipt-panel-part"
-                            @onclick="() => part = index"><CategoryPill CategoryId="g.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" /> @Formatting.FormatMoneyDe(g.AmountCents / 100m) (@g.Lines.Count)</button>
+                            @onclick="() => part = index"><CategoryPill CategoryId="g.CategoryId" PickerData="PickerData" FallbackName="@Fallback" /> @Formatting.FormatMoneyDe(g.AmountCents / 100m) (@g.Lines.Count)</button>
                 }
             </div>
             }
@@ -97,12 +97,12 @@
                                     <td class="text-nowrap rp-cat">
                                         @if (CanEdit && PickerData != null)
                                         {
-                                            <CategoryPill CategoryId="line.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" TestId="receipt-panel-category"
+                                            <CategoryPill CategoryId="line.CategoryId" PickerData="PickerData" FallbackName="@Fallback" TestId="receipt-panel-category"
                                                           Title="@L["Move", line.Name]" OnClick="e => OpenPicker(line, e)" />
                                         }
                                         else
                                         {
-                                            <CategoryPill CategoryId="line.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" />
+                                            <CategoryPill CategoryId="line.CategoryId" PickerData="PickerData" FallbackName="@Fallback" />
                                         }
                                     </td>
                                     }
@@ -121,7 +121,7 @@
                                     <td class="text-end text-nowrap rp-price">@Formatting.FormatMoneyDe(extras.Sum(l => l.TotalCents) / 100m)</td>
                                     @if (categorized)
                                     {
-                                        <td class="rp-cat"><CategoryPill CategoryId="g.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" /></td>
+                                        <td class="rp-cat"><CategoryPill CategoryId="g.CategoryId" PickerData="PickerData" FallbackName="@Fallback" /></td>
                                     }
                                 </tr>
                                 @if (open)
@@ -227,8 +227,6 @@
     [Parameter] public bool CanEdit { get; set; }
     /// <summary>The name for lines in the booking's own category (null category).</summary>
     [Parameter] public string? BookingCategoryName { get; set; }
-    /// <summary>The part to show first (its index), or all.</summary>
-    [Parameter] public int? InitialPart { get; set; }
     /// <summary>The dialog closed; true when an item was moved.</summary>
     [Parameter] public EventCallback<bool> OnClose { get; set; }
     /// <summary>An item was moved and the booking split again: the page behind refreshes while the panel stays open.</summary>
@@ -241,6 +239,9 @@
     private readonly HashSet<int> openExtras = [];
     private readonly HashSet<long> expanded = [];
     private ReceiptLineView? moving;
+
+    /// <summary>What a line without its own category shows: the booking's category, or "Uncategorized" when it has none.</summary>
+    private string Fallback => BookingCategoryName ?? L["Uncategorized"];
     private double pickerX, pickerY;
     private bool changed;
     private string? error;
@@ -255,7 +256,7 @@
         error = null;
         openExtras.Clear();
         expanded.Clear();
-        part = InitialPart;
+        part = null;
         if (ReceiptId is { } id) view = await Service.GetReceiptAsync(id);
         if (view != null && part is { } p && p >= view.Groups.Count) part = null;
     }
@@ -264,7 +265,7 @@
         SearchText.Matches(line.Name, search);
 
     private string CategoryName(long? id) =>
-        id is { } c && PickerData != null ? PickerData.PathOf(c, BookingCategoryName ?? L["NoCategory"]) : BookingCategoryName ?? L["NoCategory"];
+        id is { } c && PickerData != null ? PickerData.PathOf(c, Fallback) : Fallback;
 
     private void OpenPicker(ReceiptLineView line, MouseEventArgs e) => (moving, pickerX, pickerY) = (line, e.ClientX, e.ClientY);
 

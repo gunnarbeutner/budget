@@ -9,7 +9,7 @@
 
 <div class="tx-details-purpose" data-testid="tx-receipt">
     <b class="text-body me-1">@L["Receipt"]</b>
-    <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-start" data-testid="tx-receipt-open" @onclick="() => Open(ShownPart)">@Receipt.Title@(Receipt.DeliveryDate is { } d ? " · " + d.ToAppDate() : "") · @L[Receipt.ItemCount == 1 ? "Items_One" : "Items", Receipt.ItemCount]</button>
+    <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-start" data-testid="tx-receipt-open" @onclick="OpenAsync">@Receipt.Title@(Receipt.DeliveryDate is { } d ? " · " + d.ToAppDate() : "") · @L[Receipt.ItemCount == 1 ? "Items_One" : "Items", Receipt.ItemCount]</button>
     @if (Receipt.ShopUrls() is { Count: > 1 } orders)
     {
         @foreach (var (number, url) in orders)
@@ -27,17 +27,19 @@
     <div class="d-flex flex-wrap gap-1 mt-1">
         @for (var i = 0; i < Receipt.Groups.Count; i++)
         {
-            var index = i;
             var group = Receipt.Groups[i];
             var shown = HighlightCategoryId != null && group.CategoryId == HighlightCategoryId;
-            <CategoryPill CategoryId="group.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" TestId="tx-receipt-group"
-                          Class="@(shown ? "cat-pill-current" : null)" OnClick="() => Open(index)">
+            <CategoryPill CategoryId="group.CategoryId" PickerData="PickerData" FallbackName="@(BookingCategoryName ?? L["Uncategorized"])" TestId="tx-receipt-group"
+                          Class="@(shown ? "cat-pill-current" : null)" OnClick="OpenAsync">
                 <span class="cat-pill-amount">@Formatting.FormatMoneyDe(group.AmountCents / 100m) (@group.Lines.Count)</span>
             </CategoryPill>
         }
     </div>
     }
-    <ReceiptPanel ReceiptId="openId" InitialPart="openPart" PickerData="PickerData" CanEdit="CanEdit" BookingCategoryName="@BookingCategoryName" OnClose="Closed" OnMoved="MovedAsync" />
+    @if (!OnOpen.HasDelegate)
+    {
+        <ReceiptPanel ReceiptId="openId" PickerData="PickerData" CanEdit="CanEdit" BookingCategoryName="@BookingCategoryName" OnClose="Closed" OnMoved="MovedAsync" />
+    }
 </div>
 
 @code {
@@ -52,15 +54,20 @@
     /// <summary>Items were moved (the panel closed after a change): the details reload.</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
 
+    /// <summary>
+    /// Opens the receipt in the page's panel instead of one of its own, so the panel stays open when a move takes the
+    /// booking out of the list (a split booking leaves "Uncategorized").
+    /// </summary>
+    [Parameter] public EventCallback<ReceiptOpenRequest> OnOpen { get; set; }
+
     private long? openId;
-    private int? openPart;
 
-    /// <summary>The part in the category being viewed, which the receipt opens filtered to; null: all items.</summary>
-    private int? ShownPart => Receipt.Groups.Count > 1 && HighlightCategoryId is { } c
-        ? Receipt.Groups.Select((g, i) => (g, i)).Where(x => x.g.CategoryId == c).Select(x => (int?)x.i).FirstOrDefault()
-        : null;
-
-    private void Open(int? part) => (openId, openPart) = (Receipt.ReceiptId, part);
+    // The receipt opens on all its items, each with its category, so every wrong one can be fixed in one place.
+    private async Task OpenAsync()
+    {
+        if (OnOpen.HasDelegate) await OnOpen.InvokeAsync(new ReceiptOpenRequest(Receipt.ReceiptId, CanEdit, BookingCategoryName));
+        else openId = Receipt.ReceiptId;
+    }
 
     // Each move already refreshed the page behind (OnMoved), so closing only hides the panel.
     private void Closed(bool _) => openId = null;

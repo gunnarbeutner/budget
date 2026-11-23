@@ -112,9 +112,6 @@
   <data name="MoveHelp" xml:space="preserve">
     <value>Tippe auf eine Kategorie, um den Artikel zu verschieben.</value>
   </data>
-  <data name="NoCategory" xml:space="preserve">
-    <value>Keine Kategorie</value>
-  </data>
   <data name="OpenAtShop" xml:space="preserve"><value>Bei Amazon öffnen</value></data>
   <data name="ItemsOne" xml:space="preserve"><value>{0} Artikel</value></data>
   <data name="InstalmentCount" xml:space="preserve"><value>{0} Raten</value></data>
@@ -146,4 +143,5 @@
   <data name="PartAmount" xml:space="preserve">
     <value>Dieser Teil</value>
   </data>
+  <data name="Uncategorized" xml:space="preserve"><value>Nicht kategorisiert</value></data>
 </root>
