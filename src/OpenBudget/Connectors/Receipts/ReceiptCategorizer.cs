@@ -8,8 +8,11 @@ namespace OpenBudget.Connectors.Receipts;
 /// <summary>A receipt line as the categorizer sees it; <see cref="Id"/> identifies it in the result.</summary>
 public sealed record ReceiptLine(long Id, string Name, string? VatCode, long TotalCents, bool NoDiscount, ReceiptItemKind Kind);
 
-/// <summary>Where one line goes: a category (null: the booking's own) and how it was chosen (<see cref="ReceiptCategorySource"/>).</summary>
-public sealed record LineCategory(long? CategoryId, string Source);
+/// <summary>
+/// Where one line goes: a category (null: none) and how it was chosen (<see cref="ReceiptCategorySource"/>; null: nothing
+/// placed the product, so it stays uncategorized).
+/// </summary>
+public sealed record LineCategory(long? CategoryId, string? Source);
 
 /// <summary>One part of a receipt split: signed cents, its category (null: none) and its lines.</summary>
 public sealed record ReceiptSplitPart(long AmountCents, long? CategoryId, IReadOnlyList<long> LineIds);
@@ -32,14 +35,14 @@ public sealed record ReceiptSourceRules(IReadOnlyList<AllowedCategory> Allowed)
 /// Sorts receipt lines into categories and turns them into split parts. Each receipt source has a list of allowed categories
 /// (see <see cref="ReceiptSourceRules"/>); a line goes to one of these or stays in the booking's own category.
 ///
-/// A line goes, in this order: deposit lines and fees to the booking's category; a line the owner moved to where they moved it; a
+/// A line goes, in this order: deposit lines and fees with the booking's part (see <see cref="Parts"/>); a line the owner moved to where they moved it; a
 /// product the owner categorized before (the item category memory, by <see cref="Normalize">normalised name</see>) to
 /// that category, when it is allowed for this source; a product whose name contains an allowed category's extra keyword
 /// to that category; a product of a built-in kind (<see cref="Kind"/>: drugstore, household, drinks, alcohol, pet
 /// supplies, other non-food) to the first allowed category that kind belongs to (<see cref="KindsOf"/>: the kind's
 /// words in the category's path or description, e.g. "Drogerie" or "Reinigungsmittel"); a product the AI placed (only
-/// when the owner opted in; it only chooses among the allowed categories) to that category; everything else to the
-/// booking's category. The VAT code alone decides nothing.
+/// when the owner opted in; it only chooses among the allowed categories) to that category. A product nothing placed
+/// stays uncategorized: the booking's own category says nothing about its items. The VAT code alone decides nothing.
 ///
 /// The redeemed bonus credit is spread over the lines that allow discounts in proportion to their totals; the parts
 /// (one per category) add up exactly to the booking, a rounding remainder going to the largest part.
@@ -149,7 +152,7 @@ public static partial class ReceiptCategorizer
             else if (ai != null && ai.TryGetValue(line.Id, out var guessed) && IsAllowed(guessed, rules, bookingCategoryId))
                 result[line.Id] = new LineCategory(guessed, ReceiptCategorySource.Ai);
             else
-                result[line.Id] = new LineCategory(home, ReceiptCategorySource.Default);
+                result[line.Id] = new LineCategory(null, null);
         }
         return result;
     }

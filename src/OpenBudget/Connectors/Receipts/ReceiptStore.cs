@@ -388,33 +388,28 @@ public sealed class ReceiptStore
         // Categories: the owner's moves stay, AI answers are asked once and kept, the rest follows memory and keywords.
         // An AI answer outside this source's categories (left from before they were configured, or a mapping that
         // changed) is dropped and asked again.
-        var pathsBy = new Dictionary<string, Dictionary<long, string>>(StringComparer.Ordinal);
         var asks = new List<(Pending P, List<AllowedCategory> Choices, List<DatedReceiptLine> Lines)>();
         foreach (var p in work)
         {
             var parent = p.Parent;
-            p.Manual = p.Items.Where(i => i.CategorySource == ReceiptCategorySource.Manual).ToDictionary(i => i.Id, i => i.CategoryId);
-            // An AI answer naming the booking's own category is stored without a category; it still counts as answered.
+            // The owner's moves stay, and so do products that took the booking's category before items stopped
+            // inheriting it (see Kept).
+            p.Manual = p.Items.Where(i => i.CategorySource == ReceiptCategorySource.Manual || Kept(i)).ToDictionary(i => i.Id, i => i.CategoryId);
             foreach (var stale in p.Items.Where(i => i.CategorySource == ReceiptCategorySource.Ai
                 && i.CategoryId is { } c && !ReceiptCategorizer.IsAllowed(c, p.Rules, parent.CategoryId)))
             {
                 stale.CategorySource = null;
                 stale.CategoryId = null;
             }
-            p.Ai = p.Items.Where(i => i.CategorySource == ReceiptCategorySource.Ai && (i.CategoryId ?? parent.CategoryId) != null)
-                .ToDictionary(i => i.Id, i => (i.CategoryId ?? parent.CategoryId)!.Value);
+            // An AI answer without a category: the AI was asked and placed it nowhere; it is not asked again.
+            p.Ai = p.Items.Where(i => i.CategorySource == ReceiptCategorySource.Ai && i.CategoryId != null)
+                .ToDictionary(i => i.Id, i => i.CategoryId!.Value);
             if (!p.MayWrite || _ai == null) continue;
             var ask = ReceiptCategorizer.Undecided(p.Lines, p.Rules, p.Memory, parent.CategoryId)
                 .Where(l => p.Items.First(i => i.Id == l.Id).CategorySource == null).ToList();
             if (ask.Count == 0) continue;
             var date = Day(p.Invoice.DeliveryDate ?? p.Invoice.OrderDate) ?? DateOnly.FromDateTime(parent.Date);
             var choices = p.Rules.Allowed.ToList();
-            if (parent.CategoryId is { } h && choices.All(c => c.CategoryId != h))
-            {
-                if (!pathsBy.TryGetValue(parent.OwnerUserId, out var paths))
-                    pathsBy[parent.OwnerUserId] = paths = await PathsAsync(db, parent.OwnerUserId, ct);
-                choices.Insert(0, new AllowedCategory(h, paths.GetValueOrDefault(h) ?? "", "Lebensmittel und alles andere"));
-            }
             asks.Add((p, choices, ask.Select(l => new DatedReceiptLine(l, date, ReceiptShops.DisplayName(p.Invoice.Shop))).ToList()));
         }
         // Receipts offering the AI the same choices are asked together, a batch at a time (for the progress).
@@ -428,8 +423,12 @@ public sealed class ReceiptStore
                 progress?.Invoke($"Categorising receipt items ({done} of {total})");
                 var answers = await _ai!.ClassifyAsync(owner, batch.Select(b => b.Line).ToList(), group.First().Choices, ct);
                 foreach (var (p, l) in batch)
+                {
                     if (answers.TryGetValue(l.Line.Id, out var category) && ReceiptCategorizer.IsAllowed(category, p.Rules, p.Parent.CategoryId))
                         p.Ai[l.Line.Id] = category;
+                    else
+                        p.Items.First(i => i.Id == l.Line.Id).CategorySource = ReceiptCategorySource.Ai;
+                }
                 done += batch.Length;
             }
         }
@@ -439,6 +438,13 @@ public sealed class ReceiptStore
         await db.SaveChangesAsync(ct);
         return changed;
     }
+
+    /// <summary>
+    /// A product that took the booking's category when items still inherited it: it keeps that category like a move of
+    /// the owner, so receipts already split stay as they are.
+    /// </summary>
+    private static bool Kept(ReceiptItem item) =>
+        item.Kind == ReceiptItemKind.Product && item.CategorySource == ReceiptCategorySource.Default && item.CategoryId != null;
 
     /// <summary>What sets the AI's choices apart: id, path and description of each, in order.</summary>
     private static string ChoicesKey(IEnumerable<AllowedCategory> choices) =>
@@ -456,10 +462,10 @@ public sealed class ReceiptStore
         foreach (var item in items)
         {
             var a = assigned[item.Id];
-            if (item.CategorySource == ReceiptCategorySource.Manual) continue;
-            item.CategoryId = a.CategoryId == parent.CategoryId ? null : a.CategoryId;
-            // A line is marked as decided (so the AI is not asked about it again) once the receipt could split the booking.
-            if (p.MayWrite || a.Source != ReceiptCategorySource.Default || item.CategorySource != null) item.CategorySource = a.Source;
+            if (item.CategorySource == ReceiptCategorySource.Manual || Kept(item)) continue;
+            // Deposit lines and fees have no category of their own; a product keeps the AI's "nowhere" so it is not asked again.
+            item.CategoryId = item.Kind == ReceiptItemKind.Product ? a.CategoryId : null;
+            item.CategorySource = a.Source ?? (item.CategorySource == ReceiptCategorySource.Ai ? ReceiptCategorySource.Ai : null);
         }
 
         var all = ReceiptCategorizer.Describe(items.Select(i => (i.Name, i.Quantity)));

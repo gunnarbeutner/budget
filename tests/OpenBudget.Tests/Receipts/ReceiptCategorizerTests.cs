@@ -62,7 +62,7 @@ public sealed class ReceiptCategorizerTests
         Assert.Throws<InvalidOperationException>(() => ReceiptKind.Load("xx"));
 
     [Fact]
-    public void Memory_beats_keywords_beats_ai_beats_the_default_and_only_allowed_categories_count()
+    public void Memory_beats_keywords_beats_ai_and_only_allowed_categories_count()
     {
         const long Elsewhere = 99;
         var memory = new Dictionary<string, long>(StringComparer.Ordinal) { ["apfelschorle"] = Food, ["musterdeo roll on fresh"] = Drinks, ["beispiel gouda gerieben"] = Elsewhere };
@@ -76,27 +76,27 @@ public sealed class ReceiptCategorizerTests
         Assert.Equal(new LineCategory(Food, ReceiptCategorySource.Default), result[5]);
         Assert.Equal(new LineCategory(Food, ReceiptCategorySource.Default), result[6]);
 
-        // An AI answer outside the source's categories places nothing.
+        // An AI answer outside the source's categories places nothing: the product stays uncategorized.
         result = ReceiptCategorizer.Assign(Lines, Food, Rules, new Dictionary<string, long>(StringComparer.Ordinal), new Dictionary<long, long> { [1] = Elsewhere });
-        Assert.Equal(new LineCategory(Food, ReceiptCategorySource.Default), result[1]);
+        Assert.Equal(new LineCategory(null, null), result[1]);
     }
 
     [Fact]
-    public void Extra_keywords_and_the_booking_category()
+    public void Extra_keywords_and_unplaced_products_stay_uncategorized()
     {
         var rules = new ReceiptSourceRules([new AllowedCategory(Drugstore, "Freizeit › Sonstiges", null, "gouda, käse")]);
         var result = ReceiptCategorizer.Assign(Lines, Food, rules, new Dictionary<string, long>(StringComparer.Ordinal));
         Assert.Equal(Drugstore, result[1].CategoryId);
-        Assert.Equal(Food, result[4].CategoryId);   // household, but no allowed category for it: the booking's
+        Assert.Equal(new LineCategory(null, null), result[4]);   // household, but no allowed category for it: none
         Assert.Equal(Food, result[5].CategoryId);   // deposit: the booking's
     }
 
     [Fact]
-    public void Without_allowed_categories_everything_stays_with_the_booking_and_nothing_goes_to_the_ai()
+    public void Without_allowed_categories_products_stay_uncategorized_and_nothing_goes_to_the_ai()
     {
         var empty = new Dictionary<string, long>(StringComparer.Ordinal);
         var result = ReceiptCategorizer.Assign(Lines, Food, ReceiptSourceRules.None, empty);
-        Assert.All(result.Values, r => Assert.Equal(Food, r.CategoryId));
+        Assert.All(Lines, l => Assert.Equal(l.Kind == ReceiptItemKind.Product ? null : Food, result[l.Id].CategoryId));
         Assert.Empty(ReceiptCategorizer.Undecided(Lines, ReceiptSourceRules.None, empty));
         Assert.Equal([1], ReceiptCategorizer.Undecided(Lines, Rules, empty).Select(l => l.Id));
     }
@@ -120,10 +120,10 @@ public sealed class ReceiptCategorizerTests
 
         Assert.Equal(3, parts.Count);
         Assert.Equal(-payment, parts.Sum(p => p.AmountCents));
+        // Without a part in the booking's category, the deposit and the fee join the largest part.
         var drugstore = parts.Single(p => p.CategoryId == Drugstore);
-        Assert.Equal([2, 4], drugstore.LineIds);
-        var food = parts.Single(p => p.CategoryId == Food);
-        Assert.Equal([1, 5, 6], food.LineIds);
+        Assert.Equal([2, 4, 5, 6], drugstore.LineIds);
+        Assert.Equal([1], parts.Single(p => p.CategoryId == null).LineIds);
         Assert.Equal([3], parts.Single(p => p.CategoryId == Drinks).LineIds);
         Assert.All(parts, p => Assert.True(p.AmountCents < 0));
     }
@@ -144,7 +144,7 @@ public sealed class ReceiptCategorizerTests
     }
 
     [Fact]
-    public void Deposit_lines_join_the_default_part_and_no_part_has_the_opposite_sign()
+    public void Deposit_lines_join_the_largest_part_and_no_part_has_the_opposite_sign()
     {
         const long Rewe = 40;
         ReceiptLine[] lines =
@@ -160,7 +160,7 @@ public sealed class ReceiptCategorizerTests
         var memory = new Dictionary<string, long>(StringComparer.Ordinal) { ["testbutter"] = Rewe };
         var ai = new Dictionary<long, long> { [1] = Rewe };
         var categories = ReceiptCategorizer.Assign(lines, Food, Rules, memory, ai);
-        Assert.All(new long[] { 1, 2 }, id => Assert.Equal(Food, categories[id].CategoryId));
+        Assert.All(new long[] { 1, 2 }, id => Assert.Null(categories[id].CategoryId));
         Assert.Equal(Drugstore, categories[6].CategoryId);
 
         // Even when the products went elsewhere, the deposits never make a part of their own.
@@ -171,7 +171,7 @@ public sealed class ReceiptCategorizerTests
         parts = ReceiptCategorizer.Parts(lines, categories, 0, -633, Food);
         Assert.Equal(2, parts.Count);
         Assert.All(parts, p => Assert.True(p.AmountCents < 0));
-        Assert.Equal([1, 2, 3, 4, 5], parts.Single(p => p.CategoryId == Food).LineIds);
+        Assert.Equal([1, 2, 3, 4, 5], parts.Single(p => p.CategoryId == null).LineIds);
         Assert.Equal(-633, parts.Sum(p => p.AmountCents));
     }
 }

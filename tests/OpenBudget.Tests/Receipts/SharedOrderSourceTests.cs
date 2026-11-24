@@ -127,7 +127,7 @@ public sealed class SharedOrderSourceTests
         Assert.Contains("Example toothbrush", parent.OrderItems, StringComparison.Ordinal);
         var parts = await db.Transactions.AsNoTracking().Where(x => x.SplitParentId == Booking && x.Splitted == SplitState.Child).ToListAsync();
         Assert.All(parts, p => Assert.Equal(AccessWorld.Alice, p.OwnerUserId));
-        Assert.Equal([(-6000L, AccessWorld.SharedLeaf), (-4000L, Household)], parts.OrderBy(p => p.Amount).Select(p => (p.Amount, p.CategoryId!.Value)));
+        Assert.Equal([(-6000L, (long?)null), (-4000L, Household)], parts.OrderBy(p => p.Amount).Select(p => (p.Amount, p.CategoryId)));
 
         // Both see the receipt on the booking; Bob's list has it matched.
         Assert.Equal(receipt.Id, (await Receipts(t, AccessWorld.Alice).GetForBookingAsync(Booking))!.ReceiptId);

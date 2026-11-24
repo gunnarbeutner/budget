@@ -140,6 +140,42 @@ public sealed class MailReceiptTests
     }
 
     [Fact]
+    public async Task Moving_all_uncategorized_items_moves_and_remembers_each_and_resplits()
+    {
+        await using var x = await World.CreateAsync();
+        await ReceiptWorld.AddDebitAsync(x.W.T, Debit, -1428);
+        await using (var db = await x.W.T.System.CreateDbContextAsync())
+        {
+            await ReceiptStore.AddAsync(db, Alice, ReceiptShops.Rewe, ReceiptWorld.Invoice(), null, DateTime.UtcNow, default);
+            await x.Store.MatchAsync(db, Alice, default);
+        }
+        var alice = x.ServiceFor(Alice);
+        var view = (await alice.GetForBookingAsync(Debit))!;
+        var open = view.Groups.SelectMany(g => g.Lines).Where(l => l.Kind == ReceiptItemKind.Product && l.CategoryId == null).ToList();
+        Assert.True(open.Count >= 2);
+
+        await Assert.ThrowsAsync<AccessDeniedException>(() => x.ServiceFor(ReceiptWorld.Bob).MoveUncategorizedAsync(view.ReceiptId, ReceiptWorld.Groceries));
+        await alice.MoveUncategorizedAsync(view.ReceiptId, ReceiptWorld.Groceries);
+
+        view = (await alice.GetForBookingAsync(Debit))!;
+        Assert.DoesNotContain(view.Groups.SelectMany(g => g.Lines), l => l.Kind == ReceiptItemKind.Product && l.CategoryId == null);
+        Assert.Equal([ReceiptWorld.Groceries, ReceiptWorld.Drugstore], view.Groups.Select(g => g.CategoryId!.Value));
+        Assert.Equal(-1428, view.Groups.Sum(g => g.AmountCents));
+        await using (var db = await x.W.T.System.CreateDbContextAsync())
+        {
+            var parts = await db.Transactions.Where(t => t.SplitParentId == Debit).ToListAsync();
+            Assert.Equal([ReceiptWorld.Groceries, ReceiptWorld.Drugstore], parts.Select(p => p.CategoryId!.Value).Order());
+            var remembered = await db.ItemCategoryMemory.Select(m => m.NormalizedName).ToListAsync();
+            Assert.Equal(open.Select(l => ReceiptCategorizer.Normalize(l.Name)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal), remembered.Order(StringComparer.Ordinal));
+            Assert.All(await db.ItemCategoryMemory.ToListAsync(), m => Assert.Equal(ReceiptWorld.Groceries, m.CategoryId));
+        }
+
+        // Nothing left to move: a second call changes nothing.
+        await alice.MoveUncategorizedAsync(view.ReceiptId, ReceiptWorld.Drinks);
+        Assert.Equal([ReceiptWorld.Groceries, ReceiptWorld.Drugstore], (await alice.GetForBookingAsync(Debit))!.Groups.Select(g => g.CategoryId!.Value));
+    }
+
+    [Fact]
     public async Task Moving_an_item_resplits_and_is_remembered_for_later_receipts()
     {
         await using var x = await World.CreateAsync();
@@ -151,7 +187,7 @@ public sealed class MailReceiptTests
         }
         var alice = x.ServiceFor(Alice);
         var view = (await alice.GetForBookingAsync(Debit))!;
-        Assert.Equal([ReceiptWorld.Groceries, ReceiptWorld.Drugstore], view.Groups.Select(g => g.CategoryId!.Value));
+        Assert.Equal([null, ReceiptWorld.Drugstore], view.Groups.Select(g => g.CategoryId));
         var schorle = view.Groups.SelectMany(g => g.Lines).Single(l => l.Name == "Apfelschorle 0,5l");
 
         // Bob sees nothing of Alice's receipt and cannot move its lines.

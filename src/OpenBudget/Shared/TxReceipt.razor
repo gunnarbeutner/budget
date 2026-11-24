@@ -29,7 +29,7 @@
         {
             var group = Receipt.Groups[i];
             var shown = HighlightCategoryId != null && group.CategoryId == HighlightCategoryId;
-            <CategoryPill CategoryId="group.CategoryId" PickerData="PickerData" FallbackName="@(BookingCategoryName ?? L["Uncategorized"])" TestId="tx-receipt-group"
+            <CategoryPill CategoryId="group.CategoryId" PickerData="PickerData" FallbackName="@L["Uncategorized"]" TestId="tx-receipt-group"
                           Class="@(shown ? "cat-pill-current" : null)" OnClick="OpenAsync">
                 <span class="cat-pill-amount">@Formatting.FormatMoneyDe(group.AmountCents / 100m) (@group.Lines.Count)</span>
             </CategoryPill>
@@ -38,7 +38,7 @@
     }
     @if (!OnOpen.HasDelegate)
     {
-        <ReceiptPanel ReceiptId="openId" PickerData="PickerData" CanEdit="CanEdit" BookingCategoryName="@BookingCategoryName" OnClose="Closed" OnMoved="MovedAsync" />
+        <ReceiptPanel ReceiptId="openId" PickerData="PickerData" CanEdit="CanEdit" OnClose="Closed" OnMoved="MovedAsync" />
     }
 </div>
 
@@ -48,7 +48,6 @@
     [Parameter] public CategoryPickerData? PickerData { get; set; }
     /// <summary>Whether the signed-in user may move items (the receipt's owner).</summary>
     [Parameter] public bool CanEdit { get; set; }
-    [Parameter] public string? BookingCategoryName { get; set; }
     /// <summary>The category of the split part shown (its chip is highlighted), or null when the whole booking is shown.</summary>
     [Parameter] public long? HighlightCategoryId { get; set; }
     /// <summary>Items were moved (the panel closed after a change): the details reload.</summary>
@@ -65,7 +64,7 @@
     // The receipt opens on all its items, each with its category, so every wrong one can be fixed in one place.
     private async Task OpenAsync()
     {
-        if (OnOpen.HasDelegate) await OnOpen.InvokeAsync(new ReceiptOpenRequest(Receipt.ReceiptId, CanEdit, BookingCategoryName));
+        if (OnOpen.HasDelegate) await OnOpen.InvokeAsync(new ReceiptOpenRequest(Receipt.ReceiptId, CanEdit));
         else openId = Receipt.ReceiptId;
     }
 

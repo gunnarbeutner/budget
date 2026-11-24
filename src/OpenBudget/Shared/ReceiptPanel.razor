@@ -203,6 +203,12 @@
             }
             @if (CanEdit && view.TransactionId != null)
             {
+                var open = view.Groups.SelectMany(g => g.Lines).Count(l => l.Kind == ReceiptItemKind.Product && l.CategoryId == null);
+                @if (open > 0 && PickerData != null)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-secondary mb-2" data-testid="receipt-panel-move-all"
+                            @onclick="e => (movingAll, pickerX, pickerY) = (true, e.ClientX, e.ClientY)">@L["MoveAll", open]</button>
+                }
                 <p class="small text-body-secondary mb-0">@L["MoveHelp"]</p>
             }
             @if (error != null)
@@ -213,8 +219,13 @@
     }
     @if (moving is { } m && PickerData != null)
     {
-        <CategoryPicker Data="PickerData" CurrentCategoryId="m.CategoryId ?? view?.BookingCategoryId" AllowRemove="false" X="pickerX" Y="pickerY"
+        <CategoryPicker Data="PickerData" CurrentCategoryId="m.CategoryId" AllowRemove="false" X="pickerX" Y="pickerY"
                         OnPick="id => MoveAsync(m.Id, id)" OnClose="() => moving = null" />
+    }
+    @if (movingAll && PickerData != null)
+    {
+        <CategoryPicker Data="PickerData" AllowRemove="false" X="pickerX" Y="pickerY"
+                        OnPick="MoveAllAsync" OnClose="() => movingAll = false" />
     }
 </Modal>
 
@@ -225,8 +236,6 @@
     [Parameter] public CategoryPickerData? PickerData { get; set; }
     /// <summary>Whether the signed-in user may move items (the receipt's owner).</summary>
     [Parameter] public bool CanEdit { get; set; }
-    /// <summary>The name for lines in the booking's own category (null category).</summary>
-    [Parameter] public string? BookingCategoryName { get; set; }
     /// <summary>The dialog closed; true when an item was moved.</summary>
     [Parameter] public EventCallback<bool> OnClose { get; set; }
     /// <summary>An item was moved and the booking split again: the page behind refreshes while the panel stays open.</summary>
@@ -239,9 +248,10 @@
     private readonly HashSet<int> openExtras = [];
     private readonly HashSet<long> expanded = [];
     private ReceiptLineView? moving;
+    private bool movingAll;
 
-    /// <summary>What a line without its own category shows: the booking's category, or "Uncategorized" when it has none.</summary>
-    private string Fallback => BookingCategoryName ?? L["Uncategorized"];
+    /// <summary>What a line without a category shows.</summary>
+    private string Fallback => L["Uncategorized"];
     private double pickerX, pickerY;
     private bool changed;
     private string? error;
@@ -269,14 +279,25 @@
 
     private void OpenPicker(ReceiptLineView line, MouseEventArgs e) => (moving, pickerX, pickerY) = (line, e.ClientX, e.ClientY);
 
-    private async Task MoveAsync(long itemId, long? picked)
+    private Task MoveAsync(long itemId, long? picked)
     {
         moving = null;
+        return picked is { } category ? ChangeAsync(() => Service.MoveItemAsync(itemId, category)) : Task.CompletedTask;
+    }
+
+    private Task MoveAllAsync(long? picked)
+    {
+        movingAll = false;
+        return picked is { } category && ReceiptId is { } id ? ChangeAsync(() => Service.MoveUncategorizedAsync(id, category)) : Task.CompletedTask;
+    }
+
+    private async Task ChangeAsync(Func<Task> move)
+    {
         error = null;
-        if (picked is not { } category || ReceiptId is not { } id) return;
+        if (ReceiptId is not { } id) return;
         try
         {
-            await Service.MoveItemAsync(itemId, category);
+            await move();
             changed = true;
             view = await Service.GetReceiptAsync(id);
             if (view != null && part is { } p && p >= view.Groups.Count) part = null;

@@ -109,6 +109,9 @@
   <data name="Paid" xml:space="preserve">
     <value>Paid</value>
   </data>
+  <data name="MoveAll" xml:space="preserve">
+    <value>Move {0} uncategorized items to…</value>
+  </data>
   <data name="MoveHelp" xml:space="preserve">
     <value>Tap a category to move the item.</value>
   </data>

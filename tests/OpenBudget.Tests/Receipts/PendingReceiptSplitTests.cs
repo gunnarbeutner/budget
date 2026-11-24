@@ -97,12 +97,12 @@ public sealed class PendingReceiptSplitTests
         await SyncAsync(t, store, Rewe(Payment, booked: false));
         await AddReceiptAsync(t, store);
 
-        // The new pending row comes with the receipt's split; the rule still gives it its category, and the parts follow.
+        // The new pending row comes with the receipt's split; the rule still gives it its category. The items keep their own.
         await SyncAsync(t, store, Rewe(Payment, booked: false));
         var s = await StateAsync(t);
         AssertReceiptSplit(s, -1428);
         Assert.Equal(ReceiptWorld.Groceries, s.Parent.CategoryId);
-        Assert.Equal([ReceiptWorld.Groceries, ReceiptWorld.Drugstore], s.Parts.Select(p => p.CategoryId!.Value).Order());
+        Assert.Equal([null, ReceiptWorld.Drugstore], s.Parts.Select(p => p.CategoryId).Order());
     }
 
     [Fact]

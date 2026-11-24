@@ -487,12 +487,12 @@ public sealed class ReceiptService
         var items = invoice.Items.OrderBy(i => i.Position).ToList();
         var lines = items.Select(i => new ReceiptLine(i.Id, i.Name, i.VatCode, i.TotalCents, i.NoDiscount, i.Kind)).ToList();
         var bookingCategory = booking?.CategoryId;
-        var categories = items.ToDictionary(i => i.Id, i => new LineCategory(i.CategoryId ?? bookingCategory, i.CategorySource ?? ReceiptCategorySource.Default));
+        var categories = items.ToDictionary(i => i.Id, i => new LineCategory(i.CategoryId, i.CategorySource));
         var cents = booking != null ? booking.SplitOriginalAmount ?? booking.Amount : -invoice.PaymentCents;
         var parts = ReceiptCategorizer.Parts(lines, categories, invoice.BonusCents, cents, bookingCategory);
         var groups = parts.Select(part => new ReceiptGroupView(part.CategoryId, part.AmountCents, part.LineIds
                 .Select(i => items.First(x => x.Id == i))
-                .Select(i => new ReceiptLineView(i.Id, i.Name, i.Quantity, i.TotalCents, i.Kind, i.CategoryId ?? bookingCategory, i.CategorySource)).ToList()))
+                .Select(i => new ReceiptLineView(i.Id, i.Name, i.Quantity, i.TotalCents, i.Kind, i.CategoryId, i.CategorySource)).ToList()))
             .ToList();
         return new BookingReceiptView(invoice.Id, booking?.Id, invoice.Shop, invoice.OrderNumber, invoice.DeliveryDate ?? invoice.OrderDate, invoice.BonusCents, groups,
             invoice.SplitSignature != null, invoice.Store, invoice.TotalCents, invoice.PaymentCents, invoice.InvoiceNumber,
@@ -886,7 +886,25 @@ public sealed class ReceiptService
     /// split by the receipt again. Allowed to the receipt's owner while they may edit its booking (or it has none), and to
     /// whoever may edit its booking; the category, memory and project are the booking owner's.
     /// </summary>
-    public async Task MoveItemAsync(long itemId, long categoryId, CancellationToken ct = default)
+    public Task MoveItemAsync(long itemId, long categoryId, CancellationToken ct = default) =>
+        MoveAsync(item => item.Id == itemId, itemId, categoryId, ct);
+
+    /// <summary>
+    /// Moves every uncategorized product of a receipt to <paramref name="categoryId"/>, as <see cref="MoveItemAsync"/>
+    /// would one by one (each product is remembered). Nothing happens when none is uncategorized.
+    /// </summary>
+    public async Task MoveUncategorizedAsync(long receiptId, long categoryId, CancellationToken ct = default)
+    {
+        long? first;
+        await using (var sys = await _system.CreateDbContextAsync(ct))
+            first = await sys.ReceiptItems.Where(i => i.ReceiptInvoiceId == receiptId && i.Kind == ReceiptItemKind.Product && i.CategoryId == null)
+                .OrderBy(i => i.Position).Select(i => (long?)i.Id).FirstOrDefaultAsync(ct);
+        if (first is { } id)
+            await MoveAsync(item => item.Kind == ReceiptItemKind.Product && item.CategoryId == null, id, categoryId, ct);
+    }
+
+    /// <summary>Moves the lines of <paramref name="itemId"/>'s receipt that <paramref name="which"/> selects (see <see cref="MoveItemAsync"/>).</summary>
+    private async Task MoveAsync(Func<ReceiptItem, bool> which, long itemId, long categoryId, CancellationToken ct)
     {
         var user = await UserAsync();
         var scope = await _access.GetAsync();
@@ -907,15 +925,18 @@ public sealed class ReceiptService
             var categoryOwner = booking?.OwnerUserId ?? user;
             if (!await sys.Categories.AnyAsync(c => c.Id == categoryId && c.OwnerUserId == categoryOwner && c.Name != null && c.Name != "", ct))
                 throw new AccessDeniedException("Category not found.");
-            var name = item.Kind == ReceiptItemKind.Product ? ReceiptCategorizer.Normalize(item.Name) : "";
-
-            var line = invoice.Items.First(i => i.Id == itemId);
-            line.CategoryId = categoryId;
-            line.CategorySource = ReceiptCategorySource.Manual;
+            var lines = invoice.Items.Where(which).ToList();
+            foreach (var line in lines)
+            {
+                line.CategoryId = categoryId;
+                line.CategorySource = ReceiptCategorySource.Manual;
+            }
             var project = booking == null ? null : await ReceiptProjects.ResolveAsync(sys, categoryOwner, booking.AccountId, booking.CategoryId, ct);
             if (project is { } p)
             {
-                if (name.Length > 0)
+                var names = lines.Where(l => l.Kind == ReceiptItemKind.Product).Select(l => ReceiptCategorizer.Normalize(l.Name))
+                    .Where(n => n.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+                foreach (var name in names)
                 {
                     var memory = await sys.ItemCategoryMemory.FirstOrDefaultAsync(m => m.OwnerUserId == categoryOwner && m.ProjectId == p && m.NormalizedName == name, ct);
                     if (memory == null)

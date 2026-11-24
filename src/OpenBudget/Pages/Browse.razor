@@ -573,8 +573,7 @@
 
 @* The receipt panel lives on the page, not in the row: a move that takes the booking out of the list (a split booking
    leaves "Uncategorized") keeps the panel open for the receipt's other items. *@
-<ReceiptPanel ReceiptId="_openReceipt?.ReceiptId" PickerData="pickerData" CanEdit="_openReceipt?.CanEdit ?? false"
-              BookingCategoryName="@_openReceipt?.BookingCategoryName" OnClose="_ => _openReceipt = null" OnMoved="ReceiptMovedAsync" />
+<ReceiptPanel ReceiptId="_openReceipt?.ReceiptId" PickerData="pickerData" CanEdit="_openReceipt?.CanEdit ?? false" OnClose="_ => _openReceipt = null" OnMoved="ReceiptMovedAsync" />
 @if (popup == PopupKind.Picker && pickerData is { } pickerModel)
 {
     <CategoryPicker Data="pickerModel" CurrentCategoryId="popupCurrentCategory"

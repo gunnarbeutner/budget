@@ -272,7 +272,7 @@ public sealed class LidlPlusTests
         Assert.StartsWith("Bananen; Vollmilch 3,5% ×2", parent.OrderItems, StringComparison.Ordinal);
         var parts = rows.Where(t => t.SplitParentId == booking && t.Splitted == SplitState.Child).ToList();
         Assert.Equal(-440, parts.Sum(p => p.Amount));
-        Assert.Equal([ReceiptWorld.Groceries, ReceiptWorld.Drugstore], parts.OrderBy(p => p.Amount).Select(p => p.CategoryId));
+        Assert.Equal([null, ReceiptWorld.Drugstore], parts.OrderBy(p => p.Amount).Select(p => p.CategoryId));
         Assert.Equal("Spülmittel Zitrone", parts.Single(p => p.CategoryId == ReceiptWorld.Drugstore).OrderItems);
         Assert.Null(rows.Single(t => t.Name == "Florist Example").OrderItems);
 

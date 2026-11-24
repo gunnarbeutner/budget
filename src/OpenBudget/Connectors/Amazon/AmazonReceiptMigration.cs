@@ -110,10 +110,13 @@ public static class AmazonReceiptMigration
             }
             adopted++;
             receipt.SplitSignature = signature;
-            foreach (var item in receipt.Items.Where(i => given.ContainsKey(i.Position)))
+            // The split stays as the owner made it: items they categorized are theirs, the rest keep the booking's category.
+            foreach (var item in receipt.Items)
             {
-                item.CategoryId = given[item.Position] == home ? null : given[item.Position];
-                item.CategorySource = ReceiptCategorySource.Manual;
+                if (given.TryGetValue(item.Position, out var own))
+                    (item.CategoryId, item.CategorySource) = (own, ReceiptCategorySource.Manual);
+                else if (item.Kind == ReceiptItemKind.Product)
+                    (item.CategoryId, item.CategorySource) = (home, home == null ? null : ReceiptCategorySource.Default);
             }
             var free = children.ToList();
             foreach (var part in parts)

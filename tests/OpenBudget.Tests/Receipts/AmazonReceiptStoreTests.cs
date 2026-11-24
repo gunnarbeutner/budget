@@ -120,8 +120,9 @@ public sealed class AmazonReceiptStoreTests
         Assert.Equal(ReceiptMatchState.Skipped, receipts.Single(r => r.PaymentMethodId == Gift).State);
 
         var parts = await db.Transactions.AsNoTracking().Where(x => x.SplitParentId == Fridge && x.Splitted == SplitState.Child).ToListAsync();
-        Assert.Equal([(-60000L, ReceiptWorld.Groceries), (-4900L, ReceiptWorld.Drugstore)],
-            parts.OrderBy(p => p.Amount).Select(p => (p.Amount, p.CategoryId!.Value)));
+        // The fridge matches no item category: its part stays uncategorized.
+        Assert.Equal([(-60000L, (long?)null), (-4900L, ReceiptWorld.Drugstore)],
+            parts.OrderBy(p => p.Amount).Select(p => (p.Amount, p.CategoryId)));
         Assert.Equal("Fridge freezer combination; Zahnpasta Mint", (await db.Transactions.AsNoTracking().SingleAsync(x => x.Id == Fridge)).OrderItems);
         Assert.Equal([OrderA, OrderB], (await AmazonReceiptStore.KnownOrdersAsync(db, login.Id, default)).Order(StringComparer.Ordinal));
         Assert.Empty(await AmazonReceiptStore.UnreadOrdersAsync(db, login.Id, default));
@@ -349,7 +350,7 @@ public sealed class AmazonReceiptStoreTests
         foreach (var id in ids)
         {
             var parts = await check.Transactions.AsNoTracking().Where(x => x.SplitParentId == id && x.Splitted == SplitState.Child).ToListAsync();
-            Assert.Equal([(-4000L, ReceiptWorld.Groceries), (-1580L, ReceiptWorld.Drugstore)], parts.OrderBy(p => p.Amount).Select(p => (p.Amount, p.CategoryId!.Value)));
+            Assert.Equal([(-4000L, (long?)null), (-1580L, ReceiptWorld.Drugstore)], parts.OrderBy(p => p.Amount).Select(p => (p.Amount, p.CategoryId)));
         }
 
     }

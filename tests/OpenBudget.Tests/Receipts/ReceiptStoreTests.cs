@@ -124,7 +124,7 @@ public sealed class ReceiptStoreTests
         Assert.Equal(Payment, parts.Sum(p => p.Amount));
         var drugstore = parts.Single(p => p.CategoryId == ReceiptWorld.Drugstore);
         Assert.Equal("Musterdeo Roll-On Fresh 50ml; Spülmittel Zitrone 450ml", drugstore.OrderItems);
-        Assert.Contains("Leergut Glas", parts.Single(p => p.CategoryId == ReceiptWorld.Groceries).OrderItems, StringComparison.Ordinal);
+        Assert.Contains("Leergut Glas", parts.Single(p => p.CategoryId == null).OrderItems, StringComparison.Ordinal);
         var parent = await RowAsync(t, Debit);
         Assert.Equal(SplitState.Parent, parent.Splitted);
         Assert.Contains("ja! Kochschinken 200g ×2", parent.OrderItems, StringComparison.Ordinal);
@@ -141,6 +141,37 @@ public sealed class ReceiptStoreTests
             Assert.NotNull(invoice.SplitSignature);
             Assert.Equal(ReceiptCategorySource.Keyword, invoice.Items.Single(i => i.Name.StartsWith("Musterdeo", StringComparison.Ordinal)).CategorySource);
         }
+    }
+
+    [Fact]
+    public async Task A_product_that_took_the_booking_category_before_keeps_it()
+    {
+        await using var t = await WorldAsync();
+        await ReceiptWorld.AddDebitAsync(t, Debit, Payment);
+        var store = new ReceiptStore();
+        await AddAndMatchAsync(t, store);
+
+        // What receipts read before items stopped inheriting: the food stored with the booking's category, "default".
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            var invoice = await db.ReceiptInvoices.Include(i => i.Items).SingleAsync();
+            var food = invoice.Items.Where(i => i.Kind == ReceiptItemKind.Product && i.CategoryId == null).ToList();
+            Assert.NotEmpty(food);
+            foreach (var item in food)
+                (item.CategoryId, item.CategorySource) = (ReceiptWorld.Groceries, ReceiptCategorySource.Default);
+            await db.SaveChangesAsync();
+            Assert.True(await store.ApplyAsync(db, invoice, force: true, default));
+        }
+
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            var items = await db.ReceiptItems.Where(i => i.CategorySource == ReceiptCategorySource.Default && i.Kind == ReceiptItemKind.Product).ToListAsync();
+            Assert.NotEmpty(items);
+            Assert.All(items, i => Assert.Equal(ReceiptWorld.Groceries, i.CategoryId));
+        }
+        var parts = await PartsAsync(t, Debit);
+        Assert.Equal([ReceiptWorld.Groceries, ReceiptWorld.Drugstore], parts.Select(p => p.CategoryId!.Value).OrderBy(c => c == ReceiptWorld.Groceries ? 0 : 1));
+        Assert.Equal(Payment, parts.Sum(p => p.Amount));
     }
 
     /// <summary>A receipt with only drugstore items (4,40 €) and Alice's uncategorized debit for it.</summary>
@@ -411,9 +442,9 @@ public sealed class ReceiptStoreTests
     }
 
     [Fact]
-    public async Task Receipts_with_other_choices_are_asked_separately()
+    public async Task The_ai_chooses_among_the_allowed_categories_only_and_is_not_asked_again_about_what_it_left()
     {
-        // One booking is in another category of the project: its default choice differs, so its lines go in their own request.
+        // The bookings' own categories are no choice: both receipts offer the same list and go in one request.
         await using var t = await WorldAsync();
         var ai = new FakeClassifier(_ => null);
         var store = new ReceiptStore(ai);
@@ -428,8 +459,19 @@ public sealed class ReceiptStoreTests
                     ReweInvoice.Parse(SyntheticInvoice.Pdf(SyntheticInvoice.StandardLines(), bonus: -n, invoice: $"PN1000000000000{n}")), $"mail-{n}", DateTime.UtcNow, default);
             await store.MatchAsync(db, ReceiptWorld.Alice, default);
         }
-        Assert.Equal(2, ai.Calls);
-        Assert.Contains(ReceiptWorld.Drinks, ai.Choices);
+        Assert.Equal(1, ai.Calls);
+        Assert.DoesNotContain(ReceiptWorld.Drinks, ai.Choices);
+        Assert.DoesNotContain(ReceiptWorld.Groceries, ai.Choices);
+
+        // What it placed nowhere stays uncategorized and counts as answered.
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            var unanswered = await db.ReceiptItems.Where(i => i.Kind == ReceiptItemKind.Product && i.CategorySource == ReceiptCategorySource.Ai).ToListAsync();
+            Assert.NotEmpty(unanswered);
+            Assert.All(unanswered, i => Assert.Null(i.CategoryId));
+            await store.MatchAsync(db, ReceiptWorld.Alice, default);
+        }
+        Assert.Equal(1, ai.Calls);
     }
 
     [Fact]
@@ -488,7 +530,7 @@ public sealed class ReceiptStoreTests
     }
 
     [Fact]
-    public async Task Items_the_ai_put_into_another_shops_category_return_to_the_booking_and_the_split_follows()
+    public async Task Items_the_ai_put_into_another_shops_category_become_uncategorized_and_the_split_follows()
     {
         await using var t = await WorldAsync();
         var rewe = ReceiptWorld.Id(203);
@@ -550,7 +592,7 @@ public sealed class ReceiptStoreTests
         Assert.Equal(2, parts.Count);
         Assert.DoesNotContain(parts, p => p.CategoryId == rewe);
         Assert.All(parts, p => Assert.True(p.Amount < 0));
-        var food = parts.Single(p => p.CategoryId == ReceiptWorld.Groceries);
+        var food = parts.Single(p => p.CategoryId == null);
         Assert.Equal(-438, food.Amount);
         Assert.Equal("Testeis Vanille; Testbutter; Pfand 0,25 EM ×12; Pfandrückgabe ×4; Pfandrückgabe ×16", food.OrderItems);
         Assert.Equal(-195, parts.Single(p => p.CategoryId == ReceiptWorld.Drugstore).Amount);
