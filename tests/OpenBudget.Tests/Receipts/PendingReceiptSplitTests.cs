@@ -85,6 +85,27 @@ public sealed class PendingReceiptSplitTests
     }
 
     [Fact]
+    public async Task A_rule_categorizes_a_pending_booking_its_receipt_split_carries_over()
+    {
+        await using var t = await WorldAsync();
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            db.CategoryRules.Add(new CategoryRule { ProjectId = ReceiptWorld.Project, CategoryId = ReceiptWorld.Groceries, Expression = "name:\"REWE\"", CreatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+        var store = new ReceiptStore();
+        await SyncAsync(t, store, Rewe(Payment, booked: false));
+        await AddReceiptAsync(t, store);
+
+        // The new pending row comes with the receipt's split; the rule still gives it its category, and the parts follow.
+        await SyncAsync(t, store, Rewe(Payment, booked: false));
+        var s = await StateAsync(t);
+        AssertReceiptSplit(s, -1428);
+        Assert.Equal(ReceiptWorld.Groceries, s.Parent.CategoryId);
+        Assert.Equal([ReceiptWorld.Groceries, ReceiptWorld.Drugstore], s.Parts.Select(p => p.CategoryId!.Value).Order());
+    }
+
+    [Fact]
     public async Task A_receipt_split_follows_the_booking_when_it_is_booked()
     {
         await using var t = await WorldAsync();

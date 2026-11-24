@@ -164,12 +164,13 @@ public sealed class BankTransactionStore
             }
         }
 
+        // Categorisation rules of the account's projects categorise what arrived (adopted rows keep their category).
+        // They run before the pending edits are carried over: a carried-over split makes the row a split parent, which
+        // rules skip, and a category the user chose on the pending booking replaces the rule's.
+        await CategoryRuleEngine.ApplyToNewAsync(db, accountId, added, ct);
+
         if (pendingEdits.Count > 0)
             CarryOverPendingEdits(db, account, pendingEdits, pendingReceipts, added, () => ++nextId, nowUtc);
-
-        // Categorisation rules of the account's projects categorise what arrived (new rows have no category yet, or
-        // one the user chose on the pending booking; adopted rows keep theirs).
-        await CategoryRuleEngine.ApplyToNewAsync(db, accountId, added, ct);
 
         if (refresh.Positions.Count > 0 || account.IsDepot)
             await ReplaceHoldingsAsync(db, account, refresh.Positions, ct);
