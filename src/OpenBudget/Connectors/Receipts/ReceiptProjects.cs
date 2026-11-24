@@ -75,6 +75,57 @@ public static class ReceiptProjects
             .Select(r => new AllowedCategory(r.CategoryId, paths[r.CategoryId], r.Description, r.Keywords)).ToList());
     }
 
+    /// <summary>
+    /// For each owner, project and receipt source: when most of the source's categorized bookings (at least three) are
+    /// in one category that is not among the source's item categories, it becomes one. Items used to fall through to the
+    /// booking's category, so lists were set up without it (the supermarket's food category, typically); without it the
+    /// AI has nowhere to put those items. Other sources of the project keep exactly the categories they had. Products
+    /// the AI placed nowhere are asked about again. Returns the categories added.
+    /// </summary>
+    public static async Task<int> AllowUsualBookingCategoriesAsync(BudgetDbContext db, CancellationToken ct)
+    {
+        var linked = await (from r in db.ReceiptInvoices
+                            join t in db.Transactions on r.TransactionId equals t.Id
+                            where t.CategoryId != null
+                            select new { r.Shop, t.OwnerUserId, t.AccountId, CategoryId = t.CategoryId!.Value }).ToListAsync(ct);
+        var counted = new Dictionary<(string Owner, int Project, string Source), Dictionary<long, int>>();
+        foreach (var g in linked.GroupBy(x => (x.OwnerUserId, x.AccountId, x.CategoryId, Source: ReceiptSources.Of(x.Shop))))
+        {
+            if (await ResolveAsync(db, g.Key.OwnerUserId, g.Key.AccountId, g.Key.CategoryId, ct) is not { } project) continue;
+            var key = (g.Key.OwnerUserId, project, g.Key.Source);
+            if (!counted.TryGetValue(key, out var byCategory)) counted[key] = byCategory = [];
+            byCategory[g.Key.CategoryId] = byCategory.GetValueOrDefault(g.Key.CategoryId) + g.Count();
+        }
+
+        var added = 0;
+        var owners = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var ((owner, project, source), byCategory) in counted)
+        {
+            var (usual, n) = byCategory.MaxBy(kv => kv.Value);
+            if (n < 3 || n * 2 <= byCategory.Values.Sum()) continue;
+            if ((await RulesAsync(db, owner, project, source, ct)).Allowed.Any(c => c.CategoryId == usual)) continue;
+            if (!await db.Categories.AnyAsync(c => c.Id == usual && c.OwnerUserId == owner, ct)) continue;
+
+            var listed = await db.ProjectReceiptCategories.Where(c => c.OwnerUserId == owner && c.ProjectId == project).Select(c => c.CategoryId).ToListAsync(ct);
+            var narrowings = await db.ProjectReceiptSources.Where(s => s.OwnerUserId == owner && s.ProjectId == project).ToListAsync(ct);
+            if (!listed.Contains(usual))
+            {
+                // Sources that take the whole list keep what they had.
+                if (listed.Count > 0)
+                    foreach (var other in ReceiptSources.All.Where(o => o != source && narrowings.All(n => n.Source != o)))
+                        db.ProjectReceiptSources.Add(new ProjectReceiptSource { OwnerUserId = owner, ProjectId = project, Source = other, CategoryIds = FormatIds(listed) });
+                db.ProjectReceiptCategories.Add(new ProjectReceiptCategory { OwnerUserId = owner, ProjectId = project, CategoryId = usual });
+            }
+            if (narrowings.FirstOrDefault(n => n.Source == source) is { } own)
+                own.CategoryIds = FormatIds(ParseIds(own.CategoryIds).Append(usual));
+            await db.SaveChangesAsync(ct);
+            owners.Add(owner);
+            added++;
+        }
+        foreach (var owner in owners) await ReceiptStore.ReaskAsync(db, owner, ct);
+        return added;
+    }
+
     /// <summary>The ids of a narrowing ("12,34").</summary>
     public static HashSet<long> ParseIds(string? text) =>
         (text ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

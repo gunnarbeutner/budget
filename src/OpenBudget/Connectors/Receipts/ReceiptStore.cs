@@ -440,6 +440,15 @@ public sealed class ReceiptStore
     }
 
     /// <summary>
+    /// The owner's products the AI placed nowhere are asked about again at the next match: their receipts' choices
+    /// changed. Returns how many.
+    /// </summary>
+    public static Task<int> ReaskAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct) =>
+        db.ReceiptItems.Where(i => i.OwnerUserId == ownerUserId && i.Kind == ReceiptItemKind.Product
+                && i.CategorySource == ReceiptCategorySource.Ai && i.CategoryId == null)
+            .ExecuteUpdateAsync(u => u.SetProperty(i => i.CategorySource, (string?)null), ct);
+
+    /// <summary>
     /// A product that took the booking's category when items still inherited it: it keeps that category like a move of
     /// the owner, so receipts already split stay as they are.
     /// </summary>

@@ -396,7 +396,11 @@ public sealed class ReceiptService
             await db.SaveChangesAsync(ct);
         }
         await using (var sys = await _system.CreateDbContextAsync(ct))
+        {
+            // The items' choices changed: what the AI placed nowhere gets another try.
+            await ReceiptStore.ReaskAsync(sys, user, ct);
             await _store.MatchAsync(sys, user, ct);
+        }
         Publish(user);
     }
 

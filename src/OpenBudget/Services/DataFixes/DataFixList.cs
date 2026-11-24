@@ -56,6 +56,15 @@ public static class DataFixList
             "Subscription marks (not a subscription, cancelled) follow their series to the PayeeKey-based series key",
             c => RecurringPaymentService.RekeyMarksAsync(c.Db, c.CancellationToken)),
 
+        new("2026-11-receipt-usual-booking-category",
+            "Receipt sources whose bookings are mostly in one category get it among their item categories",
+            async c =>
+            {
+                var added = await OpenBudget.Connectors.Receipts.ReceiptProjects.AllowUsualBookingCategoriesAsync(c.Db, c.CancellationToken);
+                c.Logger.LogInformation("Receipts: {Added} usual booking categories added to receipt sources' item categories.", added);
+            },
+            Transactional: false),   // its re-ask runs outside the change tracker
+
         // Last: it waits for configured secrets, and holds back the fixes after it until then.
         new("2026-11-background-defaults",
             "Logins added before background syncs defaulted on get that default once",
