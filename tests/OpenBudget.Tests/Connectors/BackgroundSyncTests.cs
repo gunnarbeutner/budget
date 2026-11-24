@@ -396,4 +396,68 @@ public sealed class BackgroundSyncTests
         var status = await RunBackgroundAsync(w, id);
         Assert.False(w.Coordinator.SubmitAnswer(BankWorld.Alice, id, status.ChallengeId, FakeBankConnector.CodeAnswer));
     }
+
+    [Fact]
+    public async Task Opening_the_app_syncs_only_the_users_eligible_logins_in_the_background()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var mine = await w.AddLoginAsync(BankWorld.Alice);
+        var off = await w.AddLoginAsync(BankWorld.Alice);
+        var bobs = await w.AddLoginAsync(BankWorld.Bob);
+        await w.For(BankWorld.Alice).SetBackgroundAsync(off, false);
+        // Quiet hours do not hold back a run the user's visit starts.
+        var always = new BackgroundSyncOptions { QuietFrom = new(0, 0), QuietUntil = new(23, 59, 59, 999) };
+
+        Assert.Equal(1, await Scheduler(w, always).StartOnOpenAsync(BankWorld.Alice));
+        await w.Coordinator.WhenIdleAsync(mine);
+
+        Assert.True(w.Coordinator.GetStatus(BankWorld.Alice, mine)!.Background);
+        Assert.NotNull((await StoredAsync(w, mine)).LastBackgroundSyncAt);
+        Assert.Null(w.Coordinator.GetStatus(BankWorld.Alice, off));
+        Assert.Null(w.Coordinator.GetStatus(BankWorld.Bob, bobs));
+    }
+
+    [Fact]
+    public async Task Opening_the_app_again_soon_after_a_sync_starts_nothing()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var id = await w.AddLoginAsync(BankWorld.Alice);
+        await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false));
+        var scheduler = Scheduler(w);
+
+        Assert.Equal(0, await scheduler.StartOnOpenAsync(BankWorld.Alice)); // the interactive sync just ran
+        w.Clock.Offset += TimeSpan.FromHours(2);
+        Assert.Equal(1, await scheduler.StartOnOpenAsync(BankWorld.Alice));
+        await w.Coordinator.WhenIdleAsync(id);
+        Assert.Equal(0, await scheduler.StartOnOpenAsync(BankWorld.Alice)); // the background run just ran
+    }
+
+    [Fact]
+    public async Task Opening_the_app_while_a_sync_runs_starts_nothing()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var waiting = await w.AddLoginAsync(BankWorld.Alice, "demo+code");
+        var other = await w.AddLoginAsync(BankWorld.Alice);
+        await w.For(BankWorld.Alice).SetBackgroundAsync(waiting, false);
+        Assert.Equal(StartResult.Started, await w.Coordinator.StartAsync(BankWorld.Alice, new SyncRequest(waiting, true, false)));
+
+        Assert.Equal(0, await Scheduler(w).StartOnOpenAsync(BankWorld.Alice));
+        Assert.Null(w.Coordinator.GetStatus(BankWorld.Alice, other));
+        w.Coordinator.Cancel(BankWorld.Alice, waiting);
+        await w.Coordinator.WhenIdleAsync(waiting);
+    }
+
+    [Fact]
+    public async Task Several_tabs_opening_at_once_start_one_run()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var id = await w.AddLoginAsync(BankWorld.Alice, "demo+code"); // needs the owner, so the run records no sync
+        var scheduler = Scheduler(w);
+
+        var counts = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => Task.Run(() => scheduler.StartOnOpenAsync(BankWorld.Alice))));
+        Assert.Equal(1, counts.Sum());
+        await w.Coordinator.WhenIdleAsync(id);
+        // Neither the run's flag nor a missing sync time lets the next visit within the interval start another.
+        Assert.Equal(0, await scheduler.StartOnOpenAsync(BankWorld.Alice));
+    }
 }

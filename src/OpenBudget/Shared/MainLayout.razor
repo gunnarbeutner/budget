@@ -2,6 +2,9 @@
 @inject IStringLocalizer<MainLayout> L
 @inject IJSRuntime JS
 @inject OpenBudget.Services.GetStartedGate GetStarted
+@inject OpenBudget.Services.ICurrentUser CurrentUser
+@inject OpenBudget.Connectors.Sync.BackgroundSyncService BackgroundSync
+@inject ILogger<MainLayout> Logger
 
 <PageTitle>OpenBudget</PageTitle>
 
@@ -46,7 +49,20 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+        await StartBackgroundSyncAsync();
         try { await JS.InvokeVoidAsync("obNav.markInteractive"); }
         catch (JSDisconnectedException) { /* circuit gone */ }
+    }
+
+    // A new circuit means the user opened the app: their logins sync in the background (unless they did recently).
+    // The run lives on the singleton scheduler, not on this circuit, so closing the tab does not stop it.
+    private async Task StartBackgroundSyncAsync()
+    {
+        if (await CurrentUser.GetUserIdAsync() is not { } userId) return;
+        _ = Task.Run(async () =>
+        {
+            try { await BackgroundSync.StartOnOpenAsync(userId); }
+            catch (Exception ex) { Logger.LogError(ex, "Starting the background sync on opening the app failed."); }
+        });
     }
 }

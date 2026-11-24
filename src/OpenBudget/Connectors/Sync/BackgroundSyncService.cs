@@ -24,6 +24,12 @@ public sealed class BackgroundSyncOptions
     public TimeOnly QuietFrom { get; set; } = new(0, 0);
 
     public TimeOnly QuietUntil { get; set; } = new(6, 0);
+
+    /// <summary>
+    /// Opening the app starts background runs of the user's logins unless one of them synced (or such a run started)
+    /// within this time.
+    /// </summary>
+    public TimeSpan OnOpenInterval { get; set; } = TimeSpan.FromHours(1);
 }
 
 /// <summary>
@@ -41,6 +47,8 @@ public sealed class BackgroundSyncService : BackgroundService
     private readonly BankSyncOptions _syncOptions;
     private readonly TimeProvider _clock;
     private readonly ILogger<BackgroundSyncService> _logger;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _openedAt = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _opening = new(StringComparer.Ordinal);
 
     public BackgroundSyncService(
         SystemDbContextFactory system, BankSyncCoordinator coordinator, ConnectorRegistry registry, BackgroundSyncOptions options,
@@ -85,19 +93,13 @@ public sealed class BackgroundSyncService : BackgroundService
         if (InQuietHours(TimeOnly.FromDateTime(_clock.GetLocalNow().DateTime), _options)) return 0;
 
         await using var db = await _system.CreateDbContextAsync(ct);
-        var revokedBanks = await OpenBudget.Services.BankLoginService.RevokedBanksAsync(db, ct);
-        var candidates = await db.BankLogins.AsNoTracking().Include(l => l.Accounts)
-            .Where(l => l.BackgroundEnabled && !l.CredentialsInvalid && l.NeedsManualSync == null && l.EncryptedCredentials != null)
-            .OrderBy(l => l.Id)
-            .ToListAsync(ct);
+        var candidates = await EligibleAsync(db, null, ct);
 
         var started = 0;
         var limit = Math.Max(1, _syncOptions.BackgroundConcurrency);
-        foreach (var login in candidates)
+        foreach (var (login, registration) in candidates)
         {
             if (started >= limit) break;
-            if (_registry.Find(login.ConnectorType) is not { } registration || registration.Silent == SilentCapability.None) continue;
-            if (registration.FinTsBlz is { } blz && revokedBanks.Contains(blz)) continue;
             if (login.NextBackgroundAttemptAt is { } next && now.UtcDateTime < next) continue;
             // Bookings and statements each follow their own schedule: a login whose bookings are not due (or never
             // run automatically) still fetches its statements when they are.
@@ -114,6 +116,74 @@ public sealed class BackgroundSyncService : BackgroundService
         }
         return started;
     }
+
+    /// <summary>
+    /// The logins background runs may sync (of one owner, or of everyone): switched on, needing nothing from the owner,
+    /// with stored credentials, at a bank that allows silent runs and that no admin revoked.
+    /// </summary>
+    private async Task<List<(BankLogin Login, ConnectorRegistration Registration)>> EligibleAsync(
+        BudgetDbContext db, string? ownerUserId, CancellationToken ct)
+    {
+        var revokedBanks = await OpenBudget.Services.BankLoginService.RevokedBanksAsync(db, ct);
+        var query = db.BankLogins.AsNoTracking().Include(l => l.Accounts)
+            .Where(l => l.BackgroundEnabled && !l.CredentialsInvalid && l.NeedsManualSync == null && l.EncryptedCredentials != null);
+        if (ownerUserId != null) query = query.Where(l => l.OwnerUserId == ownerUserId);
+        var result = new List<(BankLogin, ConnectorRegistration)>();
+        foreach (var login in await query.OrderBy(l => l.Id).ToListAsync(ct))
+        {
+            if (_registry.Find(login.ConnectorType) is not { } registration || registration.Silent == SilentCapability.None) continue;
+            if (registration.FinTsBlz is { } blz && revokedBanks.Contains(blz)) continue;
+            result.Add((login, registration));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// The user opened the app: starts background runs of all their eligible logins (bookings, plus statements where
+    /// due), unless background syncs are off, a sync of theirs is running or waiting, or one of their eligible logins
+    /// synced or such a run started within <see cref="BackgroundSyncOptions.OnOpenInterval"/>. Logins in their error
+    /// backoff are left out. Quiet hours do not apply: the user is there. Several tabs opening at once start it once
+    /// (per-user gate). Returns how many runs it started.
+    /// </summary>
+    public async Task<int> StartOnOpenAsync(string userId, CancellationToken ct = default)
+    {
+        if (!_options.Enabled || !_coordinator.IsEnabled) return 0;
+        if (!_opening.TryAdd(userId, 0)) return 0;
+        try
+        {
+            var now = _clock.GetUtcNow().UtcDateTime;
+            if (_openedAt.TryGetValue(userId, out var opened) && now - opened < _options.OnOpenInterval) return 0;
+            if (_coordinator.GetStatuses(userId).Any(s => s.Phase != SyncPhase.Finished)) return 0;
+
+            await using var db = await _system.CreateDbContextAsync(ct);
+            var candidates = await EligibleAsync(db, userId, ct);
+            if (candidates.Count == 0) return 0;
+            var latest = candidates.Select(c => Latest(c.Login.LastSyncAt, c.Login.LastBackgroundSyncAt)).Max();
+            if (latest is { } last && now - last < _options.OnOpenInterval) return 0;
+
+            _openedAt[userId] = now;
+            var started = 0;
+            foreach (var (login, registration) in candidates)
+            {
+                if (login.NextBackgroundAttemptAt is { } next && now < next) continue;
+                if (_coordinator.IsBusy(login.Id)) continue;
+                var statements = login.Accounts.Where(a => RefreshPolicy.StatementsDue(a, now)).Select(a => a.Id).ToList();
+                var request = new SyncRequest(login.Id, true, statements.Count > 0, statements, Background: true);
+                if (_coordinator.LaunchBackground(userId, request, registration.FinTsBlz) == StartResult.Started)
+                {
+                    _logger.LogInformation("Background sync of bank login {LoginId} started as its owner opened the app.", login.Id);
+                    started++;
+                }
+            }
+            return started;
+        }
+        finally
+        {
+            _opening.TryRemove(userId, out _);
+        }
+    }
+
+    private static DateTime? Latest(DateTime? a, DateTime? b) => a is { } x && b is { } y ? (x > y ? x : y) : a ?? b;
 
     public static bool InQuietHours(TimeOnly local, BackgroundSyncOptions options) =>
         options.QuietFrom != options.QuietUntil && local.IsBetween(options.QuietFrom, options.QuietUntil);
