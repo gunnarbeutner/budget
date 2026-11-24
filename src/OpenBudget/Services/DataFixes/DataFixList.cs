@@ -65,6 +65,14 @@ public static class DataFixList
             },
             Transactional: false),   // its re-ask runs outside the change tracker
 
+        new("2026-11-account-defaults",
+            "Account roles and \"In cashflow\" flags follow the connector and account type unless they were set by hand",
+            async c =>
+            {
+                var (roles, flags) = await AccountDefaults.BackfillAsync(c.Db, c.Services.GetRequiredService<ConnectorRegistry>(), c.CancellationToken);
+                c.Logger.LogInformation("Accounts: {Roles} roles and {Flags} \"In cashflow\" flags kept as set by hand; the rest follow the defaults.", roles, flags);
+            }),
+
         // Last: these wait for configured secrets, and hold back the fixes after them until then.
         new("2026-11-background-defaults",
             "Logins added before background syncs defaulted on get that default once",

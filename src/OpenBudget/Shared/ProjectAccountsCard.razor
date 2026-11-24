@@ -97,6 +97,14 @@
                                                    aria-label="@L["Table_InCashflow"]" title="@L["InCashflow_Help"]"
                                                    checked="@assignment.InCashflow"
                                                    @onchange="e => OnInCashflowChange.InvokeAsync((assignment.AccountId, e.Value is true))" />
+                                            @if (assignment.InCashflowByUser)
+                                            {
+                                                <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" data-testid="in-cashflow-reset"
+                                                        title="@L["InCashflow_Reset"]" aria-label="@L["InCashflow_Reset"]"
+                                                        @onclick="() => OnInCashflowChange.InvokeAsync((assignment.AccountId, null))">
+                                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                                </button>
+                                            }
                                         </td>
                                         @if (!Compact)
                                         {
@@ -270,8 +278,8 @@
     [Parameter] public EventCallback<long> OnRemove { get; set; }
     /// <summary>Raised with the account id + new scope when a row's scope toggle is clicked.</summary>
     [Parameter] public EventCallback<(long AccountId, AccountScope Scope)> OnScopeChange { get; set; }
-    /// <summary>Raised with the account id + new value when a row's "In cashflow" checkbox is toggled.</summary>
-    [Parameter] public EventCallback<(long AccountId, bool InCashflow)> OnInCashflowChange { get; set; }
+    /// <summary>Raised with the account id + new value when a row's "In cashflow" checkbox is toggled; null: back to the default.</summary>
+    [Parameter] public EventCallback<(long AccountId, bool? InCashflow)> OnInCashflowChange { get; set; }
 
     private bool _showDialog;
     private readonly HashSet<long> _selected = new();

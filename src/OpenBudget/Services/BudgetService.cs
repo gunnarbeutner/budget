@@ -811,14 +811,19 @@ public class BudgetService
         Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
-    /// <summary>Sets whether the account counts in the project's Cashflow view and cashflow balance.</summary>
-    public async Task SetAccountInCashflowAsync(int projectId, long accountId, bool inCashflow)
+    /// <summary>
+    /// Sets whether the account counts in the project's Cashflow view and cashflow balance; null returns it to
+    /// <see cref="AccountAssignmentDefaults.InCashflow"/>.
+    /// </summary>
+    public async Task SetAccountInCashflowAsync(int projectId, long accountId, bool? inCashflow)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var existing = await db.ProjectAccountAssignments
             .FirstOrDefaultAsync(paa => paa.ProjectId == projectId && paa.AccountId == accountId);
         if (existing == null) return;
-        existing.InCashflow = inCashflow;
+        var account = inCashflow == null ? await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == accountId) : null;
+        existing.InCashflow = inCashflow ?? (account != null && AccountAssignmentDefaults.InCashflow(account));
+        existing.InCashflowByUser = inCashflow != null;
         await db.SaveChangesAsync();
         Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
     }

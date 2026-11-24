@@ -208,6 +208,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<Account>().Property(a => a.InitialBalance).HasDefaultValue(0L);
         // Rows written by raw SQL (the import) leave the role out.
         modelBuilder.Entity<Account>().Property(a => a.Role).HasDefaultValue(AccountRole.None);
+        modelBuilder.Entity<Account>().Property(a => a.RoleByUser).HasDefaultValue(false);
 
         modelBuilder.Entity<Account>()
             .Property(a => a.Provider)

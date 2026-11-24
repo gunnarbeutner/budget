@@ -63,7 +63,7 @@
         await LoadAsync();
     }
 
-    private async Task OnInCashflowChange((long AccountId, bool InCashflow) req)
+    private async Task OnInCashflowChange((long AccountId, bool? InCashflow) req)
     {
         await BudgetService.SetAccountInCashflowAsync(ProjectId, req.AccountId, req.InCashflow);
         await LoadAsync();

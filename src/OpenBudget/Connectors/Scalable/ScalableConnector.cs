@@ -41,6 +41,8 @@ public sealed partial class ScalableConnector : IBankConnector
         CredentialRequirement.UsernameAndSecret)
     {
         Silent = SilentCapability.SessionOnly,
+        // the depot's cash side ("Verrechnungskonto") is listed as a giro
+        AccountRoles = type => type == RemoteAccountType.Giro ? Models.AccountRole.BrokerCash : Models.AccountRole.None,
     };
 
     public string ConnectorType => TypeName;

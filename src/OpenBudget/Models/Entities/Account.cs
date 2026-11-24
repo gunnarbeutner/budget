@@ -47,9 +47,16 @@ public class Account
     [Column("balances")]
     public string? Balances { get; set; }
 
-    /// <summary>What the account is used for (a payment wallet, a broker's cash account); set by its connector or its owner.</summary>
+    /// <summary>
+    /// What the account is used for (a payment wallet, a broker's cash account): its owner's choice when
+    /// <see cref="RoleByUser"/>, else what its connector knows about the account (see <c>AccountDefaults</c>).
+    /// </summary>
     [Column("role")]
     public AccountRole Role { get; set; }
+
+    /// <summary>Whether its owner picked <see cref="Role"/>: syncs and data fixes leave it alone then.</summary>
+    [Column("role_by_user")]
+    public bool RoleByUser { get; set; }
 
     [Column("sort")]
     public long? Sort { get; set; }

@@ -80,10 +80,12 @@
   <data name="Settings_Name" xml:space="preserve"><value>Name</value></data>
   <data name="Settings_Bank" xml:space="preserve"><value>Connection</value></data>
   <data name="Settings_Role" xml:space="preserve"><value>Used as</value></data>
+  <data name="Settings_Role_Auto" xml:space="preserve"><value>Automatic: {0}</value></data>
+  <data name="Settings_Role_AutoFrom" xml:space="preserve"><value>Automatic: {0} (from {1})</value></data>
   <data name="Settings_Role_None" xml:space="preserve"><value>Regular account</value></data>
   <data name="Settings_Role_PaymentWallet" xml:space="preserve"><value>Payment service wallet</value></data>
   <data name="Settings_Role_BrokerCash" xml:space="preserve"><value>Broker cash account</value></data>
-  <data name="Settings_Role_Hint" xml:space="preserve"><value>Helps the assistant tell top-ups and transfers from purchases.</value></data>
+  <data name="Settings_Role_Hint" xml:space="preserve"><value>Set from the account's connection; pick another to override. Helps the assistant tell top-ups and transfers from purchases.</value></data>
   <data name="Settings_Bank_None" xml:space="preserve"><value>Not linked to a connection</value></data>
   <data name="Settings_Bank_Manage" xml:space="preserve"><value>Manage connections</value></data>
   <data name="Settings_Statements" xml:space="preserve"><value>Statements</value></data>

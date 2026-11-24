@@ -117,6 +117,15 @@ public sealed record ConnectorRegistration(
     /// <summary>The German bank code of a FinTS bank: background FinTS runs are switched on per bank.</summary>
     public string? FinTsBlz { get; init; }
 
+    /// <summary>
+    /// What the connector's accounts of each kind are used for (a payment service's balance, a broker's cash account);
+    /// null: none has a role. Linked accounts take it unless their owner picked one (see <see cref="Models.Account.RoleByUser"/>).
+    /// </summary>
+    public Func<RemoteAccountType, Models.AccountRole>? AccountRoles { get; init; }
+
+    /// <summary>The role of the connector's accounts of kind <paramref name="type"/> (see <see cref="AccountRoles"/>).</summary>
+    public Models.AccountRole RoleFor(RemoteAccountType type) => AccountRoles?.Invoke(type) ?? Models.AccountRole.None;
+
     public SilentCapability SilentCapabilityFor(ConnectorCredentials? credentials) => SilentFor?.Invoke(credentials) ?? Silent;
 }
 // Statements: whether the connector can fetch documents (statements) at all; false greys the switch out.

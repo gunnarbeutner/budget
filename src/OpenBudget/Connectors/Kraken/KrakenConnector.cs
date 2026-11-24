@@ -40,6 +40,8 @@ public sealed class KrakenConnector : IBankConnector
         Statements: false)
     {
         Silent = SilentCapability.Full,
+        // the one account holds the fiat cash next to the coins
+        AccountRoles = _ => Models.AccountRole.BrokerCash,
     };
 
     public string ConnectorType => TypeName;
@@ -72,7 +74,7 @@ public sealed class KrakenConnector : IBankConnector
     }
 
     public Task<IReadOnlyList<RemoteAccount>> ListAccountsAsync(CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<RemoteAccount>>([new RemoteAccount(DepotRemoteId, "Kraken", RemoteAccountType.Depot, null, Eur) { Role = Models.AccountRole.BrokerCash }]);
+        Task.FromResult<IReadOnlyList<RemoteAccount>>([new RemoteAccount(DepotRemoteId, "Kraken", RemoteAccountType.Depot, null, Eur)]);
 
     public async Task<ConnectorStep<AccountRefresh>> RefreshAsync(RemoteAccount account, DateOnly? since, ChallengeAnswer? answer, CancellationToken ct)
     {

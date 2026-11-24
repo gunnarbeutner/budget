@@ -539,6 +539,8 @@ public class BankLoginService
         remote.SyncFloorUtc = null;
         remote.LastSuccessAt = null;
         remote.LastError = null;
+        if (await db.Accounts.FirstOrDefaultAsync(a => a.Id == accountId, ct) is { } linked)
+            await AccountDefaults.ApplyRoleAsync(db, linked, _registry.Find(remote.BankLogin.ConnectorType)?.RoleFor(remote.Type) ?? AccountRole.None, ct);
         await db.SaveChangesAsync(ct);
         Changed(userId);
         await PublishAccountSourceAsync(accountId);
@@ -569,6 +571,7 @@ public class BankLoginService
             Type = (long)LocalType(remote.Type),
             Portfolio = remote.Type == RemoteAccountType.Depot ? 1 : 0,
             Provider = login.ConnectorType,
+            Role = _registry.Find(login.ConnectorType)?.RoleFor(remote.Type) ?? AccountRole.None,
         };
         writeDb.Accounts.Add(account);
         var link = await writeDb.BankLoginAccounts.FirstAsync(a => a.Id == loginAccountId, ct);
@@ -601,6 +604,8 @@ public class BankLoginService
         remote.SyncFloorUtc = null;
         remote.LastSuccessAt = null;
         remote.SwitchedAt = null;
+        if (await db.Accounts.FirstOrDefaultAsync(a => a.Id == accountId, ct) is { } unlinked)
+            await AccountDefaults.ApplyRoleAsync(db, unlinked, AccountRole.None, ct);
         await db.SaveChangesAsync(ct);
         Changed(userId);
         await PublishAccountSourceAsync(accountId);

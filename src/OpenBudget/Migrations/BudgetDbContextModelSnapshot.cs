@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261124053626_BackgroundAutomatic";
+    public override string LastMigrationId => "20261124055430_AccountDefaultsByUser";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -215,6 +215,12 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("INTEGER")
                     .HasDefaultValue(0)
                     .HasColumnName("role");
+
+                b.Property<bool>("RoleByUser")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER")
+                    .HasDefaultValue(false)
+                    .HasColumnName("role_by_user");
 
                 b.Property<long?>("Sort")
                     .HasColumnType("INTEGER")
@@ -1595,6 +1601,9 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.Property<bool>("InCashflow")
                     .HasColumnType("INTEGER")
                     .HasDefaultValue(true);
+
+                b.Property<bool>("InCashflowByUser")
+                    .HasColumnType("INTEGER");
 
                 b.Property<int>("ProjectId")
                     .HasColumnType("INTEGER");

@@ -134,6 +134,7 @@ public sealed class PayPalConnector : IBankConnector, ISyncHistoryConsumer
         Silent = SilentCapability.SessionOnly,
         SilentFor = credentials => TotpSecret.TryParse(credentials?.ExtraValue(TotpKey), out _) ? SilentCapability.Full : SilentCapability.SessionOnly,
         SilentWebSignIn = true,
+        AccountRoles = _ => Models.AccountRole.PaymentWallet,
     };
 
     /// <summary>A usable secret is stored as entered (trimmed); <see cref="TotpSecret.Parse"/> reads it at sign-in.</summary>
@@ -264,7 +265,7 @@ public sealed class PayPalConnector : IBankConnector, ISyncHistoryConsumer
         }
         _session.Values[CurrenciesKey] = string.Join(',', currencies);
         Log.LogInformation("PayPal: balance currencies {Currencies}.", string.Join(", ", currencies));
-        return currencies.Select(c => new RemoteAccount("paypal-" + c, "PayPal " + c, RemoteAccountType.Other, null, c) { Role = Models.AccountRole.PaymentWallet }).ToList();
+        return currencies.Select(c => new RemoteAccount("paypal-" + c, "PayPal " + c, RemoteAccountType.Other, null, c)).ToList();
     }
 
     // ---- balance and transactions ----

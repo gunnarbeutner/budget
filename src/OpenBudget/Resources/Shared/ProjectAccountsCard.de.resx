@@ -175,8 +175,11 @@
   <data name="Table_InCashflow" xml:space="preserve">
     <value>Im Cashflow</value>
   </data>
+  <data name="InCashflow_Reset" xml:space="preserve">
+    <value>Zurück zur Vorgabe für diese Kontoart</value>
+  </data>
   <data name="InCashflow_Help" xml:space="preserve">
-    <value>Zählt in der Cashflow-Ansicht und im Projektsaldo.</value>
+    <value>Zählt in der Cashflow-Ansicht und im Projektsaldo. Folgt der Kontoart: Giro-, Kreditkarten-, Bar- und Zahlungsdienstkonten zählen, Spar-, Broker- und Anlagekonten nicht.</value>
   </data>
   <data name="Accounts_Intro" xml:space="preserve">
     <value>Konten in diesem Projekt.</value>

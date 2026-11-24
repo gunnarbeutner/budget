@@ -126,7 +126,8 @@
             <div class="mb-3">
                 <label class="form-label" for="account-settings-role">@L["Settings_Role"]</label>
                 <select id="account-settings-role" class="form-select" style="max-width: 20rem;" data-testid="account-settings-role"
-                        disabled="@(!s.CanStyle)" @onchange="e => _settingsRole = Enum.Parse<AccountRole>(e.Value?.ToString() ?? nameof(AccountRole.None))">
+                        disabled="@(!s.CanStyle)" @onchange="e => _settingsRole = Enum.TryParse<AccountRole>(e.Value?.ToString(), out var picked) ? picked : null">
+                    <option value="" selected="@(_settingsRole == null)">@AutoRoleLabel</option>
                     @foreach (var role in Enum.GetValues<AccountRole>())
                     {
                         <option value="@role" selected="@(role == _settingsRole)">@L["Settings_Role_" + role]</option>
@@ -395,7 +396,13 @@
     }
 
     private string _settingsName = "";
-    private AccountRole _settingsRole;
+    /// <summary>The role picked in the settings dialog; null: the one its connector gives (<see cref="_roleInfo"/>).</summary>
+    private AccountRole? _settingsRole;
+    private AccountRoleInfo? _roleInfo;
+
+    private string AutoRoleLabel => _roleInfo is { Connector: { } connector } info
+        ? L["Settings_Role_AutoFrom", L["Settings_Role_" + info.Derived], connector]
+        : L["Settings_Role_Auto", L["Settings_Role_" + (_roleInfo?.Derived ?? AccountRole.None)]];
     private bool _statementsOn;
     private StatementsInterval _interval;
 
@@ -654,7 +661,9 @@
             _ => null,
         };
         _settingsName = account.Name;
-        _settingsRole = account.Role;
+        try { _roleInfo = await Structure.GetAccountRoleAsync(node.Id); }
+        catch (Exception ex) when (ex is AccessDeniedException or KeyNotFoundException) { _roleInfo = null; }
+        _settingsRole = _roleInfo is { ByUser: true } ? _roleInfo.Role : null;
         _statementsOn = statement?.Enabled ?? false;
         _interval = statement?.Interval ?? StatementsInterval.Monthly;
         _error = null;
@@ -745,7 +754,7 @@
                 await Structure.RenameAsync(StructureItemKind.Account, s.Account.Id, _settingsName);
             if (s.CanStyle && (_settingsIcon != s.Account.Icon || _settingsColor != CategoryColors.ToCss(s.Account.Color)))
                 await Structure.SetAppearanceAsync(StructureItemKind.Account, s.Account.Id, _settingsIcon, _settingsColor);
-            if (s.CanStyle && _settingsRole != s.Account.Role)
+            if (s.CanStyle && _roleInfo is { } roleInfo && _settingsRole != (roleInfo.ByUser ? roleInfo.Role : null))
                 await Structure.SetAccountRoleAsync(s.Account.Id, _settingsRole);
             if (s.Statement is { Block: null, LoginAccountId: { } loginAccount, CanChange: true } st
                 && (st.Enabled != _statementsOn || st.Interval != _interval))

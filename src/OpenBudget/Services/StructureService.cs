@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using OpenBudget.Connectors;
 using OpenBudget.Connectors.Sync;
 using OpenBudget.Models;
 
@@ -55,14 +56,16 @@ public sealed class StructureService
     private readonly ChangeNotificationService _notifier;
     private readonly ChangeOrigin _origin;
     private readonly BankStatementStore? _statementStore;
+    private readonly ConnectorRegistry? _registry;
 
     /// <summary>First rowid OpenBudget uses for groups and categories it creates (inside the connector range, past the reserved "New categories" group).</summary>
     public const long OwnRowBase = BankTransactionStore.ConnectorRowBase + 1000;
 
     public StructureService(
         IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory system, ChangeNotificationService notifier,
-        ChangeOrigin origin, BankStatementStore? statementStore = null)
+        ChangeOrigin origin, BankStatementStore? statementStore = null, ConnectorRegistry? registry = null)
     {
+        _registry = registry;
         _dbFactory = dbFactory;
         _system = system;
         _notifier = notifier;
@@ -221,17 +224,33 @@ public sealed class StructureService
         Changed(ownerId);
     }
 
-    /// <summary>Sets what an account is used for. Owner only.</summary>
-    public async Task SetAccountRoleAsync(long id, AccountRole role, CancellationToken ct = default)
+    /// <summary>The account's role, whether its owner picked it, and the role its connector gives it.</summary>
+    public async Task<AccountRoleInfo> GetAccountRoleAsync(long id, CancellationToken ct = default)
     {
-        if (!Enum.IsDefined(role)) throw new ArgumentOutOfRangeException(nameof(role));
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw NotFound();
+        var (derived, connector) = await AccountDefaults.DerivedRoleAsync(db, _registry, id, ct);
+        return new AccountRoleInfo(account.Role, account.RoleByUser, derived, connector);
+    }
+
+    /// <summary>
+    /// Sets what an account is used for; null hands it back to its connector (see <see cref="AccountDefaults"/>). The
+    /// "In cashflow" flags its owner did not set follow. Owner only.
+    /// </summary>
+    public async Task SetAccountRoleAsync(long id, AccountRole? role, CancellationToken ct = default)
+    {
+        if (role is { } r && !Enum.IsDefined(r)) throw new ArgumentOutOfRangeException(nameof(role));
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var (ownerId, _) = await LocateAsync(db, StructureItemKind.Account, id, ct);
         if (await BlockAsync(db, ownerId, ct) == StructureBlock.NotOwner)
             throw new AccessDeniedException("Only the source's owner can change its structure.");
-        await db.Accounts.Where(x => x.Id == id).ForEachAsync(x => x.Role = role, ct);
+        var account = await db.Accounts.FirstAsync(x => x.Id == id, ct);
+        account.Role = role ?? (await AccountDefaults.DerivedRoleAsync(db, _registry, id, ct)).Role;
+        account.RoleByUser = role != null;
+        await AccountDefaults.FollowCashflowAsync(db, account, ct);
         await db.SaveChangesAsync(ct);
         Changed(ownerId);
+        _notifier.Publish(new DataChange(DataArea.Projects), _origin.Id);
     }
 
     private static KeyNotFoundException NotFound() => new("Not found.");
@@ -673,3 +692,6 @@ public sealed class StructureService
         Changed(ownerId, projects: true);
     }
 }
+
+/// <summary>An account's role, whether its owner picked it, and the role its connector (named <paramref name="Connector"/>) gives it.</summary>
+public sealed record AccountRoleInfo(AccountRole Role, bool ByUser, AccountRole Derived, string? Connector);

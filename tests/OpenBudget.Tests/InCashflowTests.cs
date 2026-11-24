@@ -106,7 +106,7 @@ public class InCashflowTests
 
     [Theory]
     [InlineData(1L, true)]   // giro
-    [InlineData(2L, true)]   // savings
+    [InlineData(2L, false)]  // savings
     [InlineData(3L, true)]   // credit card
     [InlineData(6L, true)]   // cash
     [InlineData(4L, false)]  // loan

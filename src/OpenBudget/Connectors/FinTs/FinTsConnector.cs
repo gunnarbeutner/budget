@@ -147,7 +147,11 @@ public sealed class BaaderConnector : FinTsConnector
     }
 
     public static ConnectorRegistration Registration(FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null) =>
-        CreateRegistration(Config, ctx => new BaaderConnector(ctx, options, transportFactory));
+        CreateRegistration(Config, ctx => new BaaderConnector(ctx, options, transportFactory)) with
+        {
+            // a broker's bank: the giro next to the depot is its settlement account
+            AccountRoles = type => type == RemoteAccountType.Giro ? Models.AccountRole.BrokerCash : Models.AccountRole.None,
+        };
 
     /// <summary>Documents come from the portal, not FinTS (Baader offers no HKEKA).</summary>
     public override Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchStatementsAsync(

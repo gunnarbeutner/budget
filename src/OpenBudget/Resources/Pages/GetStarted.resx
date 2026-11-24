@@ -182,7 +182,7 @@
     <value>Choose accounts</value>
   </data>
   <data name="Step4_Body" xml:space="preserve">
-    <value>Tick "In cashflow" for the accounts you spend from day to day.</value>
+    <value>Accounts you spend from day to day count in the cashflow automatically; change "In cashflow" only where that is wrong.</value>
   </data>
   <data name="Step4_NoProject" xml:space="preserve">
     <value>Create a project first.</value>

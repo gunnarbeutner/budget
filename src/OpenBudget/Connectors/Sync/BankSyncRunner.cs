@@ -695,7 +695,7 @@ public sealed class BankSyncRunner
                 if (account == null || !ownerOk || !string.Equals(account.Provider, login.ConnectorType, StringComparison.Ordinal))
                     throw new ConnectorException("The linked account is no longer available for this login.");
 
-                if (remoteAccount.Role != Models.AccountRole.None) account.Role = remoteAccount.Role;
+                await AccountDefaults.ApplyRoleAsync(db, account, _registry.Find(login.ConnectorType)?.RoleFor(link.Type) ?? Models.AccountRole.None, ct);
                 var since = await ComputeSinceAsync(db, link, account, ct);
                 var step = await DriveAsync(a => connector.RefreshAsync(remoteAccount, since, a, ct), sink, context, ct);
                 if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);

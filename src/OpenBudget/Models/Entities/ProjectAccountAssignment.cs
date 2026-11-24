@@ -24,11 +24,13 @@ public static class AccountAssignmentDefaults
     public const AccountScope Scope = AccountScope.Shared;
 
     /// <summary>
-    /// Only open cash accounts (giro, savings, credit card, cash) count in the Cashflow view by default.
-    /// Closed accounts, depots, PortfolioPerformance accounts, loans and other or unknown types start outside it.
+    /// Whether an account counts in the Cashflow view unless its owner says otherwise: the open accounts spent from day to
+    /// day (giro, credit card, cash, a payment service wallet). Savings, a broker's cash account, depots,
+    /// PortfolioPerformance accounts, loans, closed accounts and other or unknown types stay outside it.
     /// </summary>
     public static bool InCashflow(Account account) =>
-        !account.Closed && !IsInvestment(account) && account.Kind is AccountType.Giro or AccountType.Savings or AccountType.CreditCard or AccountType.Cash;
+        !account.Closed && !IsInvestment(account) && account.Role != AccountRole.BrokerCash
+        && (account.Kind is AccountType.Giro or AccountType.CreditCard or AccountType.Cash || account.Role == AccountRole.PaymentWallet);
 
     public static bool IsInvestment(Account account) =>
         account.Provider == AccountProviders.PortfolioPerformance || account.IsDepot;
@@ -68,6 +70,12 @@ public class ProjectAccountAssignment
     /// and in the total balance.
     /// </summary>
     public bool InCashflow { get; set; } = true;
+
+    /// <summary>
+    /// Whether the owner set <see cref="InCashflow"/>; otherwise it follows <see cref="AccountAssignmentDefaults.InCashflow"/>
+    /// and changes with the account's role.
+    /// </summary>
+    public bool InCashflowByUser { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

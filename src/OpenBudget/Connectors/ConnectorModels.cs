@@ -12,12 +12,11 @@ public enum RemoteAccountType
     Loan,
 }
 
-/// <summary>An account as the bank describes it. <see cref="RemoteId"/> is stable across logins.</summary>
-public sealed record RemoteAccount(string RemoteId, string Name, RemoteAccountType Type, string? Iban, string Currency)
-{
-    /// <summary>What the account is used for; a sync gives the linked local account this role unless it is <see cref="Models.AccountRole.None"/>.</summary>
-    public Models.AccountRole Role { get; init; }
-}
+/// <summary>
+/// An account as the bank describes it. <see cref="RemoteId"/> is stable across logins. What it is used for comes from
+/// its connector's <see cref="ConnectorRegistration.AccountRoles"/>.
+/// </summary>
+public sealed record RemoteAccount(string RemoteId, string Name, RemoteAccountType Type, string? Iban, string Currency);
 
 /// <summary>
 /// One booking (or pending reservation) reported by a bank. Amounts are decimals in the account
