@@ -182,7 +182,8 @@ public class Transaction
     /// <summary>
     /// The booking on another of the owner's accounts that is the other side of this one when it moves money between
     /// the owner's accounts (see <see cref="OpenBudget.Services.TransferPairing"/>). Both rows point at each other. A
-    /// paired booking counts as a transfer like one in a transfer category.
+    /// paired booking without a category counts as a transfer like one in a transfer category; a category the user gives
+    /// it still counts as that category.
     /// </summary>
     [Column("transfer_pair_id")]
     public long? TransferPeerId { get; set; }

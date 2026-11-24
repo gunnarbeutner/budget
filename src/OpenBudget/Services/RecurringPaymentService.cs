@@ -247,11 +247,12 @@ public class RecurringPaymentService
                 var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(ownerId ?? string.Empty);
                 projectLeaves = CategoryHierarchyService.BuildItemToLeafCategoryIds(tracked, hierarchy).Values.SelectMany(s => s).ToHashSet();
             }
-            // Bookings paired as transfers or in a transfer category (moves between accounts, card statements, the PayPal
-            // side of a payment its bank side shows too) are no subscription.
+            // Bookings in a transfer category (moves between accounts, card statements, the PayPal side of a payment its
+            // bank side shows too), and uncategorized ones paired as transfers, are no subscription. A paired booking the
+            // user gave another category (the bank side of a wallet payment) counts as that category.
             var transfers = await CategoryHierarchyService.TransferCategoryIdsAsync(db, null, ct);
             var bookings = rows
-                .Where(t => t.TransferPeerId == null && (t.CategoryId is not { } tc || !transfers.Contains(tc)))
+                .Where(t => t.CategoryId is { } tc ? !transfers.Contains(tc) : t.TransferPeerId == null)
                 .Where(t => !shared.Contains(t.AccountId) || t.CategoryId is not { } c || projectLeaves?.Contains(c) == true)
                 .Select(t => new RecurringBooking(t.Id, t.AccountId, DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(t.Timestamp).UtcDateTime),
                     t.Amount, t.Name, t.Purpose, t.CategoryId, t.CounterpartyIban))

@@ -278,6 +278,13 @@ public sealed class TransferPairingTests
         await t.Db.SaveChangesAsync();
 
         Assert.Empty(await new RecurringPaymentService(t.Factory, t.Hierarchy, t.Projects).GetAsync(1, today));
+
+        // A category the user gives the paired bookings wins: they count as that category again.
+        t.AddGroup(300);
+        t.AddLeaf(301, 300, "Media");
+        await t.Db.SaveChangesAsync();
+        await t.Db.Transactions.Where(r => r.AccountId == 1).ExecuteUpdateAsync(u => u.SetProperty(r => r.CategoryId, 301L));
+        Assert.Single(await new RecurringPaymentService(t.Factory, t.Hierarchy, t.Projects).GetAsync(1, today));
     }
 
     [Fact]

@@ -36,9 +36,12 @@ public static class TransferPairing
 
     private enum Support { None = 0, Text = 1, Iban = 2 }
 
-    /// <summary>The pairs (outgoing id, incoming id) among <paramref name="rows"/>; see the class remarks.</summary>
+    /// <summary>
+    /// The pairs (outgoing id, incoming id) among <paramref name="rows"/>; see the class remarks. Bookings with a
+    /// supported candidate that stay unpaired because the choice is ambiguous go to <paramref name="ambiguous"/>.
+    /// </summary>
     public static List<(long Out, long In)> Match(
-        IReadOnlyList<TransferCandidate> rows, IReadOnlyDictionary<long, TransferAccount> accounts)
+        IReadOnlyList<TransferCandidate> rows, IReadOnlyDictionary<long, TransferAccount> accounts, ICollection<long>? ambiguous = null)
     {
         var ownIbans = accounts.Values.Select(a => Iban.Normalize(a.Iban)).Where(i => i.Length > 0).ToHashSet(StringComparer.Ordinal);
         var incoming = rows.Where(r => r.Amount > 0).ToLookup(r => (r.Amount, r.Currency));
@@ -67,10 +70,16 @@ public static class TransferPairing
             Note(e.Out.Id, e.Support);
             Note(e.In.Id, e.Support);
         }
-        return edges
+        var pairs = edges
             .Where(e => best[e.Out.Id] == (e.Support, 1) && best[e.In.Id] == (e.Support, 1))
-            .Select(e => (e.Out.Id, e.In.Id))
+            .Select(e => (Out: e.Out.Id, In: e.In.Id))
             .ToList();
+        if (ambiguous != null)
+        {
+            var paired = pairs.SelectMany(p => new[] { p.Out, p.In }).ToHashSet();
+            foreach (var id in best.Keys.Where(id => !paired.Contains(id))) ambiguous.Add(id);
+        }
+        return pairs;
     }
 
     /// <summary>
