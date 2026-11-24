@@ -178,4 +178,57 @@ public sealed class PendingCarryOverTests
             Assert.Equal(account, cancelled.AccountId);
         }
     }
+
+    [Fact]
+    public async Task A_suggested_category_stays_a_suggestion_with_its_reason_and_a_dropped_one_is_no_cancelled_reservation()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var id = await w.AddLoginAsync(BankWorld.Alice);
+        await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
+        await w.LinkAllAsync(BankWorld.Alice, id);
+        var account = (await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).LinkedAccountId!.Value;
+        var store = new BankTransactionStore();
+        var day = new DateOnly(2026, 6, 1);
+        var food = RowIds.Namespace(BankWorld.SourceAlice, 9001);
+
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            var group = RowIds.Namespace(BankWorld.SourceAlice, 9000);
+            db.CategoryGroups.Add(new CategoryGroup { Id = group, OwnerUserId = BankWorld.Alice, Name = "Example Group" });
+            db.Categories.Add(new Category { Id = food, OwnerUserId = BankWorld.Alice, Name = "Example Food", GroupId = group, Type = 1 });
+            await db.SaveChangesAsync();
+            await store.ApplyAsync(db, account, new AccountRefresh(null,
+            [
+                new(-30m, "EUR", day, null, "Example Market", "Card payment", false),
+                new(-12m, "EUR", day, null, "Example Bakery", "Card payment", false),
+            ], []), day, DateTime.UtcNow, CancellationToken.None);
+        }
+
+        // Both got a suggestion after the sync.
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            foreach (var row in await db.Transactions.Where(t => t.AccountId == account).ToListAsync())
+            {
+                row.CategoryId = food;
+                row.CategorySetBy = TransactionCategorySource.Suggested;
+                db.CategorySuggestions.Add(new CategorySuggestion { TransactionId = row.Id, CategoryId = food, Confidence = 0.7, Source = "ai", Rationale = "Groceries", TreeHash = "h", CreatedAt = DateTime.UtcNow });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        // Next sync: the market booking is still pending, the bakery reservation is gone.
+        await using (var db = await w.T.System.CreateDbContextAsync())
+            await store.ApplyAsync(db, account, new AccountRefresh(null,
+                [new(-30m, "EUR", day, null, "Example Market", "Card payment", false)], []), day, DateTime.UtcNow, CancellationToken.None);
+
+        // The new row may reuse the old one's id; either way the reason moves to it.
+        var market = Assert.Single(await w.TransactionsAsync(account));
+        Assert.Equal((food, TransactionCategorySource.Suggested), (market.CategoryId!.Value, market.CategorySetBy));
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            var reason = await db.CategorySuggestions.SingleAsync(s => s.TransactionId == market.Id);
+            Assert.Equal(("ai", "Groceries"), (reason.Source, reason.Rationale));
+            Assert.Empty(await db.CancelledReservations.ToListAsync());
+        }
+    }
 }

@@ -1351,6 +1351,7 @@ button.cat-pill:hover { filter: brightness(0.96); }
     font-weight: 500;
 }
 .cat-pill-outside-icon { font-size: 0.9em; margin-right: 0.3em; flex: 0 0 auto; }
+.cat-pill-suggested-icon { font-size: 0.85em; margin-right: 0.3em; flex: 0 0 auto; opacity: 0.8; }
 .cat-pill.empty {
     background: transparent !important;
     color: var(--ob-muted) !important;

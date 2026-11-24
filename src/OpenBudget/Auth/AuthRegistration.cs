@@ -30,6 +30,7 @@ public static class AuthRegistration
         // tables carry no per-user filters — they are managed via UserManager/SignInManager only).
         services.AddScoped(sp => sp.GetRequiredService<SystemDbContextFactory>().CreateDbContext());
         services.Replace(ServiceDescriptor.Scoped<IDbContextFactory<BudgetDbContext>, ScopedDbContextFactory>());
+        services.AddScoped<ActingUser>();
         services.AddScoped<ICurrentUser, AuthStateCurrentUser>();
         services.AddScoped<AccessScopeProvider>();
         return services;

@@ -20,11 +20,17 @@ public interface ICurrentUser
 public sealed class AuthStateCurrentUser : ICurrentUser
 {
     private readonly AuthenticationStateProvider _auth;
+    private readonly ActingUser? _acting;
 
-    public AuthStateCurrentUser(AuthenticationStateProvider auth) => _auth = auth;
+    public AuthStateCurrentUser(AuthenticationStateProvider auth, ActingUser? acting = null)
+    {
+        _auth = auth;
+        _acting = acting;
+    }
 
     public async ValueTask<string?> GetUserIdAsync()
     {
+        if (_acting?.UserId is { } acting) return acting;
         try
         {
             // signing in or out reloads the page, so the state cannot change while the circuit lives
@@ -40,6 +46,23 @@ public sealed class AuthStateCurrentUser : ICurrentUser
             // Auth state not initialised (no circuit / no HttpContext): treat as logged out.
             return null;
         }
+    }
+}
+
+/// <summary>
+/// The user a server-side job acts for in its own DI scope (no circuit, no request). Set right after the scope is
+/// created, it makes <see cref="AuthStateCurrentUser"/> resolve that user, so the scope's user-scoped services read and
+/// write exactly what the user could themselves. Never set from anything a client sends.
+/// </summary>
+public sealed class ActingUser
+{
+    public string? UserId { get; private set; }
+
+    /// <summary>Acts for <paramref name="userId"/>; a scope acts for one user only.</summary>
+    public void Set(string userId)
+    {
+        if (UserId != null && UserId != userId) throw new InvalidOperationException("The scope already acts for another user.");
+        UserId = userId;
     }
 }
 

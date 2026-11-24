@@ -64,4 +64,7 @@
   <data name="Outside_NoProject" xml:space="preserve">
     <value>Category outside this project</value>
   </data>
+  <data name="Suggested" xml:space="preserve">
+    <value>Suggested by the AI</value>
+  </data>
 </root>

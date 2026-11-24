@@ -157,4 +157,19 @@
   <data name="Offset_Choose" xml:space="preserve">
     <value>Konto wählen…</value>
   </data>
+  <data name="Suggested" xml:space="preserve">
+    <value>Vorgeschlagen</value>
+  </data>
+  <data name="Suggested_By" xml:space="preserve">
+    <value>anhand {0}</value>
+  </data>
+  <data name="Source_Ai" xml:space="preserve">
+    <value>der KI</value>
+  </data>
+  <data name="Source_Similar" xml:space="preserve">
+    <value>ähnlicher Buchungen</value>
+  </data>
+  <data name="Action_Confirm" xml:space="preserve">
+    <value>Bestätigen</value>
+  </data>
 </root>

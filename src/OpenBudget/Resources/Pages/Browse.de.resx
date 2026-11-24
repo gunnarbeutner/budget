@@ -409,4 +409,7 @@
     <value>Nur Buchungen, deren Kategorie nicht zu diesem Projekt gehört</value>
   </data>
   <data name="Picker_Transfers" xml:space="preserve"><value>Umbuchungen</value></data>
+  <data name="Tx_Suggested" xml:space="preserve">
+    <value>Vorgeschlagen — in der Buchung bestätigen oder eine andere Kategorie wählen</value>
+  </data>
 </root>

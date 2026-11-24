@@ -59,9 +59,12 @@ public sealed class RuleValidationException : Exception
 /// </summary>
 public static class CategoryRuleEngine
 {
-    /// <summary>Whether a transaction is open for a rule: any uncategorised one, also when its category was removed by hand.</summary>
+    /// <summary>
+    /// Whether a transaction is open for a rule: any uncategorised one (also when its category was removed by hand) and
+    /// one with an unconfirmed suggestion, which a rule replaces.
+    /// </summary>
     public static bool IsCandidate(Transaction t) =>
-        t.CategoryId == null && t.Splitted != SplitState.Parent;
+        (t.CategoryId == null || t.CategorySetBy == TransactionCategorySource.Suggested) && t.Splitted != SplitState.Parent;
 
     /// <summary>
     /// Called by the bank sync on the rows it is about to insert (still unsaved, tracked by <paramref name="db"/>, a
@@ -372,7 +375,7 @@ public sealed class CategoryRuleService
         {
             var part = chunk;
             var q = db.Transactions.AsNoTracking().Where(t => t.AccountId.HasValue && part.Contains(t.AccountId.Value) && (t.Splitted ?? 0) != SplitState.Parent);
-            if (onlyCandidates) q = q.Where(t => t.CategoryId == null);
+            if (onlyCandidates) q = q.Where(t => t.CategoryId == null || t.CategorySetBy == TransactionCategorySource.Suggested);
             result.AddRange((await q.Select(t => new Transaction
             {
                 Id = t.Id,

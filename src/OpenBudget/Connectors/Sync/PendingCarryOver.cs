@@ -12,6 +12,7 @@ public sealed record PendingReceiptLink(long InvoiceId, string? SplitSignature);
 /// <summary>
 /// What the user set on a pending booking, taken before a sync replaces the pending rows, and the receipts linked to it.
 /// <see cref="ReceiptSplit"/>: the parts are exactly the split a linked receipt wrote, not the user's.
+/// <see cref="SuggestedFrom"/>: the category is an unconfirmed suggestion (not the user's) of the pending row with that id.
 /// </summary>
 public sealed record PendingEdit(
     long Cents,
@@ -26,7 +27,8 @@ public sealed record PendingEdit(
     bool Checked,
     IReadOnlyList<PendingSplitPart> Parts,
     IReadOnlyList<long>? Receipts = null,
-    bool ReceiptSplit = false);
+    bool ReceiptSplit = false,
+    long? SuggestedFrom = null);
 
 /// <summary>A booking a <see cref="PendingEdit"/> may move to.</summary>
 public sealed record CarryCandidate(long Cents, long Timestamp, string? Name, string? BankReference, string? EndToEndReference);
@@ -56,15 +58,17 @@ public static class PendingCarryOver
         foreach (var t in pendingRows.Where(t => t.Splitted != SplitState.Child))
         {
             var manual = t.CategorySetBy == TransactionCategorySource.Manual;
+            var suggested = t.CategorySetBy == TransactionCategorySource.Suggested && t.CategoryId != null;
             var parts = t.Splitted == SplitState.Parent && children.TryGetValue(t.Id, out var c)
                 ? c.Select(p => new PendingSplitPart(p.Amount, p.CategoryId, p.Note, p.OrderItems)).ToList()
                 : [];
             var links = receipts?.GetValueOrDefault(t.Id) ?? [];
-            if (!manual && string.IsNullOrEmpty(t.Note) && !t.Checked && parts.Count == 0 && links.Count == 0) continue;
+            if (!manual && !suggested && string.IsNullOrEmpty(t.Note) && !t.Checked && parts.Count == 0 && links.Count == 0) continue;
             var signature = parts.Count == 0 ? null : ReceiptCategorizer.Signature(parts.Select(p => (p.Cents, p.CategoryId)));
             edits.Add(new PendingEdit(t.SplitOriginalAmount ?? t.Amount, t.Timestamp, t.Name, t.Currency, t.BankReference, t.EndToEndReference,
-                manual ? t.CategoryId : null, manual, t.Note, t.Checked, parts,
-                links.Select(l => l.InvoiceId).ToList(), signature != null && links.Any(l => l.SplitSignature == signature)));
+                manual || suggested ? t.CategoryId : null, manual, t.Note, t.Checked, parts,
+                links.Select(l => l.InvoiceId).ToList(), signature != null && links.Any(l => l.SplitSignature == signature),
+                suggested ? t.Id : null));
         }
         return edits;
     }
@@ -172,6 +176,12 @@ public static class PendingCarryOver
             target.CategoryId = edit.CategoryId;
             target.CategorySetBy = TransactionCategorySource.Manual;
             target.RuleId = null;
+        }
+        else if (edit.SuggestedFrom != null && target.CategoryId == null)
+        {
+            // A suggestion stays one (a rule that matched the new row wins).
+            target.CategoryId = edit.CategoryId;
+            target.CategorySetBy = TransactionCategorySource.Suggested;
         }
         if (!string.IsNullOrEmpty(edit.Note)) target.Note = edit.Note;
         if (edit.Checked) target.Checked = true;

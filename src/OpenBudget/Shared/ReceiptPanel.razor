@@ -98,11 +98,17 @@
                                         @if (CanEdit && PickerData != null)
                                         {
                                             <CategoryPill CategoryId="line.CategoryId" PickerData="PickerData" FallbackName="@Fallback" TestId="receipt-panel-category"
-                                                          Title="@L["Move", line.Name]" OnClick="e => OpenPicker(line, e)" />
+                                                          Title="@L["Move", line.Name]" OnClick="e => OpenPicker(line, e)" Suggested="IsSuggested(line)" />
+                                            @if (IsSuggested(line))
+                                            {
+                                                <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" data-testid="receipt-panel-confirm"
+                                                        title="@L["Confirm", line.Name]" aria-label="@L["Confirm", line.Name]"
+                                                        @onclick="() => MoveAsync(line.Id, line.CategoryId)"><i class="bi bi-check2" aria-hidden="true"></i></button>
+                                            }
                                         }
                                         else
                                         {
-                                            <CategoryPill CategoryId="line.CategoryId" PickerData="PickerData" FallbackName="@Fallback" />
+                                            <CategoryPill CategoryId="line.CategoryId" PickerData="PickerData" FallbackName="@Fallback" Suggested="IsSuggested(line)" />
                                         }
                                     </td>
                                     }
@@ -270,6 +276,9 @@
         if (ReceiptId is { } id) view = await Service.GetReceiptAsync(id);
         if (view != null && part is { } p && p >= view.Groups.Count) part = null;
     }
+
+    /// <summary>The AI placed the line and nobody confirmed it yet.</summary>
+    private static bool IsSuggested(ReceiptLineView line) => line.Source == ReceiptCategorySource.Ai && line.CategoryId != null;
 
     private bool Matches(ReceiptLineView line) =>
         SearchText.Matches(line.Name, search);

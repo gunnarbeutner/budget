@@ -122,6 +122,8 @@ public sealed partial class CategorySuggestionService
         var unsure = new List<(Transaction Row, TargetBooking Target, List<HistoryBooking> Neighbours)>();
         foreach (var t in targets)
         {
+            // The AI was asked about it with this category tree and had no answer: not asked again.
+            if (cached.TryGetValue(t.Id, out var none) && none.Source == NoAnswer) continue;
             if (cached.TryGetValue(t.Id, out var hit) && (hit.Source != "ai" || useAi))
             {
                 var present = Present(ctx, hit.TransactionId, hit.CategoryId, hit.Confidence, hit.Source, hit.Rationale, hit.SplitJson);
@@ -145,6 +147,7 @@ public sealed partial class CategorySuggestionService
         var sent = 0;
         var skipped = 0;
         var aiRules = new List<(string Expression, long CategoryId)>();
+        var unanswered = new List<TxCategorySuggestion>();
         if (useAi && _client.Enabled && unsure.Count > 0)
         {
             var allowed = await AllowedOwnersAsync(ct);
@@ -157,6 +160,8 @@ public sealed partial class CategorySuggestionService
                     sent = UseDecisions
                         ? await AskDecisionsAsync(ctx, eligible, results, progress, ct)
                         : await AskAiAsync(ctx, eligible, results, aiRules, progress, ct);
+                    unanswered.AddRange(eligible.Where(e => !results.ContainsKey(e.Row.Id))
+                        .Select(e => new TxCategorySuggestion(e.Row.Id, null, null, 0, NoAnswer, null)));
                 }
                 catch (AssistException ex)
                 {
@@ -167,10 +172,64 @@ public sealed partial class CategorySuggestionService
         }
 
         foreach (var id in results.Where(r => !Allowed(ctx, r.Value)).Select(r => r.Key).ToList()) results.Remove(id);
-        await StoreAsync(results.Values.Where(r => !cached.ContainsKey(r.TransactionId)), ctx.Hash, ct);
+        await StoreAsync(results.Values.Where(r => !cached.ContainsKey(r.TransactionId)).Concat(unanswered), ctx.Hash, ct);
         var rules = await RuleSuggestionsAsync(projectId, ctx, targets, results, aiRules, ct);
         var ordered = targets.Where(t => results.ContainsKey(t.Id)).Select(t => results[t.Id]).ToList();
         return new CategorySuggestionResult(ordered, rules, aiError, sent, skipped);
+    }
+
+    /// <summary>The cached source of a booking the AI was asked about and placed nowhere (see <see cref="SuggestAsync"/>).</summary>
+    public const string NoAnswer = "none";
+
+    /// <summary>
+    /// Gives the project's uncategorized bookings their suggestion (<see cref="SuggestAsync"/>, the AI included) as
+    /// <see cref="TransactionCategorySource.Suggested"/>: only for the project's owner, when they opted in to AI
+    /// suggestions. Bookings whose category the owner removed by hand, split suggestions and bookings the owner may not
+    /// edit are left alone. Returns how many got a category.
+    /// </summary>
+    public async Task<int> ApplySuggestionsAsync(int projectId, CancellationToken ct = default)
+    {
+        if (!await _settings.GetOptInAsync(ct)) return 0;
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var owner = await db.Projects.AsNoTracking().Where(p => p.Id == projectId).Select(p => p.OwnerUserId).FirstOrDefaultAsync(ct);
+        if (owner == null || owner != db.Scope?.UserId) return 0;
+
+        var result = await SuggestAsync(projectId, null, useAi: true, ct: ct);
+        var chosen = result.Suggestions.Where(s => s.CategoryId != null && s.Split == null).ToDictionary(s => s.TransactionId, s => s.CategoryId!.Value);
+        if (chosen.Count == 0) return 0;
+        var rows = new List<Transaction>();
+        foreach (var chunk in chosen.Keys.Chunk(500))
+            rows.AddRange(await db.Transactions.Where(t => chunk.Contains(t.Id) && t.OwnerUserId == owner).ToListAsync(ct));
+        var applied = 0;
+        foreach (var t in await EditableAsync(db, rows, ct))
+        {
+            if (t.CategoryId != null || t.CategorySetBy == TransactionCategorySource.Manual || t.Splitted == SplitState.Parent) continue;
+            t.CategoryId = chosen[t.Id];
+            t.CategorySetBy = TransactionCategorySource.Suggested;
+            t.RuleId = null;
+            applied++;
+        }
+        await db.SaveChangesAsync(ct);
+        return applied;
+    }
+
+    /// <summary>Where a booking's suggestion came from (source and rationale), when the current user sees the booking.</summary>
+    public async Task<(string Source, string? Rationale)?> ReasonAsync(long transactionId, CancellationToken ct = default)
+    {
+        await using (var db = await _dbFactory.CreateDbContextAsync(ct))
+            if (!await db.Transactions.AnyAsync(t => t.Id == transactionId, ct)) return null;
+        await using var sys = await _system.CreateDbContextAsync(ct);
+        var s = await sys.CategorySuggestions.AsNoTracking().FirstOrDefaultAsync(x => x.TransactionId == transactionId, ct);
+        return s == null || s.Source == NoAnswer ? null : (s.Source, s.Rationale);
+    }
+
+    /// <summary>The rows the current user may edit (provider rule + role).</summary>
+    private static async Task<List<Transaction>> EditableAsync(BudgetDbContext db, List<Transaction> rows, CancellationToken ct)
+    {
+        var accountIds = rows.Where(r => r.AccountId.HasValue).Select(r => r.AccountId!.Value).Distinct().ToList();
+        var providers = await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Provider, ct);
+        return rows.Where(r => TransactionEditRules.Check(db.Scope, r.OwnerUserId, r.AccountId,
+            r.AccountId is { } id && providers.TryGetValue(id, out var p) ? p : null) == EditBlock.None).ToList();
     }
 
     /// <summary>Owners whose bookings may be sent: everybody who opted in, but nobody unless the asking user did.</summary>

@@ -198,6 +198,7 @@ public sealed class BankTransactionStore
             receipt.TransactionId = null;
             receipt.SplitSignature = null;
         }
+        var reasons = new List<(long From, long To)>();
         for (var i = 0; i < edits.Count; i++)
         {
             if (match[i] is { } c)
@@ -205,6 +206,7 @@ public sealed class BankTransactionStore
                 var target = added[c];
                 var parts = PendingCarryOver.Apply(edits[i], target, nextId);
                 db.Transactions.AddRange(parts);
+                if (edits[i].SuggestedFrom is { } from && target.CategorySetBy == TransactionCategorySource.Suggested) reasons.Add((from, target.Id));
                 foreach (var receipt in receipts.Where(r => edits[i].Receipts?.Contains(r.Id) == true))
                 {
                     receipt.TransactionId = target.Id;
@@ -214,7 +216,8 @@ public sealed class BankTransactionStore
                 }
                 continue;
             }
-            if (edits[i].Receipts is { Count: > 0 } && !edits[i].ManualCategory && string.IsNullOrEmpty(edits[i].Note) && !edits[i].Checked
+            // Nothing of the user's (only receipts or a suggestion) is no cancelled reservation.
+            if (!edits[i].ManualCategory && string.IsNullOrEmpty(edits[i].Note) && !edits[i].Checked
                 && (edits[i].Parts.Count == 0 || edits[i].ReceiptSplit))
                 continue;
             db.CancelledReservations.Add(new CancelledReservation
@@ -227,6 +230,46 @@ public sealed class BankTransactionStore
                 CreatedAt = nowUtc,
             });
         }
+        MoveSuggestionReasons(db, reasons);
+    }
+
+    /// <summary>
+    /// Moves the cached reasons of carried-over suggestions to the new rows (ids may be reused, even swapped), so the
+    /// booking shows why it got its category and is not asked about again. A reason already stored under a new row's id
+    /// belongs to a row that is gone and is replaced.
+    /// </summary>
+    private static void MoveSuggestionReasons(BudgetDbContext db, List<(long From, long To)> moves)
+    {
+        if (moves.Count == 0) return;
+        var ids = moves.Select(m => m.From).Concat(moves.Select(m => m.To)).Distinct().ToList();
+        var stored = db.CategorySuggestions.Where(s => ids.Contains(s.TransactionId)).ToDictionary(s => s.TransactionId);
+        // Copies first: a row may be both a source and a target.
+        var moved = moves.Where(m => stored.ContainsKey(m.From)).Select(m => (m.To, Reason: Copy(stored[m.From], m.To))).ToList();
+        var targets = moved.Select(m => m.To).ToHashSet();
+        foreach (var m in moves)
+            if (!targets.Contains(m.From) && stored.TryGetValue(m.From, out var vacated)) db.CategorySuggestions.Remove(vacated);
+        foreach (var (to, reason) in moved)
+        {
+            if (stored.TryGetValue(to, out var row))
+            {
+                db.Entry(row).CurrentValues.SetValues(reason);
+                if (db.Entry(row).State == EntityState.Deleted) db.Entry(row).State = EntityState.Modified;
+            }
+            else db.CategorySuggestions.Add(reason);
+        }
+
+        static CategorySuggestion Copy(CategorySuggestion s, long to) => new()
+        {
+            TransactionId = to,
+            CategoryId = s.CategoryId,
+            Confidence = s.Confidence,
+            Source = s.Source,
+            Rationale = s.Rationale,
+            Model = s.Model,
+            SplitJson = s.SplitJson,
+            TreeHash = s.TreeHash,
+            CreatedAt = s.CreatedAt,
+        };
     }
 
     /// <summary>One bank row and what happens to it: stored before (<see cref="Known"/>), adopts a local row, or is new.</summary>

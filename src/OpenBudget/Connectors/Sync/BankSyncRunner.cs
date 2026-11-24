@@ -59,6 +59,7 @@ public sealed class BankSyncRunner
     private readonly Func<BankHttpClient> _httpFactory;
     private readonly IWebLoginService? _webLogins;
     private readonly OpenBudget.Connectors.Receipts.ReceiptStore _receipts;
+    private readonly OpenBudget.Assist.ISyncCategorizer? _categorizer;
 
     /// <summary>The login-wide state a challenge may need: whose browser to open and which cookie jar to fill.</summary>
     private sealed record SyncContext(string OwnerUserId, BankHttpClient Http)
@@ -121,9 +122,10 @@ public sealed class BankSyncRunner
         SystemDbContextFactory system, ConnectorRegistry registry, SecretsProtector secrets,
         BankTransactionStore transactions, BankStatementStore statements, TimeProvider clock, ILoggerFactory loggers,
         Func<BankHttpClient>? httpFactory = null, IWebLoginService? webLogins = null,
-        OpenBudget.Connectors.Receipts.ReceiptStore? receipts = null)
+        OpenBudget.Connectors.Receipts.ReceiptStore? receipts = null, OpenBudget.Assist.ISyncCategorizer? categorizer = null)
     {
         _receipts = receipts ?? new OpenBudget.Connectors.Receipts.ReceiptStore();
+        _categorizer = categorizer;
         _webLogins = webLogins;
         _httpFactory = httpFactory ?? (() => new BankHttpClient());
         _system = system;
@@ -249,6 +251,8 @@ public sealed class BankSyncRunner
                 try { matchReceipts = await FetchAsync(db, login, registration, connector, remoteAccounts, request, sink, context, errors, affected, ct); }
                 finally { await context.CloseBrowsersAsync(); }
                 if (matchReceipts) await MatchReceiptsAsync(db, login, sink, ct);
+                // After the rules (applied as the bookings were stored) and the receipts: suggestions for what is left.
+                if (_categorizer != null) await _categorizer.CategorizeAsync(login.OwnerUserId, ct);
                 try { await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct); }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

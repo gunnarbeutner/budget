@@ -5,6 +5,7 @@
 @inject ClockService Clock
 @inject OpenBudget.Connectors.Receipts.ReceiptService ReceiptInfo
 @inject IDbContextFactory<BudgetDbContext> DbFactory
+@inject OpenBudget.Assist.CategorySuggestionService Suggestions
 
 @* The in-place expansion of a selected transaction: the bank's details as a flowing "Label value" list (empty ones
    skipped), the full purpose, then the note and the actions. Bank fields are plain text (never editable); category,
@@ -55,6 +56,17 @@
                 @if (mainName != null)
                 {
                     <span class="ms-1 text-body-secondary" data-testid="tx-details-follows">@L["Follows", mainName]</span>
+                }
+            </span>
+        }
+        @if (IsSuggested)
+        {
+            @* Shown also where the list names the category: the details say where it came from and confirm it. *@
+            <span data-testid="tx-details-suggested">
+                <b>@L["Suggested"]</b><i class="bi bi-stars" aria-hidden="true"></i> @(reason is { } r ? L["Suggested_By", SourceName(r.Source)] : Row.CategoryName)@if (reason?.Rationale is { Length: > 0 } why) { <span>: @why</span> }
+                @if (Row.CanEdit)
+                {
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" data-testid="tx-details-confirm" disabled="@confirming" @onclick="ConfirmAsync">@L["Action_Confirm"]</button>
                 }
             </span>
         }
@@ -233,8 +245,39 @@
     private string? mainName;
     private long mainFor;
 
+    /// <summary>The category is an unconfirmed suggestion: shown with its reason and a confirm action.</summary>
+    private bool IsSuggested => Row.CategorySetBy == TransactionCategorySource.Suggested && Row.CategoryId != null;
+
+    private (string Source, string? Rationale)? reason;
+    private long reasonFor;
+    private bool confirming;
+
+    private string SourceName(string source) => source == "ai" ? L["Source_Ai"] : L["Source_Similar"];
+
+    /// <summary>Keeps the suggested category as the owner's own choice.</summary>
+    private async Task ConfirmAsync()
+    {
+        if (Row.CategoryId is not { } category) return;
+        confirming = true;
+        try
+        {
+            await Suggestions.AcceptAsync([Row.Id], category);
+            await OnChanged.InvokeAsync();
+        }
+        finally
+        {
+            confirming = false;
+        }
+    }
+
     protected override async Task OnParametersSetAsync()
     {
+        if (!IsSuggested) (reason, reasonFor) = (null, 0);
+        else if (reasonFor != Row.Id)
+        {
+            reasonFor = Row.Id;
+            reason = await Suggestions.ReasonAsync(Row.Id);
+        }
         if (Row.Amount == 0 && mainFor != Row.Id)
         {
             mainFor = Row.Id;

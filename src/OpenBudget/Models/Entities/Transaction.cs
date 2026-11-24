@@ -204,4 +204,11 @@ public static class TransactionCategorySource
 
     /// <summary>The one category all items of the booking's receipt are in; follows the items while nobody changes it.</summary>
     public const string Receipt = "receipt";
+
+    /// <summary>
+    /// Suggested by the categorisation assistant after a sync (similar bookings or the AI; the reason stays in the
+    /// suggestion cache) and not confirmed yet: shown with a marker, and a rule still replaces it. Confirming makes it
+    /// <see cref="Manual"/>.
+    /// </summary>
+    public const string Suggested = "suggested";
 }

@@ -493,9 +493,10 @@ public sealed class ReceiptStore
             invoice.SplitSignature = null;
             changed = true;
         }
-        // All items in one category: an uncategorized booking takes it, and one that took it before follows the items.
+        // All items in one category: an uncategorized booking (or one with an unconfirmed suggestion) takes it, and one
+        // that took it before follows the items.
         if (parts.Count == 1 && parts[0].CategoryId is { } only && only != parent.CategoryId
-            && (parent.CategoryId == null || parent.CategorySetBy == TransactionCategorySource.Receipt))
+            && (parent.CategoryId == null || parent.CategorySetBy is TransactionCategorySource.Receipt or TransactionCategorySource.Suggested))
         {
             parent.CategoryId = only;
             parent.CategorySetBy = TransactionCategorySource.Receipt;

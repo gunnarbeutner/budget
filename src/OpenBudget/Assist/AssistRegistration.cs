@@ -18,6 +18,7 @@ public static class AssistRegistration
         services.TryAddSingleton<IDecisionsClient, OpenAiDecisionsClient>();
         services.AddScoped<AssistSettingsService>();
         services.AddScoped<CategorySuggestionService>();
+        services.TryAddSingleton<ISyncCategorizer, SuggestionAutoApplier>();
         services.AddScoped<BudgetSuggestionService>();
         return services;
     }

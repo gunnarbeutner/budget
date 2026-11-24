@@ -466,7 +466,9 @@
                                             var pillStyle = hasCategory && outside == null ? CategoryColors.For(row.CategoryId ?? 0, row.CategoryColor).Style : null;
                                             var categoryLabel = outside?.Path ?? (hasCategory ? (row.CategoryId is { } labelId && categoryLabels.TryGetValue(labelId, out var shortLabel) ? shortLabel : row.CategoryName) : null);
                                             var categoryPath = hasCategory ? pickerData?.PathOf(row.CategoryId, row.CategoryName!) ?? row.CategoryName : null;
-                                            var categoryTitle = outside != null ? CategoryPill.OutsideTitle(PillL, outside) : categoryPath;
+                                            var suggested = hasCategory && row.CategorySetBy == TransactionCategorySource.Suggested;
+                                            var categoryTitle = outside != null ? CategoryPill.OutsideTitle(PillL, outside)
+                                                : suggested ? $"{categoryPath} · {L["Tx_Suggested"].Value}" : categoryPath;
                                             var outsideClass = outside != null ? "cat-pill-outside" : "";
                                         }
                                         @if (row.CanEdit && (hasCategory || row.Amount != 0))
@@ -475,13 +477,14 @@
                                                     data-outside="@(outside != null ? "true" : null)"
                                                     title="@(hasCategory ? categoryTitle : L["Tx_CategoryTitle"].Value)" @onclick="e => OpenPickerFromRow(row, e)" @onclick:stopPropagation="true">
                                                 @if (outside != null) { <i class="bi bi-box-arrow-up-right cat-pill-outside-icon" aria-hidden="true"></i> }
+                                                @if (suggested) { <i class="bi bi-stars cat-pill-suggested-icon" aria-hidden="true" data-testid="tx-category-suggested"></i> }
                                                 @if (hasCategory) { @CategoryPillText(categoryLabel!, row.CategoryName!) } else { @L["Tx_NoCategory"] }
                                             </button>
                                         }
                                         else if (hasCategory)
                                         {
                                             <span class="cat-pill @outsideClass" style="@pillStyle" data-testid="tx-category-label" data-outside="@(outside != null ? "true" : null)"
-                                                  title="@categoryTitle">@if (outside != null) { <i class="bi bi-box-arrow-up-right cat-pill-outside-icon" aria-hidden="true"></i> }@CategoryPillText(categoryLabel!, row.CategoryName!)</span>
+                                                  title="@categoryTitle">@if (outside != null) { <i class="bi bi-box-arrow-up-right cat-pill-outside-icon" aria-hidden="true"></i> }@if (suggested) { <i class="bi bi-stars cat-pill-suggested-icon" aria-hidden="true" data-testid="tx-category-suggested"></i> }@CategoryPillText(categoryLabel!, row.CategoryName!)</span>
                                         }
                                     </div>
                                     <div class="tx-payee">

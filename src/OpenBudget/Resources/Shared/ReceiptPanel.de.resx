@@ -147,4 +147,7 @@
     <value>Dieser Teil</value>
   </data>
   <data name="Uncategorized" xml:space="preserve"><value>Nicht kategorisiert</value></data>
+  <data name="Confirm" xml:space="preserve">
+    <value>Kategorie der KI für {0} bestätigen</value>
+  </data>
 </root>

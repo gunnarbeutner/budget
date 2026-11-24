@@ -9,13 +9,13 @@
 
 @if (OnClick.HasDelegate)
 {
-    <button type="button" class="cat-pill @OutsideClass @Class" style="@Style" title="@(Title ?? Tooltip)" data-testid="@TestId" data-category="@CategoryId"
-            data-outside="@OutsideAttr" @onclick="OnClick" @onclick:stopPropagation="true">@Text()@ChildContent</button>
+    <button type="button" class="cat-pill @OutsideClass @Class" style="@Style" title="@FullTitle" data-testid="@TestId" data-category="@CategoryId"
+            data-outside="@OutsideAttr" data-suggested="@SuggestedAttr" @onclick="OnClick" @onclick:stopPropagation="true">@Text()@ChildContent</button>
 }
 else
 {
-    <span class="cat-pill @OutsideClass @Class" style="@Style" title="@(Title ?? Tooltip)" data-testid="@TestId" data-category="@CategoryId"
-          data-outside="@OutsideAttr">@Text()@ChildContent</span>
+    <span class="cat-pill @OutsideClass @Class" style="@Style" title="@FullTitle" data-testid="@TestId" data-category="@CategoryId"
+          data-outside="@OutsideAttr" data-suggested="@SuggestedAttr">@Text()@ChildContent</span>
 }
 
 @code {
@@ -28,6 +28,12 @@ else
     [Parameter] public string? Title { get; set; }
     [Parameter] public string? TestId { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>The category is the AI's unconfirmed choice: the pill shows a marker and says so in its title.</summary>
+    [Parameter] public bool Suggested { get; set; }
+
+    private string FullTitle => Suggested ? $"{Title ?? Tooltip} · {L["Suggested"].Value}" : Title ?? Tooltip;
+
+    private string? SuggestedAttr => Suggested ? "true" : null;
 
     // Labels are worked out once per set of options (one picker's data serves every pill of a page).
     private static readonly ConditionalWeakTable<CategoryPickerData, Dictionary<long, string>> LabelCache = new();
@@ -70,6 +76,10 @@ else
         if (Outside != null)
         {
             <i class="bi bi-box-arrow-up-right cat-pill-outside-icon" aria-hidden="true"></i>
+        }
+        if (Suggested)
+        {
+            <i class="bi bi-stars cat-pill-suggested-icon" aria-hidden="true"></i>
         }
         if (label.Length > name.Length && label.EndsWith(name, StringComparison.Ordinal))
         {
