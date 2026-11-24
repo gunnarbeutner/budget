@@ -169,7 +169,10 @@ public sealed class OpenbankConnector : IBankConnector
         CredentialRequirement.UsernameAndSecret,
         Statements: false)
     {
-        Silent = SilentCapability.SessionOnly,
+        // Openbank asks for an SMS code only now and then; a background run signs in with the stored e-mail and access
+        // code and stops for the owner only when the code page does come up.
+        Silent = SilentCapability.Full,
+        SilentWebSignIn = true,
     };
 
     public string ConnectorType => TypeName;
