@@ -2368,6 +2368,16 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("TEXT")
                     .HasColumnName("transaction_code");
 
+                b.Property<long?>("TransferPeerId")
+                    .HasColumnType("INTEGER")
+                    .HasColumnName("transfer_pair_id");
+
+                b.Property<int>("TransferState")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER")
+                    .HasDefaultValue(0)
+                    .HasColumnName("transfer_state");
+
                 b.Property<long?>("ValueTimestamp")
                     .HasColumnType("INTEGER")
                     .HasColumnName("value_timestamp");

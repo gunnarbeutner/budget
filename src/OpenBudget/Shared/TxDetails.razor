@@ -6,6 +6,7 @@
 @inject OpenBudget.Connectors.Receipts.ReceiptService ReceiptInfo
 @inject IDbContextFactory<BudgetDbContext> DbFactory
 @inject OpenBudget.Assist.CategorySuggestionService Suggestions
+@inject TransferPairService Transfers
 
 @* The in-place expansion of a selected transaction: the bank's details as a flowing "Label value" list (empty ones
    skipped), the full purpose, then the note and the actions. Bank fields are plain text (never editable); category,
@@ -56,6 +57,23 @@
                 @if (mainName != null)
                 {
                     <span class="ms-1 text-body-secondary" data-testid="tx-details-follows">@L["Follows", mainName]</span>
+                }
+            </span>
+        }
+        @if (_transfer is { } peer)
+        {
+            <span data-testid="tx-details-transfer">
+                <b>@L["Transfer"]</b><i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i>@if (OnShowBooking.HasDelegate)
+                {
+                    <a href="" data-testid="tx-details-transfer-link" @onclick:preventDefault="true" @onclick="() => OnShowBooking.InvokeAsync(peer)">@PeerText(peer)</a>
+                }
+                else
+                {
+                    @PeerText(peer)
+                }
+                @if (Row.CanEdit)
+                {
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" data-testid="tx-details-unpair" disabled="@_pairing" @onclick="UnpairAsync">@L["Action_Unpair"]</button>
                 }
             </span>
         }
@@ -129,6 +147,13 @@
                 <i class="bi bi-arrow-left-right" aria-hidden="true"></i> @L["Action_Offset"]
             </button>
         }
+        @if (CanPair)
+        {
+            <button type="button" class="ob-btn @(panel == Panel.Transfer ? "active" : "")" data-testid="tx-details-pair"
+                    aria-expanded="@((panel == Panel.Transfer).ToString().ToLowerInvariant())" @onclick="TogglePairAsync">
+                <i class="bi bi-arrow-left-right" aria-hidden="true"></i> @L["Action_Pair"]
+            </button>
+        }
         @if (Row.CanEdit && OnCreateRule.HasDelegate)
         {
             <button type="button" class="ob-btn" data-testid="tx-details-create-rule" disabled="@string.IsNullOrWhiteSpace(Row.Name)"
@@ -154,6 +179,29 @@
             <AccountPicker data-testid="tx-details-offset-picker" AllowNone="false" AriaLabel="@L["Action_Offset"]" NoneLabel="@L["Offset_Choose"]"
                            Options="@(OffsetTargets.Select(t => new AccountPicker.Option(t.AccountId, t.Name, null, null, t.Icon, false, false)).ToList())"
                            OnPick="id => id is { } a ? OffsetAsync(a) : Task.CompletedTask" />
+        </div>
+    }
+    else if (panel == Panel.Transfer)
+    {
+        <div class="tx-details-offset" data-testid="tx-details-transfer-candidates">
+            @if (_candidates == null)
+            {
+                <span class="text-body-secondary small">@L["Transfer_Loading"]</span>
+            }
+            else if (_candidates.Count == 0)
+            {
+                <span class="text-body-secondary small" data-testid="tx-details-transfer-none">@L["Transfer_NoCandidates", TransferPairService.ManualWindowDays]</span>
+            }
+            else
+            {
+                <div class="small text-body-secondary mb-1">@L["Transfer_Choose"]</div>
+                @foreach (var c in _candidates)
+                {
+                    <button type="button" class="ob-btn me-1 mb-1" data-testid="tx-details-transfer-candidate" disabled="@_pairing" @onclick="() => PairWithAsync(c.Id)">
+                        @PeerText(c) · @Formatting.FormatMoneyDe(c.Amount, c.Currency)@if (!string.IsNullOrWhiteSpace(c.Name)) { <span> · @c.Name</span> }
+                    </button>
+                }
+            }
         </div>
     }
     @if (error != null)
@@ -224,7 +272,61 @@
     /// <summary>Whether the details name the category: only when the list shows it nowhere else for this row.</summary>
     [Parameter] public bool ShowCategory { get; set; } = true;
 
-    private enum Panel { None, Split, Offset }
+    /// <summary>Opens the account of the other side of a transfer and shows that booking there.</summary>
+    [Parameter] public EventCallback<TransferCounterpart> OnShowBooking { get; set; }
+
+    private enum Panel { None, Split, Offset, Transfer }
+
+    private TransferCounterpart? _transfer;
+    private (long Id, long? Peer) _transferFor;
+    private IReadOnlyList<TransferCounterpart>? _candidates;
+    private bool _pairing;
+
+    /// <summary>A booked, whole booking without a pair may be paired by hand.</summary>
+    private bool CanPair => Row.CanEdit && Row.TransferPeerId == null && !Row.IsPending && Row.Amount != 0
+        && !Row.IsSplitChild && !Row.IsSplitRemainder && Row.AccountId != null;
+
+    private string PeerText(TransferCounterpart peer) => L["Transfer_Peer", peer.AccountName, Clock.ToLocal(peer.Date).ToAppDate()];
+
+    private async Task TogglePairAsync()
+    {
+        Toggle(Panel.Transfer);
+        if (panel != Panel.Transfer) return;
+        _candidates = null;
+        _candidates = await Transfers.GetCandidatesAsync(Row.Id);
+    }
+
+    private async Task PairWithAsync(long peerId)
+    {
+        await ChangePairAsync(() => Transfers.PairAsync(Row.Id, peerId));
+        panel = Panel.None;
+    }
+
+    private Task UnpairAsync() => ChangePairAsync(() => Transfers.UnpairAsync(Row.Id));
+
+    private async Task ChangePairAsync(Func<Task> change)
+    {
+        _pairing = true;
+        error = null;
+        try
+        {
+            await change();
+            _transferFor = default;
+            await OnChanged.InvokeAsync();
+        }
+        catch (AccessDeniedException)
+        {
+            error = L["Lock_NoPermission"];
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            _pairing = false;
+        }
+    }
 
     private Panel panel;
     private string? error;
@@ -272,6 +374,11 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        if (_transferFor != (Row.Id, Row.TransferPeerId))
+        {
+            _transferFor = (Row.Id, Row.TransferPeerId);
+            _transfer = Row.TransferPeerId == null ? null : await Transfers.GetCounterpartAsync(Row.Id);
+        }
         if (!IsSuggested) (reason, reasonFor) = (null, 0);
         else if (reasonFor != Row.Id)
         {

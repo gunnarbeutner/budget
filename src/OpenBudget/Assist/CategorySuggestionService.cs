@@ -111,8 +111,9 @@ public sealed partial class CategorySuggestionService
         if (ctx == null) return new([], [], null, 0, 0);
 
         var history = ctx.Rows.Values.Where(t => t.CategoryId is { } c && ctx.ById.ContainsKey(c)).ToList();
+        // Bookings paired as transfers need no category unless asked about by name.
         var targets = ctx.Rows.Values.Where(t => t.Amount != 0 && (t.CategoryId is not { } c || !ctx.ById.ContainsKey(c)))
-            .Where(t => transactionIds == null || transactionIds.Contains(t.Id))
+            .Where(t => transactionIds == null ? t.TransferPeerId == null : transactionIds.Contains(t.Id))
             .OrderByDescending(t => t.Timestamp)
             .ToList();
         var matching = new CategoryMatching(history.Select(h => CategoryEvidence.History(h, h.CategoryId!.Value)));

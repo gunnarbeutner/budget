@@ -850,6 +850,18 @@ public partial class Browse
     private async Task ShowBookingAsync(ToastItem toast, long accountId, long transactionId)
     {
         RemoveToast(toast);
+        await SelectBookingAsync(accountId, transactionId);
+    }
+
+    /// <summary>Opens the other side of a transfer in its account and selects and expands it.</summary>
+    private async Task ShowTransferPeerAsync(TransferCounterpart peer)
+    {
+        if (tree?.Accounts.FirstOrDefault(a => a.Id == peer.AccountId) is { IsAssigned: false }) showRelatedAccounts = true;
+        await SelectBookingAsync(peer.AccountId, peer.Id);
+    }
+
+    private async Task SelectBookingAsync(long accountId, long transactionId)
+    {
         await SelectAccount(accountId);
         selected.Clear();
         selected.Add(transactionId);

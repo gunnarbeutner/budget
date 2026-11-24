@@ -128,6 +128,9 @@ public class TransactionRow
     /// <summary>A split carried over from a pending booking whose amount changed; see <see cref="Transaction.SplitCheck"/>.</summary>
     public bool SplitCheck { get; init; }
 
+    /// <summary>The other side when the booking is paired as a transfer; see <see cref="Transaction.TransferPeerId"/>.</summary>
+    public long? TransferPeerId { get; init; }
+
     public string OwnerUserId { get; init; } = string.Empty;
 
     /// <summary>OpenBudget's own note (MoneyMoney's comment for imported rows).</summary>

@@ -258,6 +258,12 @@ public sealed class BankSyncRunner
                 try { matchReceipts = await FetchAsync(db, login, registration, connector, remoteAccounts, request, sink, context, errors, affected, ct); }
                 finally { await context.CloseBrowsersAsync(); }
                 if (matchReceipts) await MatchReceiptsAsync(db, login, sink, ct);
+                // Before the suggestions: a booking paired as a transfer needs no category.
+                try { await TransferPairing.PairAsync(db, login.OwnerUserId, ct); }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Bank login {LoginId}: pairing transfers failed.", login.Id);
+                }
                 // After the rules (applied as the bookings were stored) and the receipts: suggestions for what is left.
                 if (_categorizer != null) await _categorizer.CategorizeAsync(login.OwnerUserId, ct);
                 try { await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct); }

@@ -543,6 +543,7 @@
                                                OnPickCategory="e => OpenPickerFromRow(row, e)"
                                                OnEditBooking="() => OpenEditBookingAsync(row)"
                                                OnCreateRule="e => CreateRuleFromAsync(row, e)"
+                                               OnShowBooking="ShowTransferPeerAsync"
                                                PickerData="pickerData" ProjectId="ProjectId"
                                                OffsetTargets="expandedOffsetTargets"
                                                OnCreateOffset="accountId => CreateOffsettingEntryAsync(row, accountId)"

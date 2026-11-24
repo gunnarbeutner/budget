@@ -204,6 +204,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<Transaction>().Property(t => t.Checked).HasDefaultValue(false);
         modelBuilder.Entity<Transaction>().Property(t => t.IsNew).HasDefaultValue(false);
         modelBuilder.Entity<Transaction>().Property(t => t.SplitCheck).HasDefaultValue(false);
+        modelBuilder.Entity<Transaction>().Property(t => t.TransferState).HasDefaultValue(TransferPairState.Auto);
         modelBuilder.Entity<CancelledReservation>().HasIndex(r => r.AccountId);
         modelBuilder.Entity<Account>().Property(a => a.InitialBalance).HasDefaultValue(0L);
         // Rows written by raw SQL (the import) leave the role out.

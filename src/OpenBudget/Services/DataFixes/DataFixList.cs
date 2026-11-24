@@ -73,6 +73,14 @@ public static class DataFixList
                 c.Logger.LogInformation("Accounts: {Roles} roles and {Flags} \"In cashflow\" flags kept as set by hand; the rest follow the defaults.", roles, flags);
             }),
 
+        new("2026-11-transfer-pairs",
+            "Bookings stored before transfers were paired get paired with their other side on another own account",
+            async c =>
+            {
+                var paired = await TransferPairing.PairAsync(c.Db, null, c.CancellationToken);
+                c.Logger.LogInformation("Transfers: {Pairs} pairs of bookings between own accounts found.", paired);
+            }),
+
         // Last: these wait for configured secrets, and hold back the fixes after them until then.
         new("2026-11-background-defaults",
             "Logins added before background syncs defaulted on get that default once",

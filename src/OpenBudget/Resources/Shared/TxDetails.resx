@@ -172,4 +172,25 @@
   <data name="Action_Confirm" xml:space="preserve">
     <value>Confirm</value>
   </data>
+  <data name="Transfer" xml:space="preserve">
+    <value>Transfer</value>
+  </data>
+  <data name="Transfer_Peer" xml:space="preserve">
+    <value>{0} on {1}</value>
+  </data>
+  <data name="Action_Unpair" xml:space="preserve">
+    <value>Not a transfer</value>
+  </data>
+  <data name="Action_Pair" xml:space="preserve">
+    <value>Pair as transfer</value>
+  </data>
+  <data name="Transfer_Loading" xml:space="preserve">
+    <value>Looking for the other side…</value>
+  </data>
+  <data name="Transfer_NoCandidates" xml:space="preserve">
+    <value>No booking on another account with the opposite amount within {0} days.</value>
+  </data>
+  <data name="Transfer_Choose" xml:space="preserve">
+    <value>The other side of this transfer:</value>
+  </data>
 </root>

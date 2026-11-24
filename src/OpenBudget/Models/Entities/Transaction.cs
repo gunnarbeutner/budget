@@ -179,6 +179,18 @@ public class Transaction
     [Column("order_items")]
     public string? OrderItems { get; set; }
 
+    /// <summary>
+    /// The booking on another of the owner's accounts that is the other side of this one when it moves money between
+    /// the owner's accounts (see <see cref="OpenBudget.Services.TransferPairing"/>). Both rows point at each other. A
+    /// paired booking counts as a transfer like one in a transfer category.
+    /// </summary>
+    [Column("transfer_pair_id")]
+    public long? TransferPeerId { get; set; }
+
+    /// <summary>How <see cref="TransferPeerId"/> came about, or that the user refused a pairing; see <see cref="TransferPairState"/>.</summary>
+    [Column("transfer_state")]
+    public TransferPairState TransferState { get; set; }
+
     [NotMapped]
     public DateTime Date => DateTimeOffset.FromUnixTimeSeconds(Timestamp).DateTime;
 
@@ -211,4 +223,17 @@ public static class TransactionCategorySource
     /// <see cref="Manual"/>.
     /// </summary>
     public const string Suggested = "suggested";
+}
+
+/// <summary>Values of <see cref="Transaction.TransferState"/>.</summary>
+public enum TransferPairState
+{
+    /// <summary>Paired automatically, or open to automatic pairing while <see cref="Transaction.TransferPeerId"/> is null.</summary>
+    Auto = 0,
+
+    /// <summary>Paired by the user; automatic pairing never removes it.</summary>
+    Manual = 1,
+
+    /// <summary>The user removed a pairing: the booking is never paired automatically again.</summary>
+    Declined = 2,
 }

@@ -172,4 +172,25 @@
   <data name="Action_Confirm" xml:space="preserve">
     <value>Bestätigen</value>
   </data>
+  <data name="Transfer" xml:space="preserve">
+    <value>Umbuchung</value>
+  </data>
+  <data name="Transfer_Peer" xml:space="preserve">
+    <value>{0} am {1}</value>
+  </data>
+  <data name="Action_Unpair" xml:space="preserve">
+    <value>Keine Umbuchung</value>
+  </data>
+  <data name="Action_Pair" xml:space="preserve">
+    <value>Als Umbuchung verbinden</value>
+  </data>
+  <data name="Transfer_Loading" xml:space="preserve">
+    <value>Suche die Gegenbuchung …</value>
+  </data>
+  <data name="Transfer_NoCandidates" xml:space="preserve">
+    <value>Keine Buchung auf einem anderen Konto mit dem Gegenbetrag innerhalb von {0} Tagen.</value>
+  </data>
+  <data name="Transfer_Choose" xml:space="preserve">
+    <value>Die Gegenbuchung dieser Umbuchung:</value>
+  </data>
 </root>

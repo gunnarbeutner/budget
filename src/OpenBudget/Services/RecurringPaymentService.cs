@@ -235,7 +235,7 @@ public class RecurringPaymentService
             var rows = await db.Transactions.AsNoTracking()
                 .Where(t => t.AccountId != null && accountIds.Contains(t.AccountId.Value) && t.Booked && t.Splitted != SplitState.Parent
                     && t.Amount < 0 && t.Timestamp >= since)
-                .Select(t => new { t.Id, AccountId = t.AccountId!.Value, t.Timestamp, t.Amount, t.Name, t.Purpose, t.CategoryId, t.CounterpartyIban })
+                .Select(t => new { t.Id, AccountId = t.AccountId!.Value, t.Timestamp, t.Amount, t.Name, t.Purpose, t.CategoryId, t.CounterpartyIban, t.TransferPeerId })
                 .ToListAsync(ct);
 
             var shared = assignments.Where(a => a.Scope == AccountScope.Shared).Select(a => a.AccountId).ToHashSet();
@@ -247,11 +247,11 @@ public class RecurringPaymentService
                 var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(ownerId ?? string.Empty);
                 projectLeaves = CategoryHierarchyService.BuildItemToLeafCategoryIds(tracked, hierarchy).Values.SelectMany(s => s).ToHashSet();
             }
-            // Bookings in a transfer category (moves between accounts, card statements, the PayPal side of a payment its
-            // bank side shows too) are no subscription.
+            // Bookings paired as transfers or in a transfer category (moves between accounts, card statements, the PayPal
+            // side of a payment its bank side shows too) are no subscription.
             var transfers = await CategoryHierarchyService.TransferCategoryIdsAsync(db, null, ct);
             var bookings = rows
-                .Where(t => t.CategoryId is not { } tc || !transfers.Contains(tc))
+                .Where(t => t.TransferPeerId == null && (t.CategoryId is not { } tc || !transfers.Contains(tc)))
                 .Where(t => !shared.Contains(t.AccountId) || t.CategoryId is not { } c || projectLeaves?.Contains(c) == true)
                 .Select(t => new RecurringBooking(t.Id, t.AccountId, DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(t.Timestamp).UtcDateTime),
                     t.Amount, t.Name, t.Purpose, t.CategoryId, t.CounterpartyIban))

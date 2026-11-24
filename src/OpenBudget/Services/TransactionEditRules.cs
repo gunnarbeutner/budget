@@ -30,6 +30,9 @@ public static class TransactionEditRules
         nameof(Transaction.Splitted),
         nameof(Transaction.SplitOriginalAmount),
         nameof(Transaction.SplitCheck),
+        // Transfer pairing (TransferPairService allows it to the owner only).
+        nameof(Transaction.TransferPeerId),
+        nameof(Transaction.TransferState),
     };
 
     /// <summary>

@@ -73,7 +73,8 @@ public class TransactionQueryService
                 t.ReturnReason,
                 t.SplitParentId,
                 t.SplitCheck,
-                t.OrderItems
+                t.OrderItems,
+                t.TransferPeerId
             })
             .ToListAsync(ct);
 
@@ -130,7 +131,8 @@ public class TransactionQueryService
             SplitParentId = r.Splitted == SplitState.Child ? r.SplitParentId : null,
             IsSplitRemainder = r.Splitted == SplitState.Remainder,
             IsPending = !r.Booked,
-            SplitCheck = r.SplitCheck
+            SplitCheck = r.SplitCheck,
+            TransferPeerId = r.TransferPeerId
         }).ToList();
 
         return new TransactionPage
@@ -204,7 +206,7 @@ public class TransactionQueryService
             var uncatAccounts = query.UncategorizedAccountIds is { Count: > 0 } ua ? ua.ToList() : null;
             baseQuery = baseQuery.Where(t =>
                 (t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value))
-                || ((t.CategoryId == null
+                || (t.TransferPeerId == null && (t.CategoryId == null
                         || !db.Categories.Any(c => c.OwnerUserId == ownerId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)))
                     && (uncatAccounts == null || (t.AccountId.HasValue && uncatAccounts.Contains(t.AccountId.Value)))));
         }
