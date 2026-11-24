@@ -25,6 +25,14 @@ public sealed record BankLoginView(
 
     public bool BackgroundEnabled { get; init; }
 
+    /// <summary>The owner chose <see cref="BackgroundEnabled"/>; otherwise the automatic rule (<see cref="BackgroundDefaults"/>) sets it.</summary>
+    public bool BackgroundByUser { get; init; }
+
+    /// <summary>Successful syncs in a row without a TAN, and how many switch background syncs on automatically.</summary>
+    public int SyncsWithoutTan { get; init; }
+
+    public int AutoBackgroundAfter { get; init; }
+
     /// <summary>Why a background run stopped for the owner (a manual sync clears it), or null.</summary>
     public string? NeedsManualSync { get; init; }
 
@@ -192,6 +200,9 @@ public class BankLoginService
         {
             Silent = registration?.SilentCapabilityFor(credentials) ?? SilentCapability.None,
             BackgroundEnabled = l.BackgroundEnabled,
+            BackgroundByUser = l.BackgroundByUser,
+            SyncsWithoutTan = l.SyncsWithoutTan,
+            AutoBackgroundAfter = _coordinator.Options.AutoBackgroundAfter,
             NeedsManualSync = l.NeedsManualSync,
             LastBackgroundSyncAt = l.LastBackgroundSyncAt,
             BookingsOverdue = l.EncryptedCredentials != null && RefreshPolicy.BookingsOverdue(l.RefreshInterval, l.LastSyncAt, l.LastBackgroundSyncAt, _coordinator.Clock.GetUtcNow().UtcDateTime, out _),
@@ -208,7 +219,7 @@ public class BankLoginService
 
     // ---- Background syncs ----
 
-    /// <summary>Switches background syncs of the user's login on or off.</summary>
+    /// <summary>Switches background syncs of the user's login on or off: the owner's choice, kept by the automatic rule.</summary>
     public async Task SetBackgroundAsync(int id, bool enabled, CancellationToken ct = default)
     {
         var userId = await RequireUserAsync();
@@ -217,9 +228,27 @@ public class BankLoginService
         if (enabled && _registry.Find(login.ConnectorType)?.Silent is null or SilentCapability.None)
             throw new InvalidOperationException("This bank cannot be synced in the background.");
         login.BackgroundEnabled = enabled;
+        login.BackgroundByUser = true;
         login.BackgroundDefaulted = true;
         login.BackgroundFailures = 0;
         login.NextBackgroundAttemptAt = null;
+        await db.SaveChangesAsync(ct);
+        Changed(userId);
+    }
+
+    /// <summary>
+    /// Hands the login's background setting back to the automatic rule (<see cref="BackgroundDefaults"/>): it stays as it is
+    /// until the rule changes it, except that it switches on right away when the login already qualifies.
+    /// </summary>
+    public async Task SetBackgroundAutomaticAsync(int id, CancellationToken ct = default)
+    {
+        var userId = await RequireUserAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var login = await db.BankLogins.FirstOrDefaultAsync(l => l.Id == id, ct) ?? throw new AccessDeniedException("Connection not found.");
+        login.BackgroundByUser = false;
+        var credentials = BankSyncRunner.DecodeCredentials(_secrets, login.EncryptedCredentials);
+        var capable = _registry.Find(login.ConnectorType)?.SilentCapabilityFor(credentials) is { } c && c != SilentCapability.None;
+        BackgroundDefaults.Promote(login, capable && login.NeedsManualSync == null, _coordinator.Options.AutoBackgroundAfter);
         await db.SaveChangesAsync(ct);
         Changed(userId);
     }
@@ -232,11 +261,14 @@ public class BankLoginService
             .OrderByDescending(r => r.StartedAt).ThenByDescending(r => r.Id).Take(count).ToListAsync(ct);
     }
 
-    /// <summary>Whether any of the user's logins waits for a manual sync after a background run stopped.</summary>
+    /// <summary>
+    /// Whether any of the user's logins waits for a manual sync after a background run stopped (also when that switched
+    /// its background syncs off automatically).
+    /// </summary>
     public async Task<bool> AnyNeedsManualSyncAsync(CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        return await db.BankLogins.AnyAsync(l => l.BackgroundEnabled && l.NeedsManualSync != null, ct);
+        return await db.BankLogins.AnyAsync(l => l.NeedsManualSync != null && (l.BackgroundEnabled || !l.BackgroundByUser), ct);
     }
 
     /// <summary>Whether the signed-in user may change the per-bank FinTS background setting.</summary>

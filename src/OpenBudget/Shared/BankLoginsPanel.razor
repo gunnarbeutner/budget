@@ -81,7 +81,7 @@ else
                                 @(status.Phase == SyncPhase.Running ? L["Status_Syncing"] : status.Phase == SyncPhase.WaitingForApproval ? L["Status_WaitingApproval"] : L["Status_WaitingInput"])
                             </span>
                         }
-                        else if (login is { BackgroundEnabled: true, NeedsManualSync: not null })
+                        else if (Paused(login))
                         {
                             <span class="badge rounded-pill bank-pill-warn" data-testid="login-status">@L["Status_NeedsYou"]</span>
                         }
@@ -158,6 +158,22 @@ else
                                             @onclick="() => RevokeBankAsync(login.FinTsBlz)">@L["Background_Revoke"]</button>
                                 </div>
                             }
+                            @if (!bankBlocked && login.BackgroundByUser)
+                            {
+                                <div class="small text-body-secondary" data-testid="background-mode">
+                                    @L["Background_ByUser"] ·
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline small text-body-secondary" data-testid="background-automatic"
+                                            @onclick="() => RunAsync(() => Bank.SetBackgroundAutomaticAsync(login.Id))">@L["Background_MakeAutomatic"]</button>
+                                </div>
+                            }
+                            else if (!bankBlocked)
+                            {
+                                <div class="small text-body-secondary" data-testid="background-mode">
+                                    @(login.BackgroundEnabled
+                                        ? L["Background_AutoOn"]
+                                        : L["Background_AutoOff", login.AutoBackgroundAfter, Math.Min(login.SyncsWithoutTan, login.AutoBackgroundAfter)])
+                                </div>
+                            }
                         </div>
                     }
                     @if (running)
@@ -175,7 +191,7 @@ else
                     }
                 </div>
 
-                @if (login.BackgroundEnabled && !BankBlocked(login))
+                @if ((login.BackgroundEnabled || Paused(login)) && !BankBlocked(login))
                 {
                     <div class="small mb-2" data-testid="background-status">
                         @if (login.NeedsManualSync != null)
@@ -219,6 +235,14 @@ else
                 {
                     <div class="alert alert-danger py-2" role="alert" data-testid="login-error">
                         @(login.CredentialsInvalid ? L["Error_Credentials"].Value + " " : "")@login.LastError
+                        @if (login.CredentialsInvalid)
+                        {
+                            <div class="mt-2">
+                                <button type="button" class="btn btn-sm btn-primary" data-action="sign-in-again" @onclick="() => OpenEdit(login, signInAgain: true)">
+                                    <i class="bi bi-key" aria-hidden="true"></i> @L["Button_SignInAgain"]
+                                </button>
+                            </div>
+                        }
                     </div>
                 }
                 else if (!running && login.OrderHistoryIncomplete)
@@ -399,10 +423,14 @@ else
 </Modal>
 
 
-<Modal Show="@(editing != null)" Title="@L["Edit_Title"]" OnClose="@(() => editing = null)">
+<Modal Show="@(editing != null)" Title="@(editSignInAgain ? L["SignInAgain_Title", editing?.DisplayName ?? ""].Value : L["Edit_Title"].Value)" OnClose="@(() => editing = null)">
     <ChildContent>
         @if (editing != null)
         {
+            @if (editSignInAgain)
+            {
+                <p class="small text-body-secondary" data-testid="sign-in-again-hint">@L["SignInAgain_Hint"]</p>
+            }
             <div class="mb-2">
                 <label class="form-label" for="edit-name">@L["Field_Name"]</label>
                 <input id="edit-name" class="form-control" @bind="editName" maxlength="200" />
@@ -457,7 +485,7 @@ else
     </ChildContent>
     <Footer>
         <button type="button" class="btn btn-secondary" @onclick="() => editing = null">@L["Button_Cancel"]</button>
-        <button type="button" class="btn btn-primary" id="edit-save" @onclick="SaveEditAsync">@L["Button_Save"]</button>
+        <button type="button" class="btn btn-primary" id="edit-save" @onclick="SaveEditAsync">@(editSignInAgain ? L["Button_SaveAndSync"] : L["Button_Save"])</button>
     </Footer>
 </Modal>
 
@@ -524,6 +552,7 @@ else
     private string editPin = "";
     private RefreshInterval editInterval;
     private string? editError;
+    private bool editSignInAgain;
     private BankLoginView? pendingDelete;
 
     private static bool NeedsCredentials(ConnectorRegistration? c) => c == null || c.Credentials != CredentialRequirement.None;
@@ -696,9 +725,14 @@ else
             ? Bank.UpdateLoginAsync(login.Id, login.DisplayName, i)
             : Task.CompletedTask);
 
-    private void OpenEdit(BankLoginView login)
+    /// <summary>A background run stopped for the owner, and background syncs are on or were switched off automatically by that stop.</summary>
+    private static bool Paused(BankLoginView login) => login.NeedsManualSync != null && (login.BackgroundEnabled || !login.BackgroundByUser);
+
+    /// <summary>Opens the edit dialog; <paramref name="signInAgain"/>: to re-enter rejected credentials, syncing right after saving.</summary>
+    private void OpenEdit(BankLoginView login, bool signInAgain = false)
     {
         editing = login;
+        editSignInAgain = signInAgain;
         editName = login.DisplayName;
         editUsername = login.Username ?? "";
         editPin = "";
@@ -718,8 +752,10 @@ else
             var extra = editExtra.Where(e => !string.IsNullOrWhiteSpace(e.Value) && !editExtraRemove.Contains(e.Key))
                 .Concat(editExtraRemove.Select(k => KeyValuePair.Create(k, "")))
                 .ToDictionary(StringComparer.Ordinal);
-            await Bank.UpdateLoginAsync(editing.Id, editName, editInterval, editUsername, editPin, extra);
+            var id = editing.Id;
+            await Bank.UpdateLoginAsync(id, editName, editInterval, editUsername, editPin, extra);
             editing = null;
+            if (editSignInAgain) await Bank.SyncNowAsync(id);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or AccessDeniedException)
         {

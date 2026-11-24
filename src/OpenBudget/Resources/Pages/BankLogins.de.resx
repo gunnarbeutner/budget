@@ -74,7 +74,7 @@
     <value> auf einen Base64-codierten 256-Bit-Schlüssel (siehe README) und starte neu.</value>
   </data>
   <data name="Intro" xml:space="preserve">
-    <value>Verbinde deine Banken und Dienste direkt. Verbindungen sind nur für dich sichtbar; Zugangsdaten werden verschlüsselt gespeichert. Abgleiche laufen nur, solange du OpenBudget geöffnet hast.</value>
+    <value>Verbinde deine Banken und Dienste direkt. Verbindungen sind nur für dich sichtbar; Zugangsdaten werden verschlüsselt gespeichert. Verbindungen mit Hintergrund-Synchronisierung synchronisiert der Server nach ihrem Zeitplan, auch wenn OpenBudget geschlossen ist; die anderen, wenn du eine Synchronisierung startest.</value>
   </data>
   <data name="Add_Heading" xml:space="preserve">
     <value>Verbindung hinzufügen</value>
@@ -143,7 +143,7 @@
     <value>Die Bank wartet auf dich - siehe Dialog.</value>
   </data>
   <data name="Error_Credentials" xml:space="preserve">
-    <value>Die gespeicherten Zugangsdaten wurden abgelehnt oder sind nicht lesbar; bitte die Verbindung bearbeiten und neu eingeben.</value>
+    <value>Die gespeicherten Zugangsdaten wurden abgelehnt oder sind nicht lesbar.</value>
   </data>
   <data name="Error_ConnectorMissing" xml:space="preserve">
     <value>Der Konnektor "{0}" ist in dieser Installation nicht verfügbar.</value>
@@ -396,5 +396,29 @@
   </data>
   <data name="Hint_ResetBrowserProfile" xml:space="preserve">
     <value>Die Websitedaten der Bank bleiben zwischen Synchronisierungen erhalten, damit ihre Anmeldung jedes Mal denselben Browser sieht. Nach dem Zurücksetzen beginnt die nächste Anmeldung in einem frischen Browser; die gespeicherte Anmeldesitzung bleibt erhalten.</value>
+  </data>
+  <data name="Background_ByUser" xml:space="preserve">
+    <value>Deine Wahl</value>
+  </data>
+  <data name="Background_MakeAutomatic" xml:space="preserve">
+    <value>Automatisch entscheiden</value>
+  </data>
+  <data name="Background_AutoOn" xml:space="preserve">
+    <value>Automatisch eingeschaltet; schaltet sich ab, wenn die Bank nach einer TAN fragt.</value>
+  </data>
+  <data name="Background_AutoOff" xml:space="preserve">
+    <value>Schaltet sich automatisch ein nach {0} Synchronisierungen in Folge ohne TAN (bisher {1}).</value>
+  </data>
+  <data name="Button_SignInAgain" xml:space="preserve">
+    <value>Erneut anmelden</value>
+  </data>
+  <data name="SignInAgain_Title" xml:space="preserve">
+    <value>Erneut bei {0} anmelden</value>
+  </data>
+  <data name="SignInAgain_Hint" xml:space="preserve">
+    <value>Gib dein Passwort oder deine PIN erneut ein. Die Verbindung wird direkt nach dem Speichern synchronisiert.</value>
+  </data>
+  <data name="Button_SaveAndSync" xml:space="preserve">
+    <value>Speichern und synchronisieren</value>
   </data>
 </root>

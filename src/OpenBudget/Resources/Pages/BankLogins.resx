@@ -74,7 +74,7 @@
     <value> to a base64-encoded 256-bit key (see the README) and restart.</value>
   </data>
   <data name="Intro" xml:space="preserve">
-    <value>Connect your banks and services directly. Connections are private to you; credentials are stored encrypted. Syncs only run while you have OpenBudget open.</value>
+    <value>Connect your banks and services directly. Connections are private to you; credentials are stored encrypted. Connections with background sync on are synced by the server on their schedule, even while OpenBudget is closed; the others sync when you start a sync.</value>
   </data>
   <data name="Add_Heading" xml:space="preserve">
     <value>Add a connection</value>
@@ -143,7 +143,7 @@
     <value>The bank is waiting for you - see the dialog.</value>
   </data>
   <data name="Error_Credentials" xml:space="preserve">
-    <value>The stored credentials were rejected or cannot be read; please edit the connection and enter them again.</value>
+    <value>The stored credentials were rejected or cannot be read.</value>
   </data>
   <data name="Error_ConnectorMissing" xml:space="preserve">
     <value>The connector "{0}" is not available in this installation.</value>
@@ -396,5 +396,29 @@
   </data>
   <data name="Hint_ResetBrowserProfile" xml:space="preserve">
     <value>The bank's site data is kept between syncs, so its sign-in sees the same browser each time. Resetting it starts the next sign-in in a fresh browser; the saved sign-in session is kept.</value>
+  </data>
+  <data name="Background_ByUser" xml:space="preserve">
+    <value>Your choice</value>
+  </data>
+  <data name="Background_MakeAutomatic" xml:space="preserve">
+    <value>Decide automatically</value>
+  </data>
+  <data name="Background_AutoOn" xml:space="preserve">
+    <value>Turned on automatically; it turns off when the bank asks for a TAN.</value>
+  </data>
+  <data name="Background_AutoOff" xml:space="preserve">
+    <value>Turns on automatically after {0} syncs in a row without a TAN ({1} so far).</value>
+  </data>
+  <data name="Button_SignInAgain" xml:space="preserve">
+    <value>Sign in again</value>
+  </data>
+  <data name="SignInAgain_Title" xml:space="preserve">
+    <value>Sign in to {0} again</value>
+  </data>
+  <data name="SignInAgain_Hint" xml:space="preserve">
+    <value>Enter your password or PIN again. The connection syncs right after you save.</value>
+  </data>
+  <data name="Button_SaveAndSync" xml:space="preserve">
+    <value>Save and sync</value>
   </data>
 </root>

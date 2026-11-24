@@ -60,6 +60,7 @@ public sealed class BankSyncRunner
     private readonly IWebLoginService? _webLogins;
     private readonly OpenBudget.Connectors.Receipts.ReceiptStore _receipts;
     private readonly OpenBudget.Assist.ISyncCategorizer? _categorizer;
+    private readonly BankSyncOptions _options;
 
     /// <summary>The login-wide state a challenge may need: whose browser to open and which cookie jar to fill.</summary>
     private sealed record SyncContext(string OwnerUserId, BankHttpClient Http)
@@ -74,6 +75,9 @@ public sealed class BankSyncRunner
         public WebLoginUnattended? Unattended { get; set; }
 
         public bool CookiesChanged { get; set; }
+
+        /// <summary>The owner was asked for a TAN, an approval or a code during this sync.</summary>
+        public bool TanAsked { get; set; }
 
         public string? UserAgent { get; set; }
 
@@ -122,8 +126,10 @@ public sealed class BankSyncRunner
         SystemDbContextFactory system, ConnectorRegistry registry, SecretsProtector secrets,
         BankTransactionStore transactions, BankStatementStore statements, TimeProvider clock, ILoggerFactory loggers,
         Func<BankHttpClient>? httpFactory = null, IWebLoginService? webLogins = null,
-        OpenBudget.Connectors.Receipts.ReceiptStore? receipts = null, OpenBudget.Assist.ISyncCategorizer? categorizer = null)
+        OpenBudget.Connectors.Receipts.ReceiptStore? receipts = null, OpenBudget.Assist.ISyncCategorizer? categorizer = null,
+        BankSyncOptions? options = null)
     {
+        _options = options ?? new BankSyncOptions();
         _receipts = receipts ?? new OpenBudget.Connectors.Receipts.ReceiptStore();
         _categorizer = categorizer;
         _webLogins = webLogins;
@@ -177,6 +183,7 @@ public sealed class BankSyncRunner
         var context = new SyncContext(login.OwnerUserId, http) { Silent = request.Background, BrowserProfile = BrowserProfileStore.ForLogin(login.Id) };
         string? needsUser = null;
         string? blz = null;
+        var capability = SilentCapability.None;
 
         try
         {
@@ -190,9 +197,9 @@ public sealed class BankSyncRunner
             var registration = _registry.Find(login.ConnectorType)
                 ?? throw new ConnectorException($"The connector '{login.ConnectorType}' is not available.");
             blz = registration.FinTsBlz;
+            capability = registration.SilentCapabilityFor(credentials);
             if (request.Background)
             {
-                var capability = registration.SilentCapabilityFor(credentials);
                 if (capability == SilentCapability.None) throw new SilentAbortException("This bank cannot be synced in the background.");
                 context.Unattended = capability == SilentCapability.Full && registration.SilentWebSignIn
                     ? WebLoginUnattended.SignIn
@@ -307,7 +314,8 @@ public sealed class BankSyncRunner
                 finalSession?.UserAgent = context.UserAgent;
             }
             var info = connector as IBackgroundRunInfo;
-            await FinishAsync(db, login, request, finalSession, http, errors, credentialsInvalid, attempted, needsUser, info?.ScaCompleted == true);
+            await FinishAsync(db, login, request, finalSession, http, errors, credentialsInvalid, attempted, needsUser, info?.ScaCompleted == true,
+                context.TanAsked, capability != SilentCapability.None);
             await LogRunAsync(db, login, request, attempted, errors, needsUser, info?.FinTsCodes, blz);
         }
 
@@ -367,7 +375,8 @@ public sealed class BankSyncRunner
 
     private async Task FinishAsync(
         BudgetDbContext db, BankLogin login, SyncRequest request, ConnectorSession? session, BankHttpClient http,
-        List<string> errors, bool credentialsInvalid, DateTime attempted, string? needsUser, bool scaCompleted)
+        List<string> errors, bool credentialsInvalid, DateTime attempted, string? needsUser, bool scaCompleted,
+        bool tanAsked, bool backgroundCapable)
     {
         try
         {
@@ -383,6 +392,7 @@ public sealed class BankSyncRunner
                 // the login waits for a manual sync; its schedule and last result stay as they were
                 login.NeedsManualSync = Truncate(needsUser, 500);
                 login.NeedsManualSince ??= now;
+                BackgroundDefaults.Record(login, BackgroundDefaults.SyncResult.StoppedForOwner, backgroundCapable, _options.AutoBackgroundAfter);
                 await db.SaveChangesAsync(CancellationToken.None);
                 return;
             }
@@ -415,6 +425,10 @@ public sealed class BankSyncRunner
             if (request.Transactions || errors.Count > 0 || login.LastError == CancelledMessage)
                 login.LastError = errors.Count == 0 ? null : Truncate(string.Join(" ", errors), 1000);
             if (credentialsInvalid) login.CredentialsInvalid = true;
+            var result = tanAsked || scaCompleted ? BackgroundDefaults.SyncResult.AskedTan
+                : errors.Count == 0 ? BackgroundDefaults.SyncResult.Clean
+                : BackgroundDefaults.SyncResult.Failed;
+            BackgroundDefaults.Record(login, result, backgroundCapable, _options.AutoBackgroundAfter);
             await db.SaveChangesAsync(CancellationToken.None);
         }
         catch (Exception ex)
@@ -456,6 +470,7 @@ public sealed class BankSyncRunner
             }
             else
             {
+                context.TanAsked = true;
                 answer = await sink.AskAsync(step.Challenge, ct);
             }
             if (answer == null) return ConnectorStep.Fail<T>("No answer was given in time; the request expired.");
@@ -484,6 +499,7 @@ public sealed class BankSyncRunner
         {
             await attached.Task.WaitAsync(token);
             sink.HideWebLogin();
+            context.TanAsked = true;
             return await sink.AskAsync(code, token);
         }
         try

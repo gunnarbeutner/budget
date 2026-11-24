@@ -21,6 +21,12 @@ public sealed class BankSyncOptions
 
     /// <summary>How many background runs may run at once (one per bank code at most, whatever this says).</summary>
     public int BackgroundConcurrency { get; set; } = 2;
+
+    /// <summary>
+    /// After this many successful syncs in a row without a TAN, a login that can sync in the background switches background
+    /// syncs on by itself (unless its owner chose; see <see cref="OpenBudget.Services.BackgroundDefaults"/>).
+    /// </summary>
+    public int AutoBackgroundAfter { get; set; } = 3;
 }
 
 public enum SyncPhase
@@ -79,6 +85,8 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
 
     /// <summary>The clock the schedules run on.</summary>
     public TimeProvider Clock => _clock;
+
+    public BankSyncOptions Options => _options;
     private readonly ILogger<BankSyncCoordinator> _logger;
     private readonly Lock _lock = new();
     private readonly Dictionary<int, Job> _jobs = [];

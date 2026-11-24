@@ -71,7 +71,7 @@ internal sealed class BankWorld : IAsyncDisposable
             ? null
             : new WebLoginService(_extras.BrowserHost, _extras.WebLoginOptions ?? new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero },
                 clock, _extras.Loggers ?? NullLoggerFactory.Instance);
-        Runner = new BankSyncRunner(t.System, Registry, Secrets, new BankTransactionStore(), StatementStore, clock, _extras.Loggers ?? NullLoggerFactory.Instance, _extras.HttpFactory, WebLogins);
+        Runner = new BankSyncRunner(t.System, Registry, Secrets, new BankTransactionStore(), StatementStore, clock, _extras.Loggers ?? NullLoggerFactory.Instance, _extras.HttpFactory, WebLogins, options: options);
         Coordinator = new BankSyncCoordinator(t.System, Runner, Secrets, t.Notifier, options, clock, NullLogger<BankSyncCoordinator>.Instance);
     }
 
@@ -108,7 +108,7 @@ internal sealed class BankWorld : IAsyncDisposable
     public BankSyncCoordinator CoordinatorWithKey(string key)
     {
         var secrets = new SecretsProtector(key);
-        var runner = new BankSyncRunner(T.System, Registry, secrets, new BankTransactionStore(), StatementStore, Clock, _extras.Loggers ?? NullLoggerFactory.Instance, _extras.HttpFactory, WebLogins);
+        var runner = new BankSyncRunner(T.System, Registry, secrets, new BankTransactionStore(), StatementStore, Clock, _extras.Loggers ?? NullLoggerFactory.Instance, _extras.HttpFactory, WebLogins, options: Options);
         return new BankSyncCoordinator(T.System, runner, secrets, T.Notifier, Options, Clock, NullLogger<BankSyncCoordinator>.Instance);
     }
 

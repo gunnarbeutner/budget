@@ -137,4 +137,28 @@ public sealed class BankLoginTests : EndToEndTestBase
         await Expect(Page.GetByText("No connections yet.")).ToBeVisibleAsync();
         await Expect(Page.Locator("[data-bank-login]")).ToHaveCountAsync(0);
     }
+
+    [Test]
+    public async Task Rejected_credentials_offer_signing_in_again_which_syncs_right_after()
+    {
+        await GoToAsync("/connections");
+        await Page.GetByTestId("add-login-open").ClickAsync();
+        await Page.Locator("#new-login-connector").SelectOptionAsync("fake");
+        await Page.Locator("#new-login-name").FillAsync("Rejecting bank");
+        await Page.Locator("#new-login-username").FillAsync("demo+loginfail");
+        await Page.Locator("#new-login-pin").FillAsync("1234");
+        await Page.Locator("#new-login-add").ClickAsync();
+
+        var card = Page.Locator("[data-bank-login='Rejecting bank']");
+        await Expect(card.GetByTestId("login-status")).ToHaveTextAsync("Re-enter credentials");
+        await card.Locator("[data-action=sign-in-again]").ClickAsync();
+        await Expect(Page.GetByTestId("sign-in-again-hint")).ToBeVisibleAsync();
+        await Expect(Page.Locator("#edit-username")).ToHaveValueAsync("demo+loginfail");
+        await Page.Locator("#edit-username").FillAsync("demo");
+        await Page.Locator("#edit-pin").FillAsync("5678");
+        await Page.Locator("#edit-save").ClickAsync();
+
+        await Expect(card.GetByTestId("login-pill")).ToHaveTextAsync("OK");
+        await Expect(card.GetByTestId("login-error")).ToHaveCountAsync(0);
+    }
 }

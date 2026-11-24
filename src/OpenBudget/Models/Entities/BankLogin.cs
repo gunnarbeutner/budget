@@ -4,7 +4,7 @@ using OpenBudget.Connectors;
 
 namespace OpenBudget.Models;
 
-/// <summary>How often a bank login is refreshed automatically (only while its owner has OpenBudget open).</summary>
+/// <summary>How often a bank login is refreshed automatically (by background syncs, see <see cref="BankLogin.BackgroundEnabled"/>).</summary>
 public enum RefreshInterval
 {
     EveryTwoHours = 0,
@@ -66,8 +66,17 @@ public class BankLogin
     /// </summary>
     public bool CredentialsInvalid { get; set; }
 
-    /// <summary>Background syncs are on: the server syncs this login by itself, without asking anything.</summary>
+    /// <summary>
+    /// Background syncs are on: the server syncs this login by itself, without asking anything. Unless the owner chose
+    /// (<see cref="BackgroundByUser"/>), it follows the automatic rule in <see cref="OpenBudget.Services.BackgroundDefaults"/>.
+    /// </summary>
     public bool BackgroundEnabled { get; set; }
+
+    /// <summary>The owner switched background syncs on or off: the automatic rule leaves <see cref="BackgroundEnabled"/> alone.</summary>
+    public bool BackgroundByUser { get; set; }
+
+    /// <summary>Successful syncs in a row (manual or background) that needed no TAN or other step from the owner.</summary>
+    public int SyncsWithoutTan { get; set; }
 
     /// <summary>
     /// The background default was settled for this login (new logins and the owner's own choice set it); logins without it

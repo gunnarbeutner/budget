@@ -61,7 +61,10 @@ public sealed class BackgroundSyncTests
         Assert.Equal(before.LastSyncAt, login.LastSyncAt);
         Assert.Equal(before.EncryptedSession, login.EncryptedSession);
         Assert.Equal(SyncRunResult.NeedsUser, (await RunsAsync(w, id)).Last().Result);
-        Assert.True(await w.For(BankWorld.Alice).AnyNeedsManualSyncAsync() == login.BackgroundEnabled);
+        // background syncs were on automatically: the stop switches them off, and the login still waits for its owner
+        Assert.False(login.BackgroundEnabled);
+        Assert.False(login.BackgroundByUser);
+        Assert.True(await w.For(BankWorld.Alice).AnyNeedsManualSyncAsync());
     }
 
     [Fact]

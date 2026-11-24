@@ -65,7 +65,7 @@ public static class DataFixList
             },
             Transactional: false),   // its re-ask runs outside the change tracker
 
-        // Last: it waits for configured secrets, and holds back the fixes after it until then.
+        // Last: these wait for configured secrets, and hold back the fixes after them until then.
         new("2026-11-background-defaults",
             "Logins added before background syncs defaulted on get that default once",
             async c =>
@@ -75,6 +75,18 @@ public static class DataFixList
                 if (!secrets.IsConfigured && await c.Db.BankLogins.IgnoreQueryFilters().AnyAsync(l => !l.BackgroundDefaulted, c.CancellationToken))
                     throw new InvalidOperationException("Secrets are not configured; logins without a background default stay as they are.");
                 await BackgroundDefaults.ApplyAsync(c.Db, c.Services.GetRequiredService<ConnectorRegistry>(), secrets, c.CancellationToken);
+            }),
+
+        // After the background defaults, whose switched-on logins follow the automatic rule.
+        new("2026-11-background-owner-choices",
+            "Background settings only the owner can have made are kept as the owner's choice; the others follow the automatic rule",
+            async c =>
+            {
+                var secrets = c.Services.GetRequiredService<SecretsProtector>();
+                if (!secrets.IsConfigured && await c.Db.BankLogins.IgnoreQueryFilters().AnyAsync(c.CancellationToken))
+                    throw new InvalidOperationException("Secrets are not configured; background settings stay unmarked.");
+                var marked = await BackgroundDefaults.MarkOwnerChoicesAsync(c.Db, c.Services.GetRequiredService<ConnectorRegistry>(), secrets, c.CancellationToken);
+                c.Logger.LogInformation("Background: {Marked} logins keep their background setting as the owner's choice.", marked);
             }),
     ];
 }
