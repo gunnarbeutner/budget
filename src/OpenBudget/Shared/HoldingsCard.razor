@@ -15,29 +15,44 @@
 }
 <div class="card mb-2 holdings-card">
     <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        @* One header line: title, the look-through taxonomy picker, then price date, refresh and position count. *@
+        <div class="d-flex flex-wrap align-items-center column-gap-3 row-gap-1 mb-2">
             <h6 class="mb-0">@L["Holdings_Title"]</h6>
-            <span class="text-body-secondary small">@L["Holdings_PositionCount", h.Rows.Count]</span>
-        </div>
-        @if (h.PricesAsOf is { } asOf)
-        {
-            var stale = DateOnly.FromDateTime(Clock.GetUtcNow().UtcDateTime).DayNumber - asOf.DayNumber > StaleDays;
-            <div class="d-flex align-items-center gap-2 small mb-3 @(stale ? "text-warning-emphasis" : "text-body-secondary")" data-testid="holdings-prices-as-of">
-                @if (stale) { <i class="bi bi-exclamation-triangle" aria-hidden="true"></i> }
-                <span>@L["Holdings_PricesAsOf", asOf.ToString("d MMM yyyy", CultureInfo.CurrentCulture)]</span>
-                @if (h.QuoteOwnerId != null)
+            @if (h.Taxonomies.Count > 0)
+            {
+                var picked = h.Taxonomies.FirstOrDefault(t => t.TaxonomyName == holdingsTaxonomy) ?? h.Taxonomies[0];
+                <div class="segmented segmented-sm" role="group" aria-label="@L["Holdings_LookThrough"]" title="@L["Holdings_LookThrough"]">
+                    @foreach (var t in h.Taxonomies)
+                    {
+                        var on = t.TaxonomyName == picked.TaxonomyName;
+                        <button type="button" class="btn @(on ? "active" : "")" aria-pressed="@(on ? "true" : "false")"
+                                @onclick="() => SelectHoldingsTaxonomy(t.TaxonomyName)">@t.TaxonomyName</button>
+                    }
+                </div>
+            }
+            <div class="ms-auto d-flex flex-wrap align-items-center gap-2 small text-body-secondary">
+                @if (h.PricesAsOf is { } asOf)
                 {
-                    <button type="button" class="btn btn-link btn-sm p-0 small" data-testid="holdings-refresh-quotes"
-                            disabled="@refreshing" @onclick="RefreshQuotesAsync">
-                        <i class="bi bi-arrow-repeat @(refreshing ? "spin" : "")" aria-hidden="true"></i> @L["Holdings_RefreshQuotes"]
-                    </button>
+                    var stale = DateOnly.FromDateTime(Clock.GetUtcNow().UtcDateTime).DayNumber - asOf.DayNumber > StaleDays;
+                    <span class="d-inline-flex align-items-center gap-2 @(stale ? "text-warning-emphasis" : "text-body-secondary")" data-testid="holdings-prices-as-of">
+                        @if (stale) { <i class="bi bi-exclamation-triangle" aria-hidden="true"></i> }
+                        <span>@L["Holdings_PricesAsOf", asOf.ToString("d MMM yyyy", CultureInfo.CurrentCulture)]</span>
+                        @if (h.QuoteOwnerId != null)
+                        {
+                            <button type="button" class="btn btn-link btn-sm p-0 small" data-testid="holdings-refresh-quotes"
+                                    disabled="@refreshing" @onclick="RefreshQuotesAsync">
+                                <i class="bi bi-arrow-repeat @(refreshing ? "spin" : "")" aria-hidden="true"></i> @L["Holdings_RefreshQuotes"]
+                            </button>
+                        }
+                        @if (refreshFailed is { Count: > 0 } failed)
+                        {
+                            <span class="text-warning-emphasis" data-testid="holdings-refresh-failed">@L["Holdings_RefreshFailed", string.Join(", ", failed)]</span>
+                        }
+                    </span>
                 }
-                @if (refreshFailed is { Count: > 0 } failed)
-                {
-                    <span class="text-warning-emphasis" data-testid="holdings-refresh-failed">@L["Holdings_RefreshFailed", string.Join(", ", failed)]</span>
-                }
+                <span>@L["Holdings_PositionCount", h.Rows.Count]</span>
             </div>
-        }
+        </div>
 
         @* The plain allocation is only a fallback: with look-through data its first taxonomy shows the same split. *@
         @if (h.Taxonomies.Count == 0 && h.Allocation.Count > 0 && h.TotalValue > 0)
@@ -69,17 +84,6 @@
             var selectedTax = h.Taxonomies.FirstOrDefault(t => t.TaxonomyName == holdingsTaxonomy) ?? h.Taxonomies[0];
             var ltColors = ChartPalette.Templates(selectedTax.Slices.Count);
             <div class="mb-3">
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                    <span class="text-body-secondary small">@L["Holdings_LookThrough"]</span>
-                    <div class="btn-group btn-group-sm" role="group" aria-label="@L["Holdings_LookThrough"]">
-                        @foreach (var t in h.Taxonomies)
-                        {
-                            <button type="button"
-                                    class="btn @(t.TaxonomyName == selectedTax.TaxonomyName ? "btn-primary" : "btn-outline-secondary")"
-                                    @onclick="() => SelectHoldingsTaxonomy(t.TaxonomyName)">@t.TaxonomyName</button>
-                        }
-                    </div>
-                </div>
                 <div class="holdings-alloc-bar" role="img" aria-label="@selectedTax.TaxonomyName"
                      style="display:flex;height:10px;border-radius:4px;overflow:hidden;">
                     @for (int i = 0; i < selectedTax.Slices.Count; i++)
