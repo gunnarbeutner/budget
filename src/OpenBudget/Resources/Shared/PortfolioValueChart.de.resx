@@ -70,13 +70,34 @@
   <data name="Period_3Y" xml:space="preserve">
     <value>3J</value>
   </data>
-  <data name="Period_5Y" xml:space="preserve">
-    <value>5J</value>
-  </data>
   <data name="Period_Max" xml:space="preserve">
     <value>Max</value>
   </data>
   <data name="Series_Label" xml:space="preserve">
     <value>Wert</value>
+  </data>
+  <data name="Period_1D" xml:space="preserve">
+    <value>1T</value>
+  </data>
+  <data name="Period_1W" xml:space="preserve">
+    <value>1W</value>
+  </data>
+  <data name="Period_1M" xml:space="preserve">
+    <value>1M</value>
+  </data>
+  <data name="Period_YTD" xml:space="preserve">
+    <value>YTD</value>
+  </data>
+  <data name="Series_Invested" xml:space="preserve">
+    <value>Investiert</value>
+  </data>
+  <data name="Value_Change" xml:space="preserve">
+    <value>Wert {0}</value>
+  </data>
+  <data name="Net_Flows" xml:space="preserve">
+    <value>Ein-/Auszahlungen {0}</value>
+  </data>
+  <data name="Since" xml:space="preserve">
+    <value>seit {0}</value>
   </data>
 </root>

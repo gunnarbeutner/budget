@@ -6,8 +6,10 @@
 @inject IStringLocalizer<PortfolioValueChart> L
 
 @* The Positions section's value chart: the total value of the project's depots over the selected period (their
-   stored daily history carried forward, today their current value) with the change over that period. Hidden while
-   no depot has stored history or every value is zero. *@
+   stored daily history carried forward, today their current value) above the money invested (the start value plus
+   the net flows into the depots). The headline is the gain (the change less the net flows) with its time-weighted
+   return; the change and the net flows follow as secondary text. Hidden while no depot has stored history or every
+   value is zero. *@
 
 @if (series is { Points.Count: > 1 } s)
 {
@@ -16,8 +18,11 @@
         <div class="card-body">
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                 <h6 class="mb-0">@L["Title"]</h6>
-                <span class="small @(s.Change < 0 ? "text-danger" : "text-success")" data-testid="portfolio-value-change">
-                    @FormatSigned(s.Change)@(s.ChangeFraction is { } f ? $" ({FormatPercent(f)})" : "")
+                <span class="small fw-semibold @(s.Gain < 0 ? "text-danger" : "text-success")" data-testid="portfolio-value-change">
+                    @FormatSigned(s.Gain)@(s.TimeWeightedReturn is { } f ? $" ({FormatPercent(f)})" : "")
+                </span>
+                <span class="small text-muted" data-testid="portfolio-value-details">
+                    @SinceText(s)@L["Value_Change", FormatSigned(s.Change)] · @L["Net_Flows", FormatSigned(s.NetFlows)]
                 </span>
                 <div class="flex-grow-1"></div>
                 <div class="segmented segmented-sm" role="group" aria-label="@L["Aria_Period"]">
@@ -43,6 +48,7 @@
     private const string CanvasId = "portfolioValueChart";
     private PortfolioValuePeriod period = PortfolioValuePeriod.OneYear;
     private Dictionary<long, List<(DateTime Day, decimal Value)>> history = new();
+    private Dictionary<DateTime, decimal> flows = new();
     private PortfolioValueSeries? series;
     private List<long>? loadedDepots;
     private decimal loadedTotal;
@@ -50,9 +56,12 @@
 
     private static readonly (PortfolioValuePeriod, string, string)[] PeriodKeys =
     [
+        (PortfolioValuePeriod.OneDay, "1d", "Period_1D"),
+        (PortfolioValuePeriod.OneWeek, "1w", "Period_1W"),
+        (PortfolioValuePeriod.OneMonth, "1m", "Period_1M"),
+        (PortfolioValuePeriod.YearToDate, "ytd", "Period_YTD"),
         (PortfolioValuePeriod.OneYear, "1y", "Period_1Y"),
         (PortfolioValuePeriod.ThreeYears, "3y", "Period_3Y"),
-        (PortfolioValuePeriod.FiveYears, "5y", "Period_5Y"),
         (PortfolioValuePeriod.Max, "max", "Period_Max"),
     ];
 
@@ -65,6 +74,7 @@
         loadedDepots = DepotIds;
         loadedTotal = CurrentTotal;
         history = DepotIds.Count == 0 ? new() : await TransactionQueries.GetDepotValueHistoryAsync(OwnerUserId, DepotIds);
+        flows = DepotIds.Count == 0 ? new() : await TransactionQueries.GetDepotFlowsAsync(OwnerUserId, DepotIds);
         Rebuild();
     }
 
@@ -74,7 +84,8 @@
         // Without any value ever (all stored history and the current total zero) there is nothing to chart.
         var anyValue = CurrentTotal != 0m || history.Values.Any(h => h.Any(p => p.Value != 0m));
         series = !anyValue ? null
-            : PortfolioValueHistory.Build(history, CurrentTotal, today, PortfolioValueHistory.PeriodStart(period, today));
+            : PortfolioValueHistory.Build(history, CurrentTotal, today,
+                PortfolioValueHistory.PeriodStart(period, today, PortfolioValueHistory.LastStoredDayBefore(history, today)), flows);
         renderPending = true;
     }
 
@@ -97,7 +108,10 @@
         }
         var labels = s.Points.Select(p => p.Day.ToAppDate()).ToArray();
         var data = s.Points.Select(p => p.Value).ToArray();
-        var color = ChartPalette.Templates(2)[1];
+        var invested = s.Points.Select(p => p.Invested).ToArray();
+        var palette = ChartPalette.Templates(2);
+        var color = palette[1];
+        var investedColor = palette[0];
         var label = L["Series_Label"].Value;
         var chartData = new
         {
@@ -118,7 +132,21 @@
                         tension = 0.1,
                         pointRadius = 0,
                         pointHoverRadius = 4,
-                    }
+                    },
+                    new
+                    {
+                        label = L["Series_Invested"].Value,
+                        data = invested,
+                        borderColor = ChartPalette.WithAlpha(investedColor, 1),
+                        backgroundColor = ChartPalette.WithAlpha(investedColor, 0.1),
+                        borderWidth = 1.5,
+                        borderDash = new[] { 4, 3 },
+                        fill = true,
+                        tension = 0,
+                        stepped = true,
+                        pointRadius = 0,
+                        pointHoverRadius = 3,
+                    },
                 }
             },
             options = new
@@ -134,7 +162,7 @@
                     {
                         mode = "index",
                         intersect = false,
-                        callbacks = new { label = new { kind = "localizedEuroLabel", label } }
+                        callbacks = new { label = new { kind = "datasetEuroLabel" } }
                     }
                 },
                 scales = new
@@ -149,6 +177,11 @@
         catch (JSException) { /* render raced a teardown or charts.js not loaded yet */ }
         catch (InvalidOperationException) { /* JS unreachable during prerender */ }
     }
+
+    // The 1D comparison names its day when that is not yesterday (no value was stored then).
+    private string SinceText(PortfolioValueSeries s) =>
+        period == PortfolioValuePeriod.OneDay && s.Points[0].Day < DateTime.Today.AddDays(-1)
+            ? L["Since", s.Points[0].Day.ToAppDate()] + " · " : "";
 
     private static string FormatSigned(decimal v) => (v > 0 ? "+" : "") + Formatting.FormatMoneyDe(v);
 

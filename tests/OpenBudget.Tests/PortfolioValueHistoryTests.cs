@@ -30,9 +30,10 @@ public class PortfolioValueHistoryTests
                 (new DateTime(2026, 3, 19), 200m),
                 (Today, 260m),
             ],
-            s.Points);
+            s.Points.Select(p => (p.Day, p.Value)));
         Assert.Equal(160m, s.Change);
-        Assert.Equal(1.6m, s.ChangeFraction);
+        Assert.Equal(160m, s.Gain);
+        Assert.Equal(1.6m, s.TimeWeightedReturn);
     }
 
     [Fact]
@@ -43,7 +44,7 @@ public class PortfolioValueHistoryTests
 
         var s = PortfolioValueHistory.Build(history, 100m + 500m, Today, from: null);
 
-        Assert.Equal([(new DateTime(2026, 3, 18), 100m), (new DateTime(2026, 3, 19), 100m), (Today, 600m)], s.Points);
+        Assert.Equal([(new DateTime(2026, 3, 18), 100m), (new DateTime(2026, 3, 19), 100m), (Today, 600m)], s.Points.Select(p => (p.Day, p.Value)));
     }
 
     [Fact]
@@ -51,8 +52,9 @@ public class PortfolioValueHistoryTests
     {
         var s = PortfolioValueHistory.Build(History(), 500m, Today, from: null);
 
-        Assert.Equal([(Today, 500m)], s.Points);
+        Assert.Equal([(Today, 500m)], s.Points.Select(p => (p.Day, p.Value)));
         Assert.Equal(0m, s.Change);
+        Assert.Null(s.TimeWeightedReturn);
     }
 
     [Fact]
@@ -64,8 +66,8 @@ public class PortfolioValueHistoryTests
         var s = PortfolioValueHistory.Build(history, 130m, Today, from);
 
         Assert.Equal(new DateTime(2025, 3, 20), from);
-        Assert.Equal((new DateTime(2025, 3, 20), 80m), s.Points[0]);
-        Assert.Equal((new DateTime(2026, 3, 19), 120m), s.Points[^2]);
+        Assert.Equal((new DateTime(2025, 3, 20), 80m), (s.Points[0].Day, s.Points[0].Value));
+        Assert.Equal((new DateTime(2026, 3, 19), 120m), (s.Points[^2].Day, s.Points[^2].Value));
         Assert.Equal(366, s.Points.Count);
         Assert.Equal(50m, s.Change);
     }
@@ -76,9 +78,80 @@ public class PortfolioValueHistoryTests
         var history = History((1, [(new DateTime(2026, 1, 1), 80m)]));
 
         var s = PortfolioValueHistory.Build(history, 80m, Today,
-            PortfolioValueHistory.PeriodStart(PortfolioValuePeriod.FiveYears, Today));
+            PortfolioValueHistory.PeriodStart(PortfolioValuePeriod.ThreeYears, Today));
 
         Assert.Equal(new DateTime(2026, 1, 1), s.Points[0].Day);
         Assert.Null(PortfolioValueHistory.PeriodStart(PortfolioValuePeriod.Max, Today));
+    }
+
+    [Fact]
+    public void Flows_are_split_from_the_gain_and_left_out_of_the_time_weighted_return()
+    {
+        // 100 → 110 (+10 %), then 1.000 paid in and the day ends at 1.110 (flat), then +10 % to 1.221.
+        var history = History((1, [(new DateTime(2026, 3, 16), 100m), (new DateTime(2026, 3, 17), 110m), (new DateTime(2026, 3, 18), 1110m)]));
+        var flows = new Dictionary<DateTime, decimal> { [new DateTime(2026, 3, 18)] = 1000m };
+
+        var s = PortfolioValueHistory.Build(history, 1221m, Today, from: null, flows);
+
+        Assert.Equal(1121m, s.Change);
+        Assert.Equal(1000m, s.NetFlows);
+        Assert.Equal(121m, s.Gain);
+        Assert.Equal(0.21m, s.TimeWeightedReturn);
+        Assert.Equal([100m, 100m, 1100m, 1100m, 1100m], s.Points.Select(p => p.Invested));
+    }
+
+    [Fact]
+    public void Withdrawals_count_as_negative_flows_and_flows_on_the_first_day_are_in_the_start_value()
+    {
+        var history = History((1, [(new DateTime(2026, 3, 18), 500m), (new DateTime(2026, 3, 19), 300m)]));
+        var flows = new Dictionary<DateTime, decimal>
+        {
+            [new DateTime(2026, 3, 1)] = 400m,   // before the period
+            [new DateTime(2026, 3, 18)] = 500m,  // the first day: part of the start value
+            [new DateTime(2026, 3, 19)] = -250m, // a sale paid out
+        };
+
+        var s = PortfolioValueHistory.Build(history, 300m, Today, from: null, flows);
+
+        Assert.Equal(-200m, s.Change);
+        Assert.Equal(-250m, s.NetFlows);
+        Assert.Equal(50m, s.Gain);
+        Assert.Equal(0.1m, s.TimeWeightedReturn);
+    }
+
+    [Fact]
+    public void A_day_after_a_zero_value_measures_its_value_against_its_flows()
+    {
+        var history = History((1, [(new DateTime(2026, 3, 18), 0m), (new DateTime(2026, 3, 19), 105m)]));
+        var flows = new Dictionary<DateTime, decimal> { [new DateTime(2026, 3, 19)] = 100m };
+
+        var s = PortfolioValueHistory.Build(history, 110m, Today, from: null, flows);
+
+        Assert.Equal(10m, s.Gain);
+        Assert.Equal(0.1m, s.TimeWeightedReturn);
+    }
+
+    [Theory]
+    [InlineData(PortfolioValuePeriod.OneWeek, "2026-03-13")]
+    [InlineData(PortfolioValuePeriod.OneMonth, "2026-02-20")]
+    [InlineData(PortfolioValuePeriod.YearToDate, "2025-12-31")]
+    [InlineData(PortfolioValuePeriod.OneYear, "2025-03-20")]
+    [InlineData(PortfolioValuePeriod.ThreeYears, "2023-03-20")]
+    public void Period_starts(PortfolioValuePeriod period, string expected) =>
+        Assert.Equal(DateTime.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), PortfolioValueHistory.PeriodStart(period, Today));
+
+    [Fact]
+    public void A_day_compares_against_the_last_stored_day_before_today()
+    {
+        var history = History(
+            (1, [(new DateTime(2026, 3, 10), 100m), (new DateTime(2026, 3, 16), 120m), (Today, 130m)]),
+            (2, [(new DateTime(2026, 3, 12), 50m)]));
+
+        var last = PortfolioValueHistory.LastStoredDayBefore(history, Today);
+
+        Assert.Equal(new DateTime(2026, 3, 16), last);
+        Assert.Equal(new DateTime(2026, 3, 16), PortfolioValueHistory.PeriodStart(PortfolioValuePeriod.OneDay, Today, last));
+        Assert.Equal(new DateTime(2026, 3, 19), PortfolioValueHistory.PeriodStart(PortfolioValuePeriod.OneDay, Today, null));
+        Assert.Null(PortfolioValueHistory.LastStoredDayBefore(History(), Today));
     }
 }

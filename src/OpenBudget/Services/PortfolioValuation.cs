@@ -90,6 +90,10 @@ public static class PortfolioValuation
         _ => null,
     };
 
+    /// <summary>The ledger labels of transactions that move securities into or out of a portfolio.</summary>
+    public static readonly IReadOnlySet<string> TradeLabels = new[] { PType.Purchase, PType.Sale, PType.InboundDelivery, PType.OutboundDelivery }
+        .Select(t => LedgerMeta(t)!.Value.Label).ToHashSet(StringComparer.Ordinal);
+
     public const string FeeLabel = "Gebühr";
     public const string TaxLabel = "Steuer";
 

@@ -508,4 +508,38 @@ public class TransactionQueryService
         }
         return result;
     }
+    /// <summary>
+    /// Net money moved into the given depots per day (UTC day), positive for money in: the buys, sells, deliveries in
+    /// and deliveries out (<see cref="PortfolioValuation.TradeLabels"/>) on the PortfolioPerformance ledger accounts of
+    /// those depots, with the opposite sign of their cash effect. Their itemised fees and taxes stay out, as they never reach
+    /// the depot. Depots without a ledger account contribute no flows.
+    /// </summary>
+    public async Task<Dictionary<DateTime, decimal>> GetDepotFlowsAsync(
+        string ownerId,
+        IReadOnlyCollection<long> depotIds,
+        CancellationToken ct = default)
+    {
+        var result = new Dictionary<DateTime, decimal>();
+        if (depotIds.Count == 0) return result;
+        var depots = depotIds.ToList();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var ledgers = await db.PpPortfolioSettings
+            .Where(s => s.OwnerUserId == ownerId && s.DepotAccountId != null && depots.Contains(s.DepotAccountId.Value) && s.LedgerAccountId != null)
+            .Select(s => s.LedgerAccountId!.Value)
+            .ToListAsync(ct);
+        if (ledgers.Count == 0) return result;
+        var labels = PortfolioValuation.TradeLabels.ToList();
+        var rows = await db.Transactions
+            .Where(t => t.OwnerUserId == ownerId && t.AccountId != null && ledgers.Contains(t.AccountId.Value)
+                && t.ExternalId != null && t.ExternalId.StartsWith(PortfolioAccountSync.ExternalIdPrefix)
+                && t.BookingText != null && labels.Contains(t.BookingText))
+            .Select(t => new { t.Timestamp, t.Amount })
+            .ToListAsync(ct);
+        foreach (var r in rows)
+        {
+            var day = DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime.Date;
+            result[day] = result.GetValueOrDefault(day) - r.Amount / 100m;
+        }
+        return result;
+    }
 }
