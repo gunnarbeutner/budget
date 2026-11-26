@@ -66,7 +66,7 @@
     {
         @if (!loading && depotIds.Count > 0)
         {
-            <PortfolioValueChart OwnerUserId="@project.OwnerUserId" DepotIds="depotIds" CurrentTotal="@(holdings?.TotalValue ?? 0m)" />
+            <PortfolioValueChart OwnerUserId="@project.OwnerUserId" DepotIds="depotIds" CashAccountIds="cashAccountIds" CurrentTotal="@(holdings?.TotalValue ?? 0m)" />
         }
         @if (loading)
         {
@@ -107,6 +107,7 @@
     private string tab = "positions";
     private AccountHoldings? holdings;
     private List<long> depotIds = [];
+    private List<long> cashAccountIds = [];
     private int _loadedProjectId;
 
     private IEnumerable<(string Key, string Label)> Sections =>
@@ -160,6 +161,7 @@
         ownsData = scope.Owns(project.OwnerUserId);
         holdings = await PortfolioService.GetProjectHoldingsAsync(ProjectId);
         depotIds = await PortfolioService.GetProjectDepotIdsAsync(ProjectId);
+        cashAccountIds = await PortfolioService.GetProjectSettlementAccountIdsAsync(ProjectId, depotIds);
         loading = false;
     }
 

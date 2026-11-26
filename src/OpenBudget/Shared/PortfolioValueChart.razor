@@ -5,9 +5,10 @@
 @inject IJSRuntime JS
 @inject IStringLocalizer<PortfolioValueChart> L
 
-@* The Positions section's value chart: the total value of the project's depots over the selected period (their
-   stored daily history carried forward, today their current value) above the money invested (the start value plus
-   the net flows into the depots). The headline is the gain (the change less the net flows) with its time-weighted
+@* The Positions section's value chart: the total value of the project's portfolio (its depots, with their stored
+   daily history carried forward and today their current value, plus their settlement accounts' end-of-day balances)
+   over the selected period above the money invested (the start value plus the net flows into the portfolio, see
+   TransactionQueryService.GetPortfolioFlowsAsync). The headline is the gain (the change less the net flows) with its time-weighted
    return; the change and the net flows follow as secondary text. Hidden while no depot has stored history or every
    value is zero. *@
 
@@ -43,6 +44,9 @@
 @code {
     [Parameter, EditorRequired] public string OwnerUserId { get; set; }
     [Parameter, EditorRequired] public List<long> DepotIds { get; set; } = [];
+    /// <summary>The depots' settlement accounts, valued and counted for flows together with the depots.</summary>
+    [Parameter] public List<long> CashAccountIds { get; set; } = [];
+    /// <summary>The depots' current total value (without the settlement accounts).</summary>
     [Parameter] public decimal CurrentTotal { get; set; }
 
     private const string CanvasId = "portfolioValueChart";
@@ -52,6 +56,8 @@
     private PortfolioValueSeries? series;
     private List<long>? loadedDepots;
     private decimal loadedTotal;
+    private List<long>? loadedCash;
+    private decimal currentCash;
     private bool renderPending;
 
     private static readonly (PortfolioValuePeriod, string, string)[] PeriodKeys =
@@ -70,11 +76,15 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (ReferenceEquals(loadedDepots, DepotIds) && loadedTotal == CurrentTotal) return;
+        if (ReferenceEquals(loadedDepots, DepotIds) && ReferenceEquals(loadedCash, CashAccountIds) && loadedTotal == CurrentTotal) return;
         loadedDepots = DepotIds;
+        loadedCash = CashAccountIds;
         loadedTotal = CurrentTotal;
         history = DepotIds.Count == 0 ? new() : await TransactionQueries.GetDepotValueHistoryAsync(OwnerUserId, DepotIds);
-        flows = DepotIds.Count == 0 ? new() : await TransactionQueries.GetDepotFlowsAsync(OwnerUserId, DepotIds);
+        var cash = DepotIds.Count == 0 ? (new(), 0m) : await TransactionQueries.GetAccountBalanceHistoryAsync(OwnerUserId, CashAccountIds);
+        foreach (var (id, points) in cash.History) history[id] = points;
+        currentCash = cash.Current;
+        flows = DepotIds.Count == 0 ? new() : await TransactionQueries.GetPortfolioFlowsAsync(OwnerUserId, DepotIds, CashAccountIds);
         Rebuild();
     }
 
@@ -82,9 +92,10 @@
     {
         var today = DateTime.Today;
         // Without any value ever (all stored history and the current total zero) there is nothing to chart.
-        var anyValue = CurrentTotal != 0m || history.Values.Any(h => h.Any(p => p.Value != 0m));
+        var total = CurrentTotal + currentCash;
+        var anyValue = total != 0m || history.Values.Any(h => h.Any(p => p.Value != 0m));
         series = !anyValue ? null
-            : PortfolioValueHistory.Build(history, CurrentTotal, today,
+            : PortfolioValueHistory.Build(history, total, today,
                 PortfolioValueHistory.PeriodStart(period, today, PortfolioValueHistory.LastStoredDayBefore(history, today)), flows);
         renderPending = true;
     }

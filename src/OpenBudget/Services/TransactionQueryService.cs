@@ -509,37 +509,110 @@ public class TransactionQueryService
         return result;
     }
     /// <summary>
-    /// Net money moved into the given depots per day (UTC day), positive for money in: the buys, sells, deliveries in
-    /// and deliveries out (<see cref="PortfolioValuation.TradeLabels"/>) on the PortfolioPerformance ledger accounts of
-    /// those depots, with the opposite sign of their cash effect. Their itemised fees and taxes stay out, as they never reach
-    /// the depot. Depots without a ledger account contribute no flows.
+    /// Net money moved into a portfolio per day (UTC day), positive for money in. The portfolio is the given depots plus
+    /// their settlement accounts (<paramref name="cashAccountIds"/>); money counts when it crosses that boundary:
+    /// <list type="bullet">
+    /// <item>the buys, sells, deliveries in and deliveries out (<see cref="PortfolioValuation.TradeLabels"/>) on the
+    /// PortfolioPerformance ledger accounts of the depots, with the opposite sign of their cash effect (the ledger is
+    /// outside the portfolio: it logs the depot's trades, not a cash balance). Their itemised fees and taxes stay out,
+    /// as they never reach the depot;</item>
+    /// <item>bookings on a settlement account paired as a transfer (<see cref="Transaction.TransferPeerId"/>) with a
+    /// booking on an account outside the portfolio. Everything else there (buys and sells against the depot,
+    /// dividends, fees, taxes, transfers between the portfolio's own accounts) stays inside it.</item>
+    /// </list>
     /// </summary>
-    public async Task<Dictionary<DateTime, decimal>> GetDepotFlowsAsync(
+    public async Task<Dictionary<DateTime, decimal>> GetPortfolioFlowsAsync(
         string ownerId,
         IReadOnlyCollection<long> depotIds,
+        IReadOnlyCollection<long>? cashAccountIds = null,
         CancellationToken ct = default)
     {
         var result = new Dictionary<DateTime, decimal>();
         if (depotIds.Count == 0) return result;
         var depots = depotIds.ToList();
+        var cash = (cashAccountIds ?? []).Except(depots).ToList();
+        var boundary = depots.Concat(cash).ToHashSet();
+        void Add(long timestamp, decimal amount)
+        {
+            var day = DateTimeOffset.FromUnixTimeSeconds(timestamp).UtcDateTime.Date;
+            result[day] = result.GetValueOrDefault(day) + amount;
+        }
+
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var ledgers = await db.PpPortfolioSettings
             .Where(s => s.OwnerUserId == ownerId && s.DepotAccountId != null && depots.Contains(s.DepotAccountId.Value) && s.LedgerAccountId != null)
             .Select(s => s.LedgerAccountId!.Value)
             .ToListAsync(ct);
-        if (ledgers.Count == 0) return result;
-        var labels = PortfolioValuation.TradeLabels.ToList();
-        var rows = await db.Transactions
-            .Where(t => t.OwnerUserId == ownerId && t.AccountId != null && ledgers.Contains(t.AccountId.Value)
-                && t.ExternalId != null && t.ExternalId.StartsWith(PortfolioAccountSync.ExternalIdPrefix)
-                && t.BookingText != null && labels.Contains(t.BookingText))
-            .Select(t => new { t.Timestamp, t.Amount })
-            .ToListAsync(ct);
-        foreach (var r in rows)
+        ledgers = ledgers.Where(l => !boundary.Contains(l)).ToList();
+        if (ledgers.Count > 0)
         {
-            var day = DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime.Date;
-            result[day] = result.GetValueOrDefault(day) - r.Amount / 100m;
+            var labels = PortfolioValuation.TradeLabels.ToList();
+            var trades = await db.Transactions
+                .Where(t => t.OwnerUserId == ownerId && t.AccountId != null && ledgers.Contains(t.AccountId.Value)
+                    && t.ExternalId != null && t.ExternalId.StartsWith(PortfolioAccountSync.ExternalIdPrefix)
+                    && t.BookingText != null && labels.Contains(t.BookingText))
+                .Select(t => new { t.Timestamp, t.Amount })
+                .ToListAsync(ct);
+            foreach (var r in trades) Add(r.Timestamp, -r.Amount / 100m);
+        }
+
+        if (cash.Count > 0)
+        {
+            var transfers = await db.Transactions
+                .Where(t => t.OwnerUserId == ownerId && t.AccountId != null && cash.Contains(t.AccountId.Value)
+                    && t.Booked && t.Splitted != SplitState.Parent && t.TransferPeerId != null)
+                .Join(db.Transactions, t => t.TransferPeerId, p => (long?)p.Id, (t, p) => new { t.Timestamp, t.Amount, PeerAccountId = p.AccountId })
+                .ToListAsync(ct);
+            foreach (var r in transfers.Where(r => r.PeerAccountId is not { } peer || !boundary.Contains(peer)))
+                Add(r.Timestamp, r.Amount / 100m);
         }
         return result;
+    }
+
+    /// <summary>
+    /// End-of-day balances (UTC day) of the given accounts, per account as ascending (day, balance) points, and the sum
+    /// of their current balances. An account's points are its booking days, plus the day before the first one when it
+    /// started from a non-zero balance; each is the current balance less what was booked on later days (bookings in
+    /// another currency than the account's do not move it). The current balance is the one the bank reports, else the
+    /// initial balance plus every booking.
+    /// </summary>
+    public async Task<(Dictionary<long, List<(DateTime Day, decimal Value)>> History, decimal Current)> GetAccountBalanceHistoryAsync(
+        string ownerId,
+        IReadOnlyCollection<long> accountIds,
+        CancellationToken ct = default)
+    {
+        var history = new Dictionary<long, List<(DateTime Day, decimal Value)>>();
+        if (accountIds.Count == 0) return (history, 0m);
+        var ids = accountIds.ToList();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var accounts = await db.Accounts
+            .Where(a => a.OwnerUserId == ownerId && ids.Contains(a.Id))
+            .Select(a => new { a.Id, a.Balances, a.InitialBalance, a.Currency })
+            .ToListAsync(ct);
+        var bookings = await db.Transactions
+            .Where(t => t.OwnerUserId == ownerId && t.AccountId != null && ids.Contains(t.AccountId.Value) && t.Booked && t.Splitted != SplitState.Parent)
+            .Select(t => new { AccountId = t.AccountId!.Value, t.Timestamp, t.Amount, t.Currency })
+            .ToListAsync(ct);
+        var byAccount = bookings.ToLookup(b => b.AccountId);
+        decimal total = 0m;
+        foreach (var a in accounts)
+        {
+            var currency = CurrencySums.Normalize(a.Currency);
+            var flows = byAccount[a.Id]
+                .Where(b => CurrencySums.Normalize(b.Currency) == currency)
+                .Select(b => (Date: DateTimeOffset.FromUnixTimeSeconds(b.Timestamp).UtcDateTime, Amount: b.Amount / 100m))
+                .ToList();
+            var current = new Account { Balances = a.Balances }.CurrentBalance ?? (a.InitialBalance / 100m + flows.Sum(f => f.Amount));
+            total += current;
+            if (flows.Count == 0) continue;
+            var running = new RunningBalance(current, flows, d => DateOnly.FromDateTime(d));
+            var days = flows.Select(f => f.Date.Date).Distinct().Order().ToList();
+            var points = new List<(DateTime Day, decimal Value)>();
+            var opening = running.AtEndOf(DateOnly.FromDateTime(days[0].AddDays(-1)));
+            if (opening != 0m) points.Add((days[0].AddDays(-1), opening));
+            points.AddRange(days.Select(d => (d, running.AtEndOf(DateOnly.FromDateTime(d)))));
+            history[a.Id] = points;
+        }
+        return (history, total);
     }
 }

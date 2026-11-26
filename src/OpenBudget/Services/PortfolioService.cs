@@ -96,6 +96,40 @@ public class PortfolioService
     }
 
     /// <summary>
+    /// The settlement accounts of a project's depots, which belong to the portfolio together with the depots: the accounts
+    /// with the role <see cref="AccountRole.BrokerCash"/> that are assigned to the project or come from the same bank
+    /// login as one of <paramref name="depotIds"/>. Depots themselves are never among them.
+    /// </summary>
+    public async Task<List<long>> GetProjectSettlementAccountIdsAsync(int projectId, IReadOnlyCollection<long> depotIds, CancellationToken ct = default)
+    {
+        if (depotIds.Count == 0) return [];
+        var project = await _projects.GetProjectAsync(projectId);
+        if (project == null) return [];
+        var owner = project.OwnerUserId ?? string.Empty;
+        var depots = depotIds.ToList();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var assigned = await db.ProjectAccountAssignments
+            .Where(a => a.ProjectId == projectId)
+            .Select(a => a.AccountId)
+            .ToListAsync(ct);
+        var logins = await db.BankLoginAccounts.IgnoreQueryFilters()
+            .Where(a => a.BankLogin.OwnerUserId == owner && a.LinkedAccountId != null && depots.Contains(a.LinkedAccountId.Value))
+            .Select(a => a.BankLoginId)
+            .Distinct()
+            .ToListAsync(ct);
+        var sameLogin = await db.BankLoginAccounts.IgnoreQueryFilters()
+            .Where(a => logins.Contains(a.BankLoginId) && a.LinkedAccountId != null)
+            .Select(a => a.LinkedAccountId!.Value)
+            .ToListAsync(ct);
+        var candidates = assigned.Concat(sameLogin).Distinct().ToList();
+        return await db.Accounts
+            .Where(a => a.OwnerUserId == owner && a.Role == AccountRole.BrokerCash && candidates.Contains(a.Id))
+            .WhereNotDepot()
+            .Select(a => a.Id)
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
     /// Per-security top-level classification weights for one taxonomy, keyed by taxonomy key
     /// (<see cref="HoldingRow.TaxonomyKey"/>: "isin:…" or "uuid:…"). Each inner
     /// dictionary maps a top-level class (e.g. a region) to the security's fraction in it; the
