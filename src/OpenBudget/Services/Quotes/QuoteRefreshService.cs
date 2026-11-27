@@ -11,6 +11,8 @@ public sealed record QuoteRefreshResult(int Symbols, int Updated, IReadOnlyList<
 /// Keeps the prices of a user's PortfolioPerformance securities current between saves of the file: for every security
 /// still held whose history comes from Yahoo (<see cref="QuoteSymbols"/>), it fetches the closes after the file's newest
 /// price, stores them (<see cref="MarketQuote"/>) and recomputes the user's portfolio accounts, which merge them in.
+/// Securities of the file that are held only in a bank depot (matched by ISIN) are fetched too; the holdings view applies
+/// their closes (<see cref="BankHoldingQuotes"/>).
 /// A close that moves more than <see cref="MaxDailyMove"/> against the day before is dropped as a feed glitch.
 /// </summary>
 public sealed class QuoteRefreshService : IDisposable
@@ -82,6 +84,14 @@ public sealed class QuoteRefreshService : IDisposable
             .SelectMany(p => p.Positions).Where(p => Math.Abs(p.Shares) > 1e-9)
             .Select(p => p.Security.Uuid).ToHashSet(StringComparer.Ordinal);
 
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var bankIsins = (await db.Holdings.AsNoTracking()
+                .Where(h => h.OwnerUserId == ownerId && (h.PpSecurityUuid == null || h.PpSecurityUuid == "") && h.Isin != null && h.Isin != "" && (h.Quantity > 1e-9 || h.Quantity < -1e-9))
+                .Select(h => h.Isin!).ToListAsync(ct))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in client.Securities)
+            if (!string.IsNullOrEmpty(s.Isin) && bankIsins.Contains(s.Isin)) held.Add(s.Uuid);
+
         // One fetch per symbol, from the oldest "newest price" among the securities quoting it.
         var wanted = new Dictionary<string, (string Currency, long NewestDay, double? NewestClose)>(StringComparer.Ordinal);
         foreach (var s in client.Securities)
@@ -92,7 +102,6 @@ public sealed class QuoteRefreshService : IDisposable
         }
         if (wanted.Count == 0) return new QuoteRefreshResult(0, 0, []);
 
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var symbols = wanted.Keys.ToList();
         var stored = await db.MarketQuotes.Where(q => symbols.Contains(q.Symbol)).ToListAsync(ct);
         var now = _clock.GetUtcNow().ToUnixTimeSeconds();

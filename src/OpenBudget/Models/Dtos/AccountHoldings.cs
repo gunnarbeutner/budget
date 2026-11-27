@@ -19,10 +19,13 @@ public class AccountHoldings
     /// </summary>
     public List<TaxonomyLookThrough> Taxonomies { get; init; } = new();
 
-    /// <summary>The oldest price day among the holdings quoted from a market feed; null when none is.</summary>
+    /// <summary>
+    /// The oldest price day among the holdings that have one: a market close, or for a bank depot its last refresh
+    /// (<see cref="Services.Quotes.BankHoldingQuotes"/>); null when none has.
+    /// </summary>
     public DateOnly? PricesAsOf { get; init; }
 
-    /// <summary>The owner whose quotes can be refreshed (<see cref="Services.Quotes.QuoteRefreshService"/>); null when no holding is quoted.</summary>
+    /// <summary>The owner whose quotes can be refreshed (<see cref="Services.Quotes.QuoteRefreshService"/>); null when no holding is quoted from a market feed.</summary>
     public string? QuoteOwnerId { get; init; }
 }
 

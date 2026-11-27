@@ -137,4 +137,27 @@ public sealed class QuoteRefreshTests : IAsyncDisposable
         Assert.Equal(["GOLD.EX"], (await _refresh.RefreshAsync(Owner)).Failed);
         Assert.Equal(62, await GoldPriceAsync());
     }
+
+    [Fact]
+    public async Task A_refresh_also_fetches_securities_held_only_in_a_bank_depot()
+    {
+        var client = QuotedClient();
+        client.Securities.Add(new PSecurity { Uuid = "sec-bank", Name = "Bank ETF", CurrencyCode = "EUR", Isin = "IE00BANK0001", TickerSymbol = "BANK.DE", Feed = "YAHOO" });
+        client.Securities.Add(new PSecurity { Uuid = "sec-other", Name = "Other", CurrencyCode = "EUR", Isin = "IE00OTHER001", TickerSymbol = "OTHER.DE", Feed = "YAHOO" });
+        await using (var db = await _t.System.CreateDbContextAsync())
+        {
+            db.Accounts.Add(new OpenBudget.Models.Account { Id = 900, OwnerUserId = Owner, Name = "Broker", Type = 7 });
+            db.Holdings.Add(new OpenBudget.Models.Holding { Id = 9001, OwnerUserId = Owner, AccountId = 900, Isin = "IE00BANK0001", Quantity = 2, Price = 100, PriceCurrency = "EUR", Amount = 200, AmountCurrency = "EUR" });
+            await db.SaveChangesAsync();
+        }
+        await StoreFileAsync(client);
+        _feed.Series["BANK.DE"] = new QuoteSeries("BANK.DE", "EUR", [new MarketClose(Day(1, 10), 105)]);
+
+        await _refresh.RefreshAsync(Owner);
+
+        Assert.Contains(_feed.Requests, r => r.Symbol == "BANK.DE");
+        Assert.DoesNotContain(_feed.Requests, r => r.Symbol == "OTHER.DE");   // in the file, but held nowhere
+        await using var check = await _t.System.CreateDbContextAsync();
+        Assert.Equal(105, (await check.MarketQuotes.SingleAsync(q => q.Symbol == "BANK.DE")).Close);
+    }
 }

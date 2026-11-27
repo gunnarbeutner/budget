@@ -334,6 +334,9 @@ public class PortfolioService
     private static async Task<AccountHoldings> BuildAsync(
         BudgetDbContext db, string ownerId, List<Holding> holdings, long accountId, bool merge, CancellationToken ct)
     {
+        // Bank-depot holdings get their depot's refresh day as price day and newer stored closes where one resolves.
+        var quotable = await Quotes.BankHoldingQuotes.ApplyAsync(db, ownerId, holdings, ct);
+
         // Total drives both the per-row share and the allocation fractions. A depot can briefly
         // total zero (all dust / a fresh empty position), so guard the divisions.
         decimal total = holdings.Sum(h => (decimal)(h.Amount ?? 0));
@@ -369,7 +372,7 @@ public class PortfolioService
             Allocation = allocation,
             Taxonomies = taxonomies,
             PricesAsOf = holdings.Where(h => h.PriceTime != null).Select(h => (DateOnly?)DateOnly.FromDateTime(DateTime.UnixEpoch.AddSeconds(h.PriceTime!.Value))).Min(),
-            QuoteOwnerId = holdings.Any(h => h.PriceTime != null) ? ownerId : null,
+            QuoteOwnerId = holdings.Any(h => quotable.Contains(h) || (!Quotes.BankHoldingQuotes.IsBankHolding(h) && h.PriceTime != null)) ? ownerId : null,
         };
     }
 
