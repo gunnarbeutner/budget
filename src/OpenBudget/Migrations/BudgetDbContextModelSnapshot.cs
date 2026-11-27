@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261124055430_AccountDefaultsByUser";
+    public override string LastMigrationId => "20261127072450_ApiTokens";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -277,6 +277,54 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.HasIndex("ParentGroupId");
 
                 b.ToTable("account_groups");
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.ApiToken", b =>
+            {
+                b.Property<int>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER");
+
+                b.Property<DateTime>("CreatedAt")
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime?>("ExpiresAt")
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime?>("LastUsedAt")
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Name")
+                    .IsRequired()
+                    .HasMaxLength(100)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("OwnerUserId")
+                    .IsRequired()
+                    .HasMaxLength(450)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Prefix")
+                    .IsRequired()
+                    .HasMaxLength(16)
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime?>("RevokedAt")
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("TokenHash")
+                    .IsRequired()
+                    .HasMaxLength(64)
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Id");
+
+                b.HasIndex("OwnerUserId");
+
+                b.HasIndex("TokenHash")
+                    .IsUnique();
+
+                b.ToTable("api_tokens");
             });
 
         modelBuilder.Entity("OpenBudget.Models.AppUser", b =>
@@ -2514,6 +2562,15 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .OnDelete(DeleteBehavior.Restrict);
 
                 b.Navigation("ParentGroup");
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.ApiToken", b =>
+            {
+                b.HasOne("OpenBudget.Models.AppUser", null)
+                    .WithMany()
+                    .HasForeignKey("OwnerUserId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
             });
 
         modelBuilder.Entity("OpenBudget.Models.BackgroundSyncRun", b =>

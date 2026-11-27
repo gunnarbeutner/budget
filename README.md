@@ -64,6 +64,12 @@ dotnet run --project src/OpenBudget
 | `OPENBUDGET_OPENAI_CATEGORY_ROUTE` | `responses` (default) or `decisions`: choose booking categories with the Decisions API (faster, cheaper, probabilities instead of a rationale, no AI rule proposals). |
 | `OPENBUDGET_OPENAI_DECISIONS_MODEL` | Model for the Decisions route (default `gpt-6-luna`). |
 
+### MCP API
+
+`McpApi__Enabled=true` turns on a read-only JSON API under `/api/mcp/v1/` (accounts, balances, transactions, spending,
+budgets) for the MCP gateway that connects OpenBudget to Claude. Each user creates their own token under
+Settings → API tokens. See [docs/mcp-api.md](docs/mcp-api.md).
+
 ### User commands
 
 ```bash

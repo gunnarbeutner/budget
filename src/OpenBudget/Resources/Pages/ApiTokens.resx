@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>API tokens</value>
+  </data>
+  <data name="Heading" xml:space="preserve">
+    <value>API tokens</value>
+  </data>
+  <data name="Disabled" xml:space="preserve">
+    <value>The API is not enabled on this server.</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>Personal tokens let another service, such as the MCP gateway that connects OpenBudget to Claude, read your accounts, balances, transactions, spending and budgets: exactly what you see here, nothing else. A token cannot change anything. Revoke a token to stop its access at once.</value>
+  </data>
+  <data name="Created_Heading" xml:space="preserve">
+    <value>Token “{0}” created.</value>
+  </data>
+  <data name="Created_Once" xml:space="preserve">
+    <value>Copy it now: it is shown only this once and cannot be recovered.</value>
+  </data>
+  <data name="Created_Done" xml:space="preserve">
+    <value>Done, I copied it</value>
+  </data>
+  <data name="New_Heading" xml:space="preserve">
+    <value>New token</value>
+  </data>
+  <data name="New_Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="New_NamePlaceholder" xml:space="preserve">
+    <value>e.g. Claude connector</value>
+  </data>
+  <data name="New_Expiry" xml:space="preserve">
+    <value>Expires</value>
+  </data>
+  <data name="Expiry_Never" xml:space="preserve">
+    <value>Never</value>
+  </data>
+  <data name="Expiry_Days" xml:space="preserve">
+    <value>In {0} days</value>
+  </data>
+  <data name="Expiry_Year" xml:space="preserve">
+    <value>In one year</value>
+  </data>
+  <data name="New_Create" xml:space="preserve">
+    <value>Create token</value>
+  </data>
+  <data name="List_Heading" xml:space="preserve">
+    <value>Your tokens</value>
+  </data>
+  <data name="List_None" xml:space="preserve">
+    <value>No tokens yet.</value>
+  </data>
+  <data name="List_Created" xml:space="preserve">
+    <value>Created {0}</value>
+  </data>
+  <data name="List_LastUsed" xml:space="preserve">
+    <value>last used {0}</value>
+  </data>
+  <data name="List_NeverUsed" xml:space="preserve">
+    <value>never used</value>
+  </data>
+  <data name="List_Revoked" xml:space="preserve">
+    <value>revoked {0}</value>
+  </data>
+  <data name="List_Expires" xml:space="preserve">
+    <value>expires {0}</value>
+  </data>
+  <data name="List_Expired" xml:space="preserve">
+    <value>expired {0}</value>
+  </data>
+  <data name="List_Revoke" xml:space="preserve">
+    <value>Revoke</value>
+  </data>
+  <data name="Revoke_Failed" xml:space="preserve">
+    <value>The token could not be revoked.</value>
+  </data>
+</root>

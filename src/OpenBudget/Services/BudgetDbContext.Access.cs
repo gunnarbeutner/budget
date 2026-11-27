@@ -86,6 +86,11 @@ public partial class BudgetDbContext
         modelBuilder.Entity<UserProjectOrder>().HasQueryFilter(o => ScopeUnrestricted || o.UserId == ScopeUserId);
         modelBuilder.Entity<StatementRead>().HasQueryFilter(r => ScopeUnrestricted || r.UserId == ScopeUserId);
         modelBuilder.Entity<RecurringDismissal>().HasQueryFilter(d => ScopeUnrestricted || d.OwnerUserId == ScopeUserId);
+        // API tokens are personal: a user lists and revokes only their own (writes: the OwnerUserId default rule).
+        modelBuilder.Entity<ApiToken>().HasQueryFilter(t => ScopeUnrestricted || t.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<ApiToken>().HasIndex(t => t.TokenHash).IsUnique();
+        modelBuilder.Entity<ApiToken>().HasIndex(t => t.OwnerUserId);
+        modelBuilder.Entity<ApiToken>().HasOne<AppUser>().WithMany().HasForeignKey(t => t.OwnerUserId).OnDelete(DeleteBehavior.Cascade);
 
         // PortfolioPerformance data feeds the project-scoped rebalance view, so it follows the
         // visibility of its owner's data; the owner-only mapping/tax pages are guarded separately.

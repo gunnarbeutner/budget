@@ -106,6 +106,9 @@ public static class AuthRegistration
                 o.Events.OnRedirectToLogin = ctx => RedirectOrChallenge(ctx);
                 o.Events.OnRedirectToAccessDenied = ctx => RedirectOrChallenge(ctx);
             }));
+        // The MCP API's bearer tokens: only the /api/mcp/v1 endpoints name this scheme (see McpApiEndpoints).
+        services.AddAuthentication()
+            .AddScheme<AuthenticationSchemeOptions, ApiTokenAuthenticationHandler>(ApiTokenAuthenticationHandler.SchemeName, null);
         // Re-check the security stamp (password change / user removal) every minute rather than every 30.
         services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInterval = TimeSpan.FromMinutes(1));
 

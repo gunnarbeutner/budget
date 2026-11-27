@@ -5,6 +5,7 @@
 @inject ProjectService Projects
 @inject IHttpContextAccessor HttpContextAccessor
 @inject IStringLocalizer<SettingsNav> L
+@inject IConfiguration Configuration
 
 @* The left list of the app-level settings pages (account, connections, Portfolio Performance, documents, Assist,
    about), headed by the way
@@ -27,11 +28,15 @@
     {
         @Item("assist", "/assist", "bi-stars", L["Item_Assist"])
     }
+    @if (OpenBudget.Api.McpApiEndpoints.IsEnabled(Configuration))
+    {
+        @Item("api-tokens", "/api-tokens", "bi-key", L["Item_ApiTokens"])
+    }
     @Item("about", "/about", "bi-info-circle", L["Item_About"])
 </nav>
 
 @code {
-    /// <summary>The highlighted section: "account", "connections", "portfolio-performance", "documents", "receipts", "assist" or "about".</summary>
+    /// <summary>The highlighted section: "account", "connections", "portfolio-performance", "documents", "receipts", "assist", "api-tokens" or "about".</summary>
     [Parameter] public string? Active { get; set; }
 
     private bool needsYou;

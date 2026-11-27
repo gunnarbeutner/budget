@@ -1,0 +1,148 @@
+@page "/api-tokens"
+@using OpenBudget.Api
+@inject ApiTokenService Tokens
+@inject IConfiguration Configuration
+@inject TimeProvider Time
+@inject IStringLocalizer<ApiTokens> L
+
+@* The signed-in user's personal read-only API tokens for the MCP API (docs/mcp-api.md): create (the token is shown
+   once, only its hash is stored), list and revoke. Only reachable from the settings list while McpApi:Enabled is on. *@
+
+<PageTitle>@L["PageTitle"]</PageTitle>
+
+<SettingsShell Active="api-tokens">
+<PageHeader Title="@L["Heading"]" />
+
+@if (!enabled)
+{
+    <p class="text-body-secondary" data-testid="api-tokens-disabled">@L["Disabled"]</p>
+}
+else
+{
+    <p class="text-body-secondary">@L["Intro"]</p>
+
+    @if (created != null)
+    {
+        <div class="alert alert-success" role="status" data-testid="api-token-created">
+            <p class="mb-2"><strong>@L["Created_Heading", created.Info.Name]</strong> @L["Created_Once"]</p>
+            <input type="text" class="form-control font-monospace" readonly value="@created.Token" aria-label="@L["Created_Heading", created.Info.Name]"
+                   data-testid="api-token-value" onfocus="this.select()" />
+            <button type="button" class="btn btn-sm btn-outline-secondary mt-2" @onclick="DismissCreated" data-testid="api-token-dismiss">@L["Created_Done"]</button>
+        </div>
+    }
+    @if (error != null)
+    {
+        <div class="alert alert-danger" role="alert">@error</div>
+    }
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h2 class="h6">@L["New_Heading"]</h2>
+            <form @onsubmit="CreateAsync" data-testid="api-token-form">
+                <div class="row g-2 align-items-end">
+                    <div class="col-sm-6">
+                        <label for="api-token-name" class="form-label small">@L["New_Name"]</label>
+                        <input id="api-token-name" type="text" class="form-control" maxlength="@OpenBudget.Models.ApiToken.NameMaxLength"
+                               placeholder="@L["New_NamePlaceholder"]" @bind="name" data-testid="api-token-name" />
+                    </div>
+                    <div class="col-sm-3">
+                        <label for="api-token-expiry" class="form-label small">@L["New_Expiry"]</label>
+                        <select id="api-token-expiry" class="form-select" @bind="expiryDays" data-testid="api-token-expiry">
+                            <option value="0">@L["Expiry_Never"]</option>
+                            <option value="30">@L["Expiry_Days", 30]</option>
+                            <option value="90">@L["Expiry_Days", 90]</option>
+                            <option value="365">@L["Expiry_Year"]</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-3">
+                        <button type="submit" class="btn btn-primary w-100" disabled="@string.IsNullOrWhiteSpace(name)" data-testid="api-token-create">@L["New_Create"]</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h2 class="h6">@L["List_Heading"]</h2>
+            @if (tokens.Count == 0)
+            {
+                <p class="text-body-secondary mb-0" data-testid="api-tokens-none">@L["List_None"]</p>
+            }
+            else
+            {
+                <ul class="list-group" data-testid="api-tokens-list">
+                    @foreach (var t in tokens)
+                    {
+                        var active = t.IsActive(now);
+                        <li class="list-group-item d-flex justify-content-between align-items-center gap-2" data-testid="api-token-row">
+                            <span class="@(active ? "" : "text-body-secondary")">
+                                <i class="bi bi-key" aria-hidden="true"></i> @t.Name
+                                <code class="ms-1">@(t.Prefix)…</code>
+                                <span class="small text-body-secondary d-block">
+                                    @L["List_Created", t.CreatedAt.ToAppDate()]
+                                    · @(t.LastUsedAt is { } used ? L["List_LastUsed", used.ToAppDate()] : L["List_NeverUsed"])
+                                    @if (t.RevokedAt is { } revoked)
+                                    {
+                                        <text> · @L["List_Revoked", revoked.ToAppDate()]</text>
+                                    }
+                                    else if (t.ExpiresAt is { } expires)
+                                    {
+                                        <text> · @(expires > now ? L["List_Expires", expires.ToAppDate()] : L["List_Expired", expires.ToAppDate()])</text>
+                                    }
+                                </span>
+                            </span>
+                            @if (t.RevokedAt == null)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RevokeAsync(t.Id)" data-testid="api-token-revoke">@L["List_Revoke"]</button>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+}
+</SettingsShell>
+
+@code {
+    private bool enabled;
+    private List<ApiTokenInfo> tokens = [];
+    private CreatedApiToken? created;
+    private string? name;
+    private int expiryDays;
+    private string? error;
+    private DateTime now;
+
+    protected override async Task OnInitializedAsync()
+    {
+        enabled = McpApiEndpoints.IsEnabled(Configuration);
+        if (enabled) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        now = Time.GetUtcNow().UtcDateTime;
+        tokens = await Tokens.ListAsync();
+    }
+
+    private async Task CreateAsync()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var expires = expiryDays > 0 ? Time.GetUtcNow().UtcDateTime.AddDays(expiryDays) : (DateTime?)null;
+        created = await Tokens.CreateAsync(name, expires);
+        name = null;
+        expiryDays = 0;
+        await LoadAsync();
+    }
+
+    private void DismissCreated() => created = null;
+
+    private async Task RevokeAsync(int id)
+    {
+        error = null;
+        if (!await Tokens.RevokeAsync(id)) error = L["Revoke_Failed"];
+        await LoadAsync();
+    }
+}

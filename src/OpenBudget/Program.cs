@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using OpenBudget.Api;
 using OpenBudget.Assist;
 using OpenBudget.Auth;
 using OpenBudget.Browser;
@@ -69,6 +70,8 @@ builder.Services.AddScoped<CancelledReservationService>();
 builder.Services.AddScoped<OrderEnrichmentService>();
 builder.Services.AddScoped<CategoryRuleService>();
 builder.Services.AddScoped<CategorizationService>();
+builder.Services.AddScoped<ApiTokenService>();
+builder.Services.AddMcpApi();
 builder.Services.AddAssist(builder.Configuration);
 // Per-circuit holder for the browser's timezone (seeded from the tz cookie by App.razor) so all
 // pages render dates/times and "current period" decisions in the user's zone, not the server's.
@@ -204,6 +207,9 @@ app.UseRequestLocalization();
 // Until the first user exists every page answers with only the setup instruction.
 app.UseMiddleware<NoUsersMiddleware>();
 
+// The MCP API answers 404 while McpApi:Enabled is off (see docs/mcp-api.md).
+app.UseMcpApiGate();
+
 app.UseRouting();
 
 app.UseAuthentication();
@@ -229,6 +235,9 @@ app.MapGet("/healthz", () => Results.Ok("healthy")).AllowAnonymous();
 
 // The browser's chunked MoneyMoney upload lives in the Importers module.
 app.MapImporterEndpoints();
+
+// The read-only MCP API (/api/mcp/v1, personal API tokens only).
+app.MapMcpApi();
 
 // GET /statements/{id} — a downloaded bank statement (PDF). Authorization is the account's visibility:
 // the lookup runs through a context scoped to the signed-in user, so documents of accounts they cannot

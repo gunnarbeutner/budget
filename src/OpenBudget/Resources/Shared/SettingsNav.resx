@@ -88,6 +88,9 @@
   <data name="Item_Assist" xml:space="preserve">
     <value>AI suggestions</value>
   </data>
+  <data name="Item_ApiTokens" xml:space="preserve">
+    <value>API tokens</value>
+  </data>
   <data name="Item_About" xml:space="preserve">
     <value>About</value>
   </data>

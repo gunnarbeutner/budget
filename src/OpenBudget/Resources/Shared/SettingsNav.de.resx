@@ -88,6 +88,9 @@
   <data name="Item_Assist" xml:space="preserve">
     <value>KI-Vorschläge</value>
   </data>
+  <data name="Item_ApiTokens" xml:space="preserve">
+    <value>API-Tokens</value>
+  </data>
   <data name="Item_About" xml:space="preserve">
     <value>Über OpenBudget</value>
   </data>
