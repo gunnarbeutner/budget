@@ -126,7 +126,7 @@
                             <td>
                                 <div class="fw-semibold">@row.Name</div>
                                 <div class="text-body-secondary small">
-                                    <span class="badge text-bg-light border me-1">@row.AssetClassLabel</span>
+                                    <span class="badge text-bg-light border me-1">@RowLabel(row, h)</span>
                                     @if (!string.IsNullOrEmpty(row.Isin)) { <span>@row.Isin</span> }
                                 </div>
                             </td>
@@ -173,6 +173,16 @@
 
 @code {
     [Parameter, EditorRequired] public AccountHoldings Holdings { get; set; } = default!;
+
+    // The row's classification in the look-through taxonomy shown, so it agrees with the bar; positions that taxonomy
+    // doesn't place fall back like the bar does (the bank's asset type for asset classes, else "Unclassified").
+    private string RowLabel(HoldingRow row, AccountHoldings h)
+    {
+        if (h.Taxonomies.Count == 0) return row.AssetClassLabel;
+        var tax = h.Taxonomies.FirstOrDefault(t => t.TaxonomyName == holdingsTaxonomy) ?? h.Taxonomies[0];
+        if (row.TaxonomyKey is { } k && tax.LabelByKey.TryGetValue(k, out var label)) return label;
+        return PortfolioService.IsAssetClassTaxonomy(tax.TaxonomyName) ? row.AssetClassLabel : PortfolioService.UnclassifiedLabel;
+    }
 
     /// <summary>Prices older than this (in days) are flagged; a weekend plus a holiday stays below it.</summary>
     private const int StaleDays = 4;

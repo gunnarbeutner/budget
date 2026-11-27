@@ -35,6 +35,8 @@ public class TaxonomyLookThrough
 {
     public string TaxonomyName { get; init; } = "";
     public List<AssetClassSlice> Slices { get; init; } = new();
+    /// <summary>Each classified security's top-level classification (its largest weight), by taxonomy key.</summary>
+    public Dictionary<string, string> LabelByKey { get; init; } = new(StringComparer.Ordinal);
 }
 
 public class HoldingRow

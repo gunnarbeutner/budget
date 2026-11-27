@@ -192,6 +192,10 @@ public class CombinedHoldingsTests
         Assert.Equal("uuid:pp-house", view.Rows.Single(r => r.Name == "Sample House").TaxonomyKey);
         Assert.Equal("isin:IE000EQ0", view.Rows.Single(r => r.Isin == "IE000EQ0").TaxonomyKey);
         Assert.Null(view.Rows.Single(r => r.Symbol == "ZZX").TaxonomyKey);
+        Assert.Equal("Alternatives", assets.LabelByKey["uuid:pp-token"]);
+        Assert.Equal("Real Estate", assets.LabelByKey["uuid:pp-house"]);
+        Assert.Equal("Equity", assets.LabelByKey["isin:IE000EQ0"]);
+        Assert.DoesNotContain("uuid:pp-unrelated", assets.LabelByKey.Keys);
 
         var weights = await t.Portfolio.GetSecurityTaxonomyWeightsAsync(1, "Asset Classes",
             new[] { "isin:IE000EQ0", "uuid:pp-token", "uuid:pp-house" });

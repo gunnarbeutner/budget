@@ -558,7 +558,15 @@ public class PortfolioService
                 .ThenByDescending(s => s.Value)
                 .ToList();
 
-            result.Add(new TaxonomyLookThrough { TaxonomyName = taxGroup.Key, Slices = slices });
+            var labelByKey = taxGroup
+                .Where(r => valueByKey.ContainsKey(TaxonomyKeyOf(r)))
+                .GroupBy(TaxonomyKeyOf, StringComparer.Ordinal)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.GroupBy(TopLevel, StringComparer.OrdinalIgnoreCase)
+                        .OrderByDescending(l => l.Sum(r => r.WeightBp)).First().Key,
+                    StringComparer.Ordinal);
+            result.Add(new TaxonomyLookThrough { TaxonomyName = taxGroup.Key, Slices = slices, LabelByKey = labelByKey });
         }
 
         return result.OrderBy(t => t.TaxonomyName, StringComparer.Ordinal).ToList();
