@@ -171,12 +171,16 @@ builder.Services.AddSingleton(sp => new OpenBudget.Services.Quotes.QuoteRefreshO
 builder.Services.AddHostedService<OpenBudget.Services.Quotes.QuoteRefreshScheduler>();
 
 var app = builder.Build();
+// Microsoft sign-in / MCP Entra tokens: refuse to start when turned on without their settings.
+MicrosoftSignIn.ValidateConfiguration(app.Configuration);
 
 // Initialize budget database (apply migrations on startup so Docker volumes stay in sync).
 await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
 {
     await budgetDb.Database.MigrateAsync();
     // One-off repairs of existing data, each once per database (see DataFixList).
+    // Operator-configured Microsoft account links (Auth:Microsoft:Links), applied idempotently.
+    await MicrosoftSignIn.SeedLinksAsync(app.Services);
     await app.Services.GetRequiredService<OpenBudget.Services.DataFixes.DataFixRunner>().RunAsync(OpenBudget.Services.DataFixes.DataFixList.All);
     var ruleLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OpenBudget.Rules");
     OpenBudget.Services.RuleExpression.UnknownFieldLog = field => ruleLog.LogWarning("Rule expression uses unknown field '{Field}'; such terms never match", field);
@@ -227,6 +231,7 @@ app.MapFallbackToPage("/_Host");
 // database — it answers "is the process up and serving HTTP", which is what a restart fixes.
 app.MapWebLoginEndpoints();
 app.MapOneDriveEndpoints();
+app.MapMicrosoftSignInEndpoints();
 
 // The connections page's former address keeps working.
 app.MapGet("/banklogins", (HttpContext ctx) => Results.Redirect("/connections" + ctx.Request.QueryString.Value, permanent: true)).AllowAnonymous();

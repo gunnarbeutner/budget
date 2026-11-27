@@ -64,6 +64,12 @@ dotnet run --project src/OpenBudget
 | `OPENBUDGET_OPENAI_CATEGORY_ROUTE` | `responses` (default) or `decisions`: choose booking categories with the Decisions API (faster, cheaper, probabilities instead of a rationale, no AI rule proposals). |
 | `OPENBUDGET_OPENAI_DECISIONS_MODEL` | Model for the Decisions route (default `gpt-6-luna`). |
 
+### Sign in with Microsoft
+
+`Auth__Microsoft__Enabled=true` adds "Sign in with Microsoft" for accounts linked to an OpenBudget user (no sign-up,
+no matching by e-mail), using the OneDrive/receipts Entra registration. See
+[docs/microsoft-signin.md](docs/microsoft-signin.md).
+
 ### MCP API
 
 `McpApi__Enabled=true` turns on a read-only JSON API under `/api/mcp/v1/` (accounts, balances, transactions, spending,

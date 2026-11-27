@@ -12,6 +12,10 @@
 {
     <div class="alert alert-danger" role="alert" id="login-error">@Model.Error</div>
 }
+@if (Model.MicrosoftMessage != null)
+{
+    <div class="alert alert-warning" role="alert" id="microsoft-message" data-testid="microsoft-message">@Model.MicrosoftMessage</div>
+}
 <div class="alert alert-danger d-none" role="alert" id="passkey-error"></div>
 
 @* Explicit target (asp-page keeps the antiforgery token): after a failed passkey attempt the page sits at ?handler=PasskeyLogin, and a
@@ -37,6 +41,13 @@
         <i class="bi bi-fingerprint" aria-hidden="true"></i> @L["Login_Passkey"]
     </button>
 </form>
+@if (Model.MicrosoftEnabled)
+{
+    <a href="@OpenBudget.Auth.MicrosoftSignIn.LoginPath@(string.IsNullOrEmpty(Model.ReturnUrl) ? "" : "?returnUrl=" + Uri.EscapeDataString(Model.ReturnUrl))"
+       class="btn btn-outline-secondary w-100 mt-2" id="microsoft-login" data-testid="microsoft-login">
+        <i class="bi bi-microsoft" aria-hidden="true"></i> @L["Login_Microsoft"]
+    </a>
+}
 
 @section Scripts {
     <script src="js/passkeys.js" asp-append-version="true"></script>

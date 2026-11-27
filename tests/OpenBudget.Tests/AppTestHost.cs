@@ -27,7 +27,12 @@ internal sealed partial class AppTestHost : IDisposable
     private readonly string _stagingDir = Path.Combine(Path.GetTempPath(), $"ob-app-uploads-{Guid.NewGuid():N}");
     private readonly WebApplicationFactory<Program> _factory;
 
-    public AppTestHost(params (string Key, string Value)[] settings)
+    public AppTestHost(params (string Key, string Value)[] settings) : this(null, settings)
+    {
+    }
+
+    /// <summary>A host whose services <paramref name="configureServices"/> may adjust after the app's own registrations.</summary>
+    public AppTestHost(Action<IServiceCollection>? configureServices, params (string Key, string Value)[] settings)
     {
         MigratedDatabase.CopyTo(_dbPath);
 
@@ -53,6 +58,7 @@ internal sealed partial class AppTestHost : IDisposable
                 foreach (var d in toRemove) services.Remove(d);
                 services.AddOpenBudgetDatabase(_dbPath);
                 OpenBudget.Connectors.BankConnectorsRegistration.AddFakeBank(services);
+                configureServices?.Invoke(services);
             });
         });
 #pragma warning restore CA2000

@@ -190,4 +190,37 @@
   <data name="DisplayName_Saved" xml:space="preserve">
     <value>Display name saved.</value>
   </data>
+  <data name="Login_Microsoft" xml:space="preserve">
+    <value>Sign in with Microsoft</value>
+  </data>
+  <data name="Microsoft_NotLinked" xml:space="preserve">
+    <value>This Microsoft account is not linked to an OpenBudget user. Sign in with your password or passkey and link it on your account page, or ask the administrator.</value>
+  </data>
+  <data name="Microsoft_Failed" xml:space="preserve">
+    <value>The Microsoft sign-in did not complete. Please try again.</value>
+  </data>
+  <data name="MicrosoftLinks_Heading" xml:space="preserve">
+    <value>Microsoft account</value>
+  </data>
+  <data name="MicrosoftLinks_Intro" xml:space="preserve">
+    <value>A linked Microsoft account lets you sign in with Microsoft and lets the Claude connector act for you. Linking never creates an account; only accounts linked here (or by the administrator) can sign in.</value>
+  </data>
+  <data name="MicrosoftLinks_None" xml:space="preserve">
+    <value>No Microsoft account linked.</value>
+  </data>
+  <data name="MicrosoftLinks_Link" xml:space="preserve">
+    <value>Link Microsoft account</value>
+  </data>
+  <data name="MicrosoftLinks_Unlink" xml:space="preserve">
+    <value>Unlink</value>
+  </data>
+  <data name="MicrosoftLinks_Linked" xml:space="preserve">
+    <value>Microsoft account linked.</value>
+  </data>
+  <data name="MicrosoftLinks_Unlinked" xml:space="preserve">
+    <value>Microsoft account unlinked.</value>
+  </data>
+  <data name="MicrosoftLinks_Taken" xml:space="preserve">
+    <value>This Microsoft account is already linked to another OpenBudget user.</value>
+  </data>
 </root>

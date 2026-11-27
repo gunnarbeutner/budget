@@ -21,6 +21,9 @@ public sealed class ApiTokenAuthenticationHandler : AuthenticationHandler<Authen
     /// <summary>Claim carrying the id of the token a request used.</summary>
     public const string TokenIdClaim = "openbudget:api_token_id";
 
+    /// <summary>How an MCP request authenticated: "api_token" or "entra".</summary>
+    public const string MethodClaim = "openbudget:auth_method";
+
     // LastUsedAt is written at most this often per token, so a busy client doesn't write on every request.
     private static readonly TimeSpan LastUsedResolution = TimeSpan.FromMinutes(1);
 
@@ -62,7 +65,7 @@ public sealed class ApiTokenAuthenticationHandler : AuthenticationHandler<Authen
         }
 
         var identity = new ClaimsIdentity(
-            [new Claim(ClaimTypes.NameIdentifier, row.OwnerUserId), new Claim(TokenIdClaim, row.Id.ToString(System.Globalization.CultureInfo.InvariantCulture))],
+            [new Claim(ClaimTypes.NameIdentifier, row.OwnerUserId), new Claim(TokenIdClaim, row.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)), new Claim(MethodClaim, "api_token")],
             SchemeName);
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName));
     }

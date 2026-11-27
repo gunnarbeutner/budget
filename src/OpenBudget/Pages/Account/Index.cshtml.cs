@@ -46,15 +46,19 @@ public class AccountIndexModel : PageModel
     public string? DisplayName { get; private set; }
     public bool IsAdmin { get; private set; }
     public List<PasskeyRow> Passkeys { get; private set; } = new();
+    public List<ExternalLogin> MicrosoftLinks { get; private set; } = new();
+    public bool MicrosoftEnabled => OpenBudget.Auth.MicrosoftSignIn.LoginEnabled(HttpContext.RequestServices.GetRequiredService<IConfiguration>());
     public List<string> Errors { get; } = new();
 
     [TempData]
     public string? Message { get; set; }
 
-    public async Task<IActionResult> OnGetAsync()
+    public async Task<IActionResult> OnGetAsync(string? microsoft = null)
     {
         var user = await _users.GetUserAsync(User);
         if (user == null) return RedirectToPage("/Account/Login");
+        if (microsoft == "linked") Message = _l["MicrosoftLinks_Linked"].Value;
+        else if (microsoft == "taken") Errors.Add(_l["MicrosoftLinks_Taken"].Value);
         await LoadAsync(user);
         return Page();
     }
@@ -170,8 +174,21 @@ public class AccountIndexModel : PageModel
         return RedirectToPage();
     }
 
+    /// <summary>Removes one of the signed-in user's own Microsoft links.</summary>
+    public async Task<IActionResult> OnPostUnlinkMicrosoftAsync(int linkId)
+    {
+        var user = await _users.GetUserAsync(User);
+        if (user == null) return RedirectToPage("/Account/Login");
+        await using var db = await _db.CreateDbContextAsync();
+        var removed = await db.ExternalLogins.Where(l => l.Id == linkId && l.OwnerUserId == user.Id).ExecuteDeleteAsync();
+        if (removed > 0) Message = _l["MicrosoftLinks_Unlinked"].Value;
+        return RedirectToPage();
+    }
+
     private async Task LoadAsync(AppUser user)
     {
+        await using (var db = await _db.CreateDbContextAsync())
+            MicrosoftLinks = await db.ExternalLogins.AsNoTracking().Where(l => l.OwnerUserId == user.Id).OrderBy(l => l.CreatedAt).ToListAsync();
         UserName = user.UserName ?? "";
         DisplayName = user.DisplayName;
         IsAdmin = user.IsAdmin;

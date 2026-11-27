@@ -42,6 +42,17 @@ public class LoginModel : PageModel
 
     public string? Error { get; private set; }
 
+    /// <summary>Whether "Sign in with Microsoft" is offered.</summary>
+    public bool MicrosoftEnabled => OpenBudget.Auth.MicrosoftSignIn.LoginEnabled(HttpContext.RequestServices.GetRequiredService<IConfiguration>());
+
+    /// <summary>The outcome of a Microsoft sign-in that came back here (?microsoft=not_linked|failed).</summary>
+    public string? MicrosoftMessage => Request.Query["microsoft"].ToString() switch
+    {
+        "not_linked" => _l["Microsoft_NotLinked"].Value,
+        "failed" => _l["Microsoft_Failed"].Value,
+        _ => null,
+    };
+
     public IActionResult OnGet() =>
         User.Identity?.IsAuthenticated == true ? LocalRedirect(SafeReturnUrl()) : Page();
 

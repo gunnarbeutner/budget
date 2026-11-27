@@ -44,13 +44,15 @@ public static class McpApiEndpoints
     {
         if (!IsEnabled(app.Configuration)) return;
 
-        var policy = new AuthorizationPolicyBuilder(ApiTokenAuthenticationHandler.SchemeName).RequireAuthenticatedUser().Build();
+        var policy = new AuthorizationPolicyBuilder(MicrosoftSignIn.McpBearerScheme).RequireAuthenticatedUser().Build();
         var api = app.MapGroup(BasePath).RequireAuthorization(policy).DisableAntiforgery();
         // Each request acts for the token's user: the user-scoped services resolve their access scope from it.
         api.AddEndpointFilter(async (ctx, next) =>
         {
             var userId = ctx.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(userId)) return Error(StatusCodes.Status401Unauthorized, "unauthorized", "A valid API token is required.");
+            ctx.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("OpenBudget.McpApi")
+                .LogInformation("MCP {Path} via {Method}", ctx.HttpContext.Request.Path.Value, ctx.HttpContext.User.FindFirstValue(ApiTokenAuthenticationHandler.MethodClaim));
             ctx.HttpContext.RequestServices.GetRequiredService<ActingUser>().Set(userId);
             return await next(ctx);
         });

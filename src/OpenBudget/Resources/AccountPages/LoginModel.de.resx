@@ -190,4 +190,37 @@
   <data name="DisplayName_Saved" xml:space="preserve">
     <value>Anzeigename gespeichert.</value>
   </data>
+  <data name="Login_Microsoft" xml:space="preserve">
+    <value>Mit Microsoft anmelden</value>
+  </data>
+  <data name="Microsoft_NotLinked" xml:space="preserve">
+    <value>Dieses Microsoft-Konto ist mit keinem OpenBudget-Benutzer verknüpft. Melde dich mit Passwort oder Passkey an und verknüpfe es auf deiner Kontoseite, oder wende dich an den Administrator.</value>
+  </data>
+  <data name="Microsoft_Failed" xml:space="preserve">
+    <value>Die Microsoft-Anmeldung wurde nicht abgeschlossen. Bitte versuche es erneut.</value>
+  </data>
+  <data name="MicrosoftLinks_Heading" xml:space="preserve">
+    <value>Microsoft-Konto</value>
+  </data>
+  <data name="MicrosoftLinks_Intro" xml:space="preserve">
+    <value>Mit einem verknüpften Microsoft-Konto kannst du dich mit Microsoft anmelden, und der Claude-Connector kann für dich handeln. Verknüpfen legt nie ein Konto an; nur hier (oder vom Administrator) verknüpfte Konten können sich anmelden.</value>
+  </data>
+  <data name="MicrosoftLinks_None" xml:space="preserve">
+    <value>Kein Microsoft-Konto verknüpft.</value>
+  </data>
+  <data name="MicrosoftLinks_Link" xml:space="preserve">
+    <value>Microsoft-Konto verknüpfen</value>
+  </data>
+  <data name="MicrosoftLinks_Unlink" xml:space="preserve">
+    <value>Trennen</value>
+  </data>
+  <data name="MicrosoftLinks_Linked" xml:space="preserve">
+    <value>Microsoft-Konto verknüpft.</value>
+  </data>
+  <data name="MicrosoftLinks_Unlinked" xml:space="preserve">
+    <value>Microsoft-Konto getrennt.</value>
+  </data>
+  <data name="MicrosoftLinks_Taken" xml:space="preserve">
+    <value>Dieses Microsoft-Konto ist bereits mit einem anderen OpenBudget-Benutzer verknüpft.</value>
+  </data>
 </root>

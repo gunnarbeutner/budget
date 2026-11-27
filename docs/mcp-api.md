@@ -13,7 +13,18 @@ There are no bank connections, web logins, receipts, mail or statement downloads
 | --- | --- | --- |
 | `McpApi:Enabled` (environment: `McpApi__Enabled`) | `false` | Turns the API and the **Settings → API tokens** page on. While off, every `/api/mcp/` path answers `404` and the settings entry is hidden. |
 
-Nothing else is needed: tokens live in the app database (table `api_tokens`, created by the `ApiTokens` migration on
+Entra access tokens (optional, see below):
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `McpApi:Entra:Enabled` (`McpApi__Entra__Enabled`) | `false` | Also accept Microsoft Entra delegated access tokens on `/api/mcp/v1`. |
+| `McpApi:AllowedClientId` (`McpApi__AllowedClientId`) | — (required when enabled) | The only client (`azp` / v1 `appid`) whose tokens are accepted: the "MCP Gateway" app, `c406b8b1-3f73-41cd-bf9b-e10e42514418`. |
+| `McpApi:Entra:Audiences` (`McpApi__Entra__Audiences`) | the client id and `api://<client id>` | Accepted `aud` values (comma-separated). |
+| `Auth:Microsoft:TenantId`, `OPENBUDGET_ONEDRIVE_CLIENT_ID` | — | Tenant and registration, shared with Microsoft sign-in (docs/microsoft-signin.md). |
+
+The app refuses to start when `McpApi:Entra:Enabled` is on without the tenant id, client id and allowed client.
+
+Nothing else is needed for API tokens: they live in the app database (table `api_tokens`, created by the `ApiTokens` migration on
 startup).
 
 ## Creating a token
@@ -40,6 +51,22 @@ revocation. **Revoke** ends a token's access immediately. Removing a user remove
 - Tokens work only under `/api/mcp/v1/`. Every other route ignores them (pages redirect to the login, other API paths
   answer `401`).
 - Tokens are never logged.
+
+### Entra access tokens
+
+With `McpApi:Entra:Enabled`, the gateway may instead send a Microsoft Entra delegated access token for OpenBudget's
+registration (`Authorization: Bearer eyJ…`; anything not starting with `obk_`). It is accepted when:
+
+- it is signed by the tenant (keys from the tenant's OpenID metadata) and issued by the configured tenant, as a v2
+  (`https://login.microsoftonline.com/<tid>/v2.0`) or v1 (`https://sts.windows.net/<tid>/`) token;
+- `aud` is one of `McpApi:Entra:Audiences`;
+- `scp` contains `mcp.access` (else `403 insufficient_scope`);
+- `azp` (v2) or `appid` (v1) equals `McpApi:AllowedClientId` (else `403 client_not_allowed`);
+- the token's `tid`/`oid` is linked to an OpenBudget user (else `403 user_not_linked`). Links are made by the user
+  (Account page → Link Microsoft account) or by the operator (`Auth:Microsoft:Links`), see docs/microsoft-signin.md.
+
+The request then runs as that user exactly like an API-token request. The log records which method authenticated a
+request, never the token.
 
 ## Conventions
 

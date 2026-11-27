@@ -91,6 +91,11 @@ public partial class BudgetDbContext
         modelBuilder.Entity<ApiToken>().HasIndex(t => t.TokenHash).IsUnique();
         modelBuilder.Entity<ApiToken>().HasIndex(t => t.OwnerUserId);
         modelBuilder.Entity<ApiToken>().HasOne<AppUser>().WithMany().HasForeignKey(t => t.OwnerUserId).OnDelete(DeleteBehavior.Cascade);
+        // Linked Microsoft accounts are personal too; one Microsoft account links to at most one user.
+        modelBuilder.Entity<ExternalLogin>().HasQueryFilter(l => ScopeUnrestricted || l.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<ExternalLogin>().HasIndex(l => new { l.Provider, l.TenantId, l.ObjectId }).IsUnique();
+        modelBuilder.Entity<ExternalLogin>().HasIndex(l => l.OwnerUserId);
+        modelBuilder.Entity<ExternalLogin>().HasOne<AppUser>().WithMany().HasForeignKey(l => l.OwnerUserId).OnDelete(DeleteBehavior.Cascade);
 
         // PortfolioPerformance data feeds the project-scoped rebalance view, so it follows the
         // visibility of its owner's data; the owner-only mapping/tax pages are guarded separately.

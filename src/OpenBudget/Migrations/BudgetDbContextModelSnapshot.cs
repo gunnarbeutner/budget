@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261127072450_ApiTokens";
+    public override string LastMigrationId => "20261127080238_ExternalLogins";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -1131,6 +1131,49 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .IsUnique();
 
                 b.ToTable("cloud_file_links");
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.ExternalLogin", b =>
+            {
+                b.Property<int>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER");
+
+                b.Property<DateTime>("CreatedAt")
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("DisplayName")
+                    .HasMaxLength(256)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("ObjectId")
+                    .IsRequired()
+                    .HasMaxLength(64)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("OwnerUserId")
+                    .IsRequired()
+                    .HasMaxLength(450)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Provider")
+                    .IsRequired()
+                    .HasMaxLength(32)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("TenantId")
+                    .IsRequired()
+                    .HasMaxLength(64)
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Id");
+
+                b.HasIndex("OwnerUserId");
+
+                b.HasIndex("Provider", "TenantId", "ObjectId")
+                    .IsUnique();
+
+                b.ToTable("external_logins");
             });
 
         modelBuilder.Entity("OpenBudget.Models.FinTsBankSetting", b =>
@@ -2675,6 +2718,15 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .IsRequired();
 
                 b.Navigation("Connection");
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.ExternalLogin", b =>
+            {
+                b.HasOne("OpenBudget.Models.AppUser", null)
+                    .WithMany()
+                    .HasForeignKey("OwnerUserId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
             });
 
         modelBuilder.Entity("OpenBudget.Models.Holding", b =>

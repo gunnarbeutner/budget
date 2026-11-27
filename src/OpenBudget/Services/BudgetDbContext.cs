@@ -92,6 +92,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<ProjectReceiptSource> ProjectReceiptSources => Set<ProjectReceiptSource>();
     public DbSet<ReceiptSourceAccount> ReceiptSourceAccounts => Set<ReceiptSourceAccount>();
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
+    public DbSet<ExternalLogin> ExternalLogins => Set<ExternalLogin>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
