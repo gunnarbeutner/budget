@@ -155,7 +155,8 @@
 
     // Receipt changes (matching, assigning, new receipts) are published as ImportedData and CloudFiles; this circuit's own
     // changes count too, so the badge follows an assignment made on the Receipts view.
-    // Account changes (new, closed, reopened: ImportedData) and assignments (Projects) refresh the account summary.
+    // Account changes (new, closed, reopened, synced balances: ImportedData) and assignments (Projects) refresh the
+    // account summary and the sidebar's own tree with its balances.
     private void OnDataChanged(DataChange change, Guid? origin)
     {
         if (change.Area is not (DataArea.ImportedData or DataArea.CloudFiles or DataArea.Projects)) return;
@@ -165,7 +166,11 @@
             var scope = await AccessProvider.GetAsync();
             if (!scope.IsChangeVisible(change)) return;
             if (change.Area is DataArea.ImportedData or DataArea.CloudFiles) await LoadReviewReceiptsAsync();
-            if (change.Area is DataArea.ImportedData or DataArea.Projects) await LoadAccountSummaryAsync();
+            if (change.Area is DataArea.ImportedData or DataArea.Projects)
+            {
+                await LoadAccountSummaryAsync();
+                if (Rail == null && ownTree != null) await ReloadOwnTreeCoalescedAsync();
+            }
             StateHasChanged();
         });
     }
@@ -272,6 +277,25 @@
     {
         var (year, month) = (TimeState.Current(Clock.NowLocal).Year, TimeState.Current(Clock.NowLocal).Month);
         ownTree = await BrowseService.GetTreeAsync(ProjectId, year, month, month) ?? ownTree;
+    }
+
+    // A sync reports each account it changed, so changes arrive in bursts: one reload at a time, and one more if
+    // something arrived meanwhile.
+    private bool treeReloading, treeReloadAgain;
+
+    private async Task ReloadOwnTreeCoalescedAsync()
+    {
+        if (treeReloading) { treeReloadAgain = true; return; }
+        treeReloading = true;
+        try
+        {
+            do
+            {
+                treeReloadAgain = false;
+                await ReloadOwnTreeAsync(null);
+            } while (treeReloadAgain);
+        }
+        finally { treeReloading = false; }
     }
 
     private void OpenTransactions(string? sel) =>
