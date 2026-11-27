@@ -223,4 +223,7 @@
   <data name="MicrosoftLinks_Taken" xml:space="preserve">
     <value>Dieses Microsoft-Konto ist bereits mit einem anderen OpenBudget-Benutzer verknüpft.</value>
   </data>
+  <data name="MicrosoftLinks_LastRefused" xml:space="preserve">
+    <value>Das ist dein einziger Weg zur Anmeldung (Anmeldung mit Passwort und Passkey ist abgeschaltet), daher kann es nicht getrennt werden. Verknüpfe zuerst ein anderes Microsoft-Konto.</value>
+  </data>
 </root>

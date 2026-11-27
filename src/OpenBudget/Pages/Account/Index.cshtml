@@ -36,6 +36,8 @@
     </div>
 </div>
 
+@if (Model.LocalLoginEnabled)
+{
 <div class="card mb-4">
     <div class="card-body">
         <h2 class="h6">@L["Passkeys_Heading"]</h2>
@@ -73,6 +75,8 @@
     </div>
 </div>
 
+}
+
 @if (Model.MicrosoftEnabled)
 {
     <div class="card mb-4" data-testid="microsoft-links">
@@ -108,6 +112,8 @@
     </div>
 }
 
+@if (Model.LocalLoginEnabled)
+{
 <div class="card mb-4">
     <div class="card-body">
         <h2 class="h6">@L["Password_Heading"]</h2>
@@ -128,7 +134,7 @@
         </form>
     </div>
 </div>
-
+}
 
 @section Scripts {
     <script src="js/passkeys.js" asp-append-version="true"></script>

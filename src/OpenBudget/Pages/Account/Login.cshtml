@@ -18,6 +18,8 @@
 }
 <div class="alert alert-danger d-none" role="alert" id="passkey-error"></div>
 
+@if (Model.LocalLoginEnabled)
+{
 @* Explicit target (asp-page keeps the antiforgery token): after a failed passkey attempt the page sits at ?handler=PasskeyLogin, and a
    form without an action would post the password there. *@
 <form method="post" id="login-form" class="mb-3" asp-page="/Account/Login">
@@ -41,6 +43,7 @@
         <i class="bi bi-fingerprint" aria-hidden="true"></i> @L["Login_Passkey"]
     </button>
 </form>
+}
 @if (Model.MicrosoftEnabled)
 {
     <a href="@OpenBudget.Auth.MicrosoftSignIn.LoginPath@(string.IsNullOrEmpty(Model.ReturnUrl) ? "" : "?returnUrl=" + Uri.EscapeDataString(Model.ReturnUrl))"
@@ -49,7 +52,10 @@
     </a>
 }
 
-@section Scripts {
-    <script src="js/passkeys.js" asp-append-version="true"></script>
-    <script>OpenBudgetPasskeys.wireLogin();</script>
+@if (Model.LocalLoginEnabled)
+{
+    @section Scripts {
+        <script src="js/passkeys.js" asp-append-version="true"></script>
+        <script>OpenBudgetPasskeys.wireLogin();</script>
+    }
 }

@@ -17,6 +17,8 @@ user and never links by e-mail address; an unlinked account sees "not linked" on
 | `OPENBUDGET_ONEDRIVE_CLIENT_ID`, `OPENBUDGET_ONEDRIVE_CLIENT_SECRET` | — | The existing registration `3b673f22-ba30-4dc9-affc-5f946fe10de8` and its secret (unchanged plumbing). |
 | `Auth:Microsoft:Links:<object id>` (`Auth__Microsoft__Links__<object id>`) | — | Operator links: Entra object id → OpenBudget user name, in the configured tenant. Applied at every start; adds missing links, never moves an existing link to another user, logs (and skips) unknown user names. |
 
+| `Auth:LocalLogin:Enabled` (`Auth__LocalLogin__Enabled`) | `true` | `false` turns off password and passkey sign-in: see below. |
+
 The app refuses to start when sign-in is enabled without tenant id, client id and secret, or when a link key is not
 a GUID.
 
@@ -31,6 +33,22 @@ McpApi__Enabled=true
 McpApi__Entra__Enabled=true
 McpApi__AllowedClientId=c406b8b1-3f73-41cd-bf9b-e10e42514418
 ```
+
+## Microsoft-only sign-in
+
+With `Auth:LocalLogin:Enabled=false` (requires `Auth:Microsoft:Enabled=true`, else the app refuses to start):
+
+- The login page goes straight to Microsoft; it stays visible only to show a "not linked" or "failed" outcome, and
+  then offers just **Sign in with Microsoft**.
+- Password sign-in, the passkey sign-in handlers, password change and passkey registration/removal are refused on
+  the server (404), not only hidden. There is no web password reset. `users add` / `users set-password` (CLI) still
+  work for operators, but a password gives no way in; a user needs a Microsoft link.
+- Existing sessions stay valid until they expire. API tokens (`obk_…`) and Entra MCP tokens are unaffected.
+  Linking and unlinking stay, except that a user's last Microsoft link can't be unlinked.
+
+**Recovery** (Entra broken or misconfigured): set `Auth__LocalLogin__Enabled=true` (or remove it) and redeploy;
+password and passkey sign-in are back at once (nothing was deleted). `users set-password <name>` resets a forgotten
+password.
 
 ## Linking
 

@@ -31,6 +31,13 @@ public class AccountIndexModel : PageModel
     public override async Task OnPageHandlerExecutionAsync(
         Microsoft.AspNetCore.Mvc.Filters.PageHandlerExecutingContext context, Microsoft.AspNetCore.Mvc.Filters.PageHandlerExecutionDelegate next)
     {
+        // With local sign-in off, password change and passkey management are refused, not only hidden.
+        if (!LocalLoginEnabled && context.HandlerMethod?.MethodInfo.Name is
+                nameof(OnPostChangePasswordAsync) or nameof(OnPostPasskeyCreationOptionsAsync) or nameof(OnPostAddPasskeyAsync) or nameof(OnPostDeletePasskeyAsync))
+        {
+            context.Result = NotFound();
+            return;
+        }
         await using var db = await _db.CreateDbContextAsync();
         var userId = _users.GetUserId(User);
         var state = await db.UserDataStates.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == userId);
@@ -47,6 +54,7 @@ public class AccountIndexModel : PageModel
     public bool IsAdmin { get; private set; }
     public List<PasskeyRow> Passkeys { get; private set; } = new();
     public List<ExternalLogin> MicrosoftLinks { get; private set; } = new();
+    public bool LocalLoginEnabled => OpenBudget.Auth.MicrosoftSignIn.LocalLoginEnabled(HttpContext.RequestServices.GetRequiredService<IConfiguration>());
     public bool MicrosoftEnabled => OpenBudget.Auth.MicrosoftSignIn.LoginEnabled(HttpContext.RequestServices.GetRequiredService<IConfiguration>());
     public List<string> Errors { get; } = new();
 
@@ -57,6 +65,7 @@ public class AccountIndexModel : PageModel
     {
         var user = await _users.GetUserAsync(User);
         if (user == null) return RedirectToPage("/Account/Login");
+        if (TempData["UnlinkRefused"] is string refused) Errors.Add(refused);
         if (microsoft == "linked") Message = _l["MicrosoftLinks_Linked"].Value;
         else if (microsoft == "taken") Errors.Add(_l["MicrosoftLinks_Taken"].Value);
         await LoadAsync(user);
@@ -180,6 +189,13 @@ public class AccountIndexModel : PageModel
         var user = await _users.GetUserAsync(User);
         if (user == null) return RedirectToPage("/Account/Login");
         await using var db = await _db.CreateDbContextAsync();
+        // Without local sign-in the last link is the only way back in: keep it.
+        if (!LocalLoginEnabled && await db.ExternalLogins.CountAsync(l => l.OwnerUserId == user.Id) <= 1)
+        {
+            Message = null;
+            TempData["UnlinkRefused"] = _l["MicrosoftLinks_LastRefused"].Value;
+            return RedirectToPage();
+        }
         var removed = await db.ExternalLogins.Where(l => l.Id == linkId && l.OwnerUserId == user.Id).ExecuteDeleteAsync();
         if (removed > 0) Message = _l["MicrosoftLinks_Unlinked"].Value;
         return RedirectToPage();

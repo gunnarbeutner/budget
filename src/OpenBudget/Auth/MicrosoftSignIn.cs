@@ -43,6 +43,11 @@ public static class MicrosoftSignIn
     private const string ForbiddenItem = "OpenBudget.McpForbidden";
 
     public static bool LoginEnabled(IConfiguration c) => c.GetValue<bool>(EnabledSetting);
+
+    /// <summary>Password and passkey sign-in (and their management); default on.</summary>
+    public const string LocalLoginSetting = "Auth:LocalLogin:Enabled";
+
+    public static bool LocalLoginEnabled(IConfiguration c) => c.GetValue(LocalLoginSetting, true);
     public static bool McpEnabled(IConfiguration c) => c.GetValue<bool>(McpEnabledSetting);
 
     /// <summary>The single tenant: <c>Auth:Microsoft:TenantId</c>, else the OneDrive tenant when that is a tenant id.</summary>
@@ -79,6 +84,8 @@ public static class MicrosoftSignIn
             if (McpAllowedClient(c) == null) problems.Add($"{McpAllowedClientSetting} is required for MCP Entra tokens");
             if (McpAudiences(c).Length == 0) problems.Add($"{McpAudiencesSetting} is required for MCP Entra tokens");
         }
+        if (!LocalLoginEnabled(c) && !LoginEnabled(c))
+            problems.Add($"{LocalLoginSetting}=false requires {EnabledSetting}=true (otherwise nobody could sign in)");
         foreach (var link in c.GetSection(LinksSection).GetChildren())
             if (!Guid.TryParse(link.Key, out _) || string.IsNullOrWhiteSpace(link.Value))
                 problems.Add($"{LinksSection}: '{link.Key}' must be an object id GUID mapped to a user name");

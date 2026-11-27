@@ -223,4 +223,7 @@
   <data name="MicrosoftLinks_Taken" xml:space="preserve">
     <value>This Microsoft account is already linked to another OpenBudget user.</value>
   </data>
+  <data name="MicrosoftLinks_LastRefused" xml:space="preserve">
+    <value>This is your only way to sign in (password and passkey sign-in are turned off), so it can't be unlinked. Link another Microsoft account first.</value>
+  </data>
 </root>

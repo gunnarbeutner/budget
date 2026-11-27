@@ -127,6 +127,33 @@ internal sealed class FakeEntra : IDisposable
         }
     }
 
+    /// <summary>
+    /// Runs the browser's part of the OpenID Connect round trip: start at <paramref name="startPath"/>, "sign in" at the
+    /// fake authorize page, return to the callback, and follow to the app's completion. Returns where it finally leads.
+    /// </summary>
+    public async Task<string> RoundTripAsync(AppTestHost host, HttpClient client, string startPath)
+    {
+        using var start = await client.GetAsync(new Uri(startPath, UriKind.Relative));
+        Assert.Equal(HttpStatusCode.Redirect, start.StatusCode);
+        var authorize = start.Headers.Location!;
+        Assert.StartsWith("https://idp.test/authorize", authorize.AbsoluteUri, StringComparison.Ordinal);
+        var q = HttpUtility.ParseQueryString(authorize.Query);
+        Assert.Equal("openid profile", q["scope"]);
+        Assert.Equal("S256", q["code_challenge_method"]);
+        Assert.Equal(FakeEntra.ClientId, q["client_id"]);
+        Assert.EndsWith(MicrosoftSignIn.CallbackPath, q["redirect_uri"], StringComparison.Ordinal);
+        Nonce = q["nonce"];
+
+        using var callback = await client.GetAsync(new Uri($"{MicrosoftSignIn.CallbackPath}?code=the-code&state={Uri.EscapeDataString(q["state"]!)}", UriKind.Relative));
+        Assert.True(callback.StatusCode == HttpStatusCode.Redirect, $"callback -> {(int)callback.StatusCode}: {string.Join("\n", host.LoggedProblems)}");
+        Assert.True(SawPkceVerifier);
+        var complete = callback.Headers.Location!.OriginalString;
+        if (!complete.StartsWith(MicrosoftSignIn.CompletePath, StringComparison.Ordinal)) return complete;
+        using var done = await client.GetAsync(new Uri(complete, UriKind.Relative));
+        Assert.Equal(HttpStatusCode.Redirect, done.StatusCode);
+        return done.Headers.Location!.OriginalString;
+    }
+
     public void Dispose()
     {
         _rsa.Dispose();
@@ -166,33 +193,6 @@ public sealed class MicrosoftSignInTests : IDisposable
     private static async Task<HttpResponseMessage> GetAsync(HttpClient client, string url) =>
         await client.GetAsync(new Uri(url, UriKind.RelativeOrAbsolute));
 
-    /// <summary>
-    /// Runs the browser's part of the OpenID Connect round trip: start at <paramref name="startPath"/>, "sign in" at the
-    /// fake authorize page, return to the callback, and follow to the app's completion. Returns where it finally leads.
-    /// </summary>
-    private async Task<string> MicrosoftRoundTripAsync(HttpClient client, string startPath)
-    {
-        using var start = await GetAsync(client, startPath);
-        Assert.Equal(HttpStatusCode.Redirect, start.StatusCode);
-        var authorize = start.Headers.Location!;
-        Assert.StartsWith("https://idp.test/authorize", authorize.AbsoluteUri, StringComparison.Ordinal);
-        var q = HttpUtility.ParseQueryString(authorize.Query);
-        Assert.Equal("openid profile", q["scope"]);
-        Assert.Equal("S256", q["code_challenge_method"]);
-        Assert.Equal(FakeEntra.ClientId, q["client_id"]);
-        Assert.EndsWith(MicrosoftSignIn.CallbackPath, q["redirect_uri"], StringComparison.Ordinal);
-        _idp.Nonce = q["nonce"];
-
-        using var callback = await GetAsync(client, $"{MicrosoftSignIn.CallbackPath}?code=the-code&state={Uri.EscapeDataString(q["state"]!)}");
-        Assert.True(callback.StatusCode == HttpStatusCode.Redirect, $"callback -> {(int)callback.StatusCode}: {string.Join("\n", _host.LoggedProblems)}");
-        Assert.True(_idp.SawPkceVerifier);
-        var complete = callback.Headers.Location!.OriginalString;
-        if (!complete.StartsWith(MicrosoftSignIn.CompletePath, StringComparison.Ordinal)) return complete;
-        using var done = await GetAsync(client, complete);
-        Assert.Equal(HttpStatusCode.Redirect, done.StatusCode);
-        return done.Headers.Location!.OriginalString;
-    }
-
     private static async Task<bool> IsSignedInAsync(HttpClient client)
     {
         using var account = await GetAsync(client, "/Account");
@@ -206,7 +206,7 @@ public sealed class MicrosoftSignInTests : IDisposable
         await LinkAsync("alice", FakeEntra.AliceOid);
         using var client = _host.CreateClient();
 
-        var target = await MicrosoftRoundTripAsync(client, MicrosoftSignIn.LoginPath + "?returnUrl=%2Fabout");
+        var target = await _idp.RoundTripAsync(_host, client, MicrosoftSignIn.LoginPath + "?returnUrl=%2Fabout");
         Assert.Equal("/about", target);
         var (status, html) = await AppTestHost.GetAsync(client, "/Account");
         Assert.Equal(HttpStatusCode.OK, status);
@@ -222,7 +222,7 @@ public sealed class MicrosoftSignInTests : IDisposable
         int usersBefore;
         await using (var db = await _host.System.CreateDbContextAsync()) usersBefore = await db.Users.CountAsync();
 
-        var target = await MicrosoftRoundTripAsync(client, MicrosoftSignIn.LoginPath);
+        var target = await _idp.RoundTripAsync(_host, client, MicrosoftSignIn.LoginPath);
         Assert.Equal("/Account/Login?microsoft=not_linked", target);
         Assert.False(await IsSignedInAsync(client));
         var (_, login) = await AppTestHost.GetAsync(client, target);
@@ -242,7 +242,7 @@ public sealed class MicrosoftSignInTests : IDisposable
         await LinkAsync("alice", FakeEntra.AliceOid, FakeEntra.OtherTenant);
         _idp.NextTenant = FakeEntra.OtherTenant;
         using var client = _host.CreateClient();
-        var target = await MicrosoftRoundTripAsync(client, MicrosoftSignIn.LoginPath);
+        var target = await _idp.RoundTripAsync(_host, client, MicrosoftSignIn.LoginPath);
         Assert.StartsWith("/Account/Login?microsoft=failed", target, StringComparison.Ordinal);
         Assert.False(await IsSignedInAsync(client));
     }
@@ -252,7 +252,7 @@ public sealed class MicrosoftSignInTests : IDisposable
     {
         await _host.SeedWorldAsync();
         using var alice = await _host.LoggedInClientAsync("alice");
-        Assert.Equal("/Account?microsoft=linked", await MicrosoftRoundTripAsync(alice, MicrosoftSignIn.LinkPath));
+        Assert.Equal("/Account?microsoft=linked", await _idp.RoundTripAsync(_host, alice, MicrosoftSignIn.LinkPath));
 
         int linkId;
         await using (var db = await _host.System.CreateDbContextAsync())
@@ -269,13 +269,13 @@ public sealed class MicrosoftSignInTests : IDisposable
         // Now Microsoft signs alice in.
         using (var fresh = _host.CreateClient())
         {
-            await MicrosoftRoundTripAsync(fresh, MicrosoftSignIn.LoginPath);
+            await _idp.RoundTripAsync(_host, fresh, MicrosoftSignIn.LoginPath);
             Assert.True(await IsSignedInAsync(fresh));
         }
 
         // Bob can't take the same Microsoft account.
         using (var bob = await _host.LoggedInClientAsync("bob"))
-            Assert.Equal("/Account?microsoft=taken", await MicrosoftRoundTripAsync(bob, MicrosoftSignIn.LinkPath));
+            Assert.Equal("/Account?microsoft=taken", await _idp.RoundTripAsync(_host, bob, MicrosoftSignIn.LinkPath));
 
         // Unlink through the account page's form.
         var token = await AppTestHost.FetchAntiforgeryTokenAsync(alice, "/Account");
@@ -287,7 +287,7 @@ public sealed class MicrosoftSignInTests : IDisposable
             Assert.Equal(0, await db.ExternalLogins.CountAsync());
 
         using var after = _host.CreateClient();
-        Assert.Equal("/Account/Login?microsoft=not_linked", await MicrosoftRoundTripAsync(after, MicrosoftSignIn.LoginPath));
+        Assert.Equal("/Account/Login?microsoft=not_linked", await _idp.RoundTripAsync(_host, after, MicrosoftSignIn.LoginPath));
     }
 
     [Fact]
@@ -422,7 +422,7 @@ public sealed class MicrosoftSignInTests : IDisposable
         }
         // The seeded link signs alice in.
         using var client = _host.CreateClient();
-        await MicrosoftRoundTripAsync(client, MicrosoftSignIn.LoginPath);
+        await _idp.RoundTripAsync(_host, client, MicrosoftSignIn.LoginPath);
         Assert.True(await IsSignedInAsync(client));
     }
 }

@@ -53,8 +53,29 @@ public class LoginModel : PageModel
         _ => null,
     };
 
-    public IActionResult OnGet() =>
-        User.Identity?.IsAuthenticated == true ? LocalRedirect(SafeReturnUrl()) : Page();
+    /// <summary>Whether password and passkey sign-in are offered (Auth:LocalLogin:Enabled).</summary>
+    public bool LocalLoginEnabled => OpenBudget.Auth.MicrosoftSignIn.LocalLoginEnabled(HttpContext.RequestServices.GetRequiredService<IConfiguration>());
+
+    /// <summary>With local sign-in off, every password and passkey handler is refused (not only hidden).</summary>
+    public override async Task OnPageHandlerExecutionAsync(
+        Microsoft.AspNetCore.Mvc.Filters.PageHandlerExecutingContext context, Microsoft.AspNetCore.Mvc.Filters.PageHandlerExecutionDelegate next)
+    {
+        if (!LocalLoginEnabled && !HttpMethods.IsGet(Request.Method))
+        {
+            context.Result = NotFound();
+            return;
+        }
+        await next();
+    }
+
+    public IActionResult OnGet()
+    {
+        if (User.Identity?.IsAuthenticated == true) return LocalRedirect(SafeReturnUrl());
+        // Microsoft is the only way in: go there directly, unless the page has to show how a Microsoft sign-in ended.
+        if (!LocalLoginEnabled && MicrosoftEnabled && string.IsNullOrEmpty(Request.Query["microsoft"]))
+            return Redirect(OpenBudget.Auth.MicrosoftSignIn.LoginPath + (string.IsNullOrEmpty(ReturnUrl) || !Url.IsLocalUrl(ReturnUrl) ? "" : "?returnUrl=" + Uri.EscapeDataString(ReturnUrl)));
+        return Page();
+    }
 
     /// <summary>Only local URLs are honoured as post-login destinations (no open redirect).</summary>
     private string SafeReturnUrl() =>
